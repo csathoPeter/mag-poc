@@ -8,7 +8,7 @@ const FLOWER := preload("res://shaders/flower.gdshader")
 const GRASS := preload("res://shaders/grass.gdshader")
 const GROUND := preload("res://shaders/ground.gdshader")
 const SKY := preload("res://shaders/sky.gdshader")
-const TILT := preload("res://shaders/tiltshift.gdshader")
+const TILT := preload("res://shaders/lens.gdshader")
 const SPACE_SKY := preload("res://shaders/space_sky.gdshader")
 
 var plants_root := Node3D.new()
@@ -65,7 +65,15 @@ var space_mat := ShaderMaterial.new()
 var view := "orbit"
 var focus := -1
 var orbit_q := Quaternion.IDENTITY
-var orbit_dist := 20.0
+## Bolygó-nézet: 0 = az egész bolygó szemből, 1 = alacsony, ferde légi nézet a felszín egy pontjára (makett-hatás).
+const ORBIT_ZOOM := .55
+var orbit_zoom := ORBIT_ZOOM
+var lens_mat: ShaderMaterial
+var dof_mix := 0.0
+# makró: leszállva egy virágra közelítve
+var macro := false
+var macro_pt := Vector3.ZERO
+var m_dist := 1.0
 var spin := Vector2.ZERO
 var eye := Vector3(0, 0, 60)
 var look := Vector3.ZERO
@@ -120,6 +128,7 @@ const LOAD_STEPS := [
 	["lent", "fű ×3", {"gmul": 3.0}],
 	["lent", "minden látható részletes", {"hi": 99, "force": true}],
 	["kint", "14 fa", {}],
+	["kint", "egész bolygó", {"zoom": 0.0}],
 	["kint", "30 fa", {"trees": 30}],
 	["lent", "30 fa", {"trees": 30}],
 	["lent", "30 fa, 100%", {"trees": 30, "scale": 1.0}],
@@ -258,6 +267,7 @@ func _build_world() -> void:
 	q.size = Vector2(2, 2)
 	var tm := ShaderMaterial.new()
 	tm.shader = TILT
+	lens_mat = tm
 	tilt_quad.mesh = q
 	tilt_quad.material_override = tm
 	tilt_quad.extra_cull_margin = 16384.0
@@ -604,6 +614,8 @@ func start_garden() -> void:
 	env.fog_depth_end = 125.0
 	sun.directional_shadow_max_distance = 62.0
 	tilt_quad.visible = true
+	lens_mat.set_shader_parameter("legacy", 1.0)
+	lens_mat.set_shader_parameter("focus", 12.0)
 	joy.visible = true
 	joy_id = -1
 	joy_knob = Vector2.ZERO
@@ -779,6 +791,19 @@ func _process(delta: float) -> void:
 		if shot_frames == 1 and garden_mode == "planet" and shot_args.size() > 5:
 			if shot_args[5] == "plant":
 				plant_new()
+			elif (shot_args[5] as String).begins_with("zoom"):
+				orbit_zoom = float((shot_args[5] as String).trim_prefix("zoom"))
+			elif (shot_args[5] as String).begins_with("macro"):
+				_focus(0)
+				_planet_cam(0.0, true)
+				_planet_lod()
+				_macro_at(cam.unproject_position(_tree_mid(trees[0])))
+				if not macro:
+					var pg: PlantGen = trees[0].high.pg
+					if pg.flo_p.size() > 0:
+						macro = true
+						macro_pt = (trees[0].high.node as Node3D).transform * pg.flo_p[pg.flo_p.size() / 2]
+						m_dist = .9
 			else:
 				_focus(int((shot_args[5] as String).trim_prefix("focus")) if (shot_args[5] as String).length() > 5 else 0)
 		if shot_frames == 1 and shot_args.size() > 5:
@@ -858,9 +883,10 @@ func start_planet(code: String, count: int) -> void:
 	joy.visible = false
 	tag.visible = true
 	cam.fov = 40.0
-	orbit_dist = _fit_dist(planet.radius_target)
+	orbit_zoom = ORBIT_ZOOM
+	macro = false
 	if shot_args.is_empty():
-		eye = Basis(orbit_q) * Vector3(0, 0, orbit_dist * 1.8)
+		eye = Basis(orbit_q) * Vector3(0, 0, _fit_dist(planet.radius_target) * 1.8)
 	trans_t = 0.0
 	night = -1.0
 	_planet_texts()
@@ -961,11 +987,11 @@ func _focus(i: int) -> void:
 	var rel := _tree_frame(i).inverse() * (eye - planet.surface_point(t.dir))
 	s_yaw = atan2(rel.x, rel.z)
 	t.wave = 0.0
+	macro = false
 	var up_hint := Basis(orbit_q).y
 	if absf(up_hint.dot(t.dir)) > .98:
 		up_hint = Basis(orbit_q).x
 	orbit_q = Basis.looking_at(-(t.dir as Vector3), up_hint).get_rotation_quaternion()
-	tilt_quad.visible = tilt_ok
 	planet.build_patch(_patch_center(i), not shot_args.is_empty())
 	planet.show_patch(true)
 	_tag_text()
@@ -981,10 +1007,10 @@ func _patch_center(i: int) -> Vector3:
 func _unfocus() -> void:
 	view = "orbit"
 	focus = -1
+	macro = false
 	trans_t = 0.0
-	tilt_quad.visible = false
-	planet.show_patch(false)
-	orbit_dist = clampf(orbit_dist, _fit_dist(planet.radius) * .45, _fit_dist(planet.radius) * 1.4)
+	# a fáról felemelkedve alacsony légi nézet marad ugyanott
+	orbit_zoom = maxf(orbit_zoom, .75)
 
 
 func _tag_text() -> void:
@@ -1005,7 +1031,13 @@ func _tag_text() -> void:
 
 func _zoom(f: float) -> void:
 	if view == "orbit":
-		orbit_dist = clampf(orbit_dist * f, _fit_dist(planet.radius) * .45, _fit_dist(planet.radius) * 1.4)
+		orbit_zoom = clampf(orbit_zoom - log(f) * 1.1, 0.0, 1.0)
+	elif macro:
+		m_dist *= f
+		if m_dist > 2.6:
+			macro = false
+			trans_t = 0.0
+		m_dist = clampf(m_dist, .35, 2.6)
 	else:
 		s_dist *= f
 		if s_dist > 14.0:
@@ -1033,10 +1065,38 @@ func _tap(pos: Vector2) -> void:
 	if best >= 0:
 		if view == "surface" and best == focus:
 			trees[best].wave = 0.0
+			_macro_at(pos)
 		else:
 			_focus(best)
+	elif macro:
+		macro = false
+		trans_t = 0.0
 	elif view == "surface":
 		_unfocus()
+
+
+## Leszállva a kiválasztott fa egy virágára közelít (a koppintáshoz legközelebbi virág a képen).
+func _macro_at(pos: Vector2) -> void:
+	var t: Dictionary = trees[focus]
+	var rec: Dictionary = t.high
+	var pg: PlantGen = rec.pg
+	var xf: Transform3D = (rec.node as Node3D).transform
+	var best := -1.0
+	var bp := Vector3.ZERO
+	for p in pg.flo_p:
+		var w: Vector3 = xf * p
+		if cam.is_position_behind(w):
+			continue
+		var d := cam.unproject_position(w).distance_to(pos)
+		if d < 70.0 and (best < 0.0 or d < best):
+			best = d
+			bp = w
+	if best < 0.0:
+		return
+	macro = true
+	macro_pt = bp
+	m_dist = .9
+	trans_t = 0.0
 
 
 func _planet_input(event: InputEvent) -> void:
@@ -1061,11 +1121,11 @@ func _planet_input(event: InputEvent) -> void:
 		if touches.size() == 1:
 			var rel: Vector2 = event.relative
 			if view == "orbit":
-				var a := rel * -.0055
+				var a := rel * -.0055 * lerpf(1.0, .4, orbit_zoom)
 				orbit_q = (orbit_q * Quaternion(Vector3.UP, a.x) * Quaternion(Vector3.RIGHT, a.y)).normalized()
 				spin = spin.lerp(a * 60.0, .5)
 			else:
-				s_yaw -= rel.x * .008
+				s_yaw -= rel.x * (.004 if macro else .008)
 				s_pitch = clampf(s_pitch + rel.y * .006, .04, 1.2)
 		elif touches.size() == 2:
 			for k in taps:
@@ -1109,7 +1169,7 @@ func _planet_process(delta: float) -> void:
 		lod_timer = 0.0
 		_planet_lod()
 	# lebegő névtábla a kiválasztott fa fölött
-	var want := 1.0 if view == "surface" and focus >= 0 and trans_t > .5 else 0.0
+	var want := 1.0 if view == "surface" and focus >= 0 and trans_t > .5 and not macro else 0.0
 	tag_alpha = want if snap else lerpf(tag_alpha, want, 1.0 - exp(-delta * (3.0 if want > 0.0 else 8.0)))
 	if focus >= 0:
 		var t: Dictionary = trees[focus]
@@ -1130,15 +1190,19 @@ func _planet_cam(delta: float, snap: bool) -> void:
 				spin = spin.lerp(Vector2(.03, 0), 1.0 - exp(-delta * .5))
 			orbit_q = (orbit_q * Quaternion(Vector3.UP, spin.x * delta) * Quaternion(Vector3.RIGHT, spin.y * delta)).normalized()
 			spin *= exp(-delta * 2.2)
-		var b := Basis(orbit_q)
-		want_eye = b * Vector3(0, 0, orbit_dist)
-		want_look = Vector3.ZERO
-		want_up = b.y
+		var pose := _orbit_pose(orbit_zoom)
+		want_eye = pose[0]
+		want_look = pose[1]
+		want_up = pose[2]
 	else:
 		var t: Dictionary = trees[focus]
 		var n: Vector3 = t.dir
 		var target := planet.surface_point(n) + n * float(t.h) * .52
-		var off := _tree_frame(focus) * (Vector3(sin(s_yaw) * cos(s_pitch), sin(s_pitch), cos(s_yaw) * cos(s_pitch)) * s_dist)
+		var dist := s_dist
+		if macro:
+			target = macro_pt
+			dist = m_dist
+		var off := _tree_frame(focus) * (Vector3(sin(s_yaw) * cos(s_pitch), sin(s_pitch), cos(s_yaw) * cos(s_pitch)) * dist)
 		want_eye = target + off
 		var ground := planet.surface_point(want_eye.normalized()).length() + .5
 		if want_eye.length() < ground:
@@ -1146,7 +1210,7 @@ func _planet_cam(delta: float, snap: bool) -> void:
 		want_look = target
 		want_up = n
 		if touches.is_empty() and shot_args.is_empty() and not bench_on:
-			s_yaw += delta * .03
+			s_yaw += delta * (.012 if macro else .03)
 	# átmenetkor lassú, puha mozgás; utána gyorsan követi az ujjat
 	var rate := 2.2 if trans_t < 2.5 else 12.0
 	var k := 1.0 if snap else 1.0 - exp(-delta * rate)
@@ -1155,13 +1219,13 @@ func _planet_cam(delta: float, snap: bool) -> void:
 	look = look.lerp(want_look, k)
 	up_v = up_v.slerp(want_up.normalized(), k).normalized()
 	cam.look_at_from_position(eye, look, up_v)
-	sun.directional_shadow_max_distance = 26.0 if view == "surface" else eye.length() + planet.radius + 4.0
-	(tilt_quad.material_override as ShaderMaterial).set_shader_parameter("focus", eye.distance_to(look))
+	sun.directional_shadow_max_distance = 26.0 if view == "surface" else eye.distance_to(look) + planet.radius * 1.2
+	_lens(delta, snap)
 	# a nap a kamerához (kint) vagy a fához (lent) igazodik, így a látható oldal mindig meg van világítva
 	var el := lerpf(lerpf(.75, .32, dusk), .6, night)
 	var z := lerpf(lerpf(.55, -.45, dusk), .3, night)
 	var local := Vector3(-.55, el, z).normalized()
-	var frame: Basis = cam.global_transform.basis if view == "orbit" or focus < 0 else _tree_frame(focus).rotated(trees[focus].dir, s_yaw)
+	var frame: Basis = _surface_frame(look.normalized()) if view == "orbit" or focus < 0 else _tree_frame(focus).rotated(trees[focus].dir, s_yaw)
 	var wsun := (frame * local).normalized()
 	sun_dir = wsun if snap else sun_dir.slerp(wsun, 1.0 - exp(-delta * 3.0)).normalized()
 	sun.look_at_from_position(sun_dir * 60.0, Vector3.ZERO, Vector3.UP if absf(sun_dir.y) < .98 else Vector3.RIGHT)
@@ -1172,7 +1236,7 @@ func _planet_cam(delta: float, snap: bool) -> void:
 ## A visszaváltás távolabb történik, mint a felváltás, így a határon nem villog.
 func _planet_lod() -> void:
 	var en := eye.normalized()
-	var thr := planet.radius / maxf(eye.length(), .001) - .35
+	var thr := planet.radius / maxf(eye.length(), .001) - .5
 	var order: Array = []
 	for i in trees.size():
 		var t: Dictionary = trees[i]
@@ -1258,7 +1322,7 @@ func start_bench() -> void:
 		bench_steps = BENCH_STEPS
 	# rövid próba a fejlesztéshez (?meres&gyors): fű ×2 lent, aztán 30 fa kint (bolygó-újraépítéssel)
 	if q.contains("gyors") or (bench_cli and OS.get_cmdline_user_args().has("--gyors")):
-		bench_steps = [LOAD_STEPS[3], LOAD_STEPS[7]]
+		bench_steps = [LOAD_STEPS[3], LOAD_STEPS[8]]
 	bench_tod = tod_i
 	tod_i = 2
 	tod_btn.text = TOD_NAMES[tod_i]
@@ -1278,6 +1342,7 @@ func _bench_cfg(cfg: Dictionary) -> void:
 	get_viewport().scaling_3d_scale = cfg.get("scale", base_scale)
 	planet.set_grass(cfg.get("grass", true))
 	hi_trees = cfg.get("hi", HI_TREES)
+	orbit_zoom = cfg.get("zoom", ORBIT_ZOOM)
 	lod_force = cfg.get("force", false)
 	planet.set_grass_mult(cfg.get("gmul", 1.0))
 	sun.shadow_enabled = cfg.get("shadow", true)
@@ -1316,6 +1381,7 @@ func _bench_next() -> void:
 func _bench_enter(step: Array) -> void:
 	var want_view: String = "surface" if step[0] == "lent" else "orbit"
 	var gm_before := planet.grass_mult
+	var zoom_before := orbit_zoom
 	if want_view != view or (want_view == "surface" and focus != 0):
 		if want_view == "surface":
 			_focus(0)
@@ -1326,6 +1392,8 @@ func _bench_enter(step: Array) -> void:
 	_bench_cfg(step[2])
 	if not is_equal_approx(gm_before, planet.grass_mult):
 		bench_t = minf(bench_t, -1.5)
+	if not is_equal_approx(zoom_before, orbit_zoom):
+		bench_t = minf(bench_t, -2.5)
 
 
 ## A képkockaidőt valódi órával mérjük: a motor a delta-t 133 ms-nál levágja, lassú gépen az torzítana.
@@ -1423,3 +1491,54 @@ var x=btn('Bezár'); x.href='#'; x.style.background='transparent'; x.style.borde
 d.appendChild(h); d.appendChild(pre); d.appendChild(a); d.appendChild(c); d.appendChild(x); document.body.appendChild(d);
 })(%s, %s, %s);""" % [JSON.stringify(txt), JSON.stringify(md), JSON.stringify(title)]
 	JavaScriptBridge.eval(js, true)
+
+
+# ---------------------------------------------------------------- Bolygó-nézet kamerája és lencse
+
+## A kamera a felszín egy pontjára (P) néz: távolról szemből (az egész bolygó látszik), közelről alacsonyan és
+## ferdén, mint egy légi fotón; a bolygó görbülete fent látszik. Húzáskor P gördül a felszínen.
+func _orbit_pose(z: float) -> Array:
+	var b := Basis(orbit_q)
+	var n := b.z
+	var u := b.y
+	var r := planet.radius
+	var p := planet.surface_point(n)
+	var e := smoothstep(0.0, 1.0, z)
+	var d := lerpf(_fit_dist(r) - r, r * 1.05 + 2.0, e)
+	var el := lerpf(PI * .5, deg_to_rad(38.0), e)
+	var dir := n * sin(el) - u * cos(el)
+	return [p + dir * d, p, n * cos(el) + u * sin(el)]
+
+
+## Keret a felszín egy pontján: y a felszínre merőleges, x a kamera jobb oldala felé (a nap ehhez igazodik).
+func _surface_frame(n: Vector3) -> Basis:
+	var x := cam.global_transform.basis.x
+	x = (x - n * x.dot(n)).normalized()
+	return Basis(x, n, x.cross(n))
+
+
+## Lencse: kívülről makett-sáv, leszállva mélységélesség; a kettő között puhán átúszik.
+## Közben a bolygó-nézetben a sűrű fűfolt a nézett pont köré kerül, ha elég közel vagyunk.
+func _lens(delta: float, snap: bool) -> void:
+	tilt_quad.visible = tilt_ok
+	var surf := view == "surface" and focus >= 0
+	var k := 1.0 if snap else 1.0 - exp(-delta * 2.5)
+	dof_mix = lerpf(dof_mix, 1.0 if surf else 0.0, k)
+	lens_mat.set_shader_parameter("legacy", 0.0)
+	lens_mat.set_shader_parameter("dof_mix", dof_mix)
+	lens_mat.set_shader_parameter("focus", eye.distance_to(look))
+	lens_mat.set_shader_parameter("aperture", 1.6 if macro else 1.25)
+	lens_mat.set_shader_parameter("zone", .06 if macro else (maxf(float(trees[focus].w), 1.0) if surf else 0.0))
+	var e := smoothstep(0.0, 1.0, orbit_zoom)
+	lens_mat.set_shader_parameter("band_y", .5)
+	lens_mat.set_shader_parameter("band", lerpf(.16, .06, e))
+	lens_mat.set_shader_parameter("tilt", lerpf(.45, 1.0, e))
+	if not surf:
+		var near := orbit_zoom > .35
+		planet.show_patch(near, true)
+		if near and planet.patch_job.is_empty():
+			var want := look.normalized()
+			if planet.patch_center == Vector3.ZERO or want.angle_to(planet.patch_center) * planet.radius > 2.5:
+				planet.build_patch(want, snap)
+	else:
+		planet.show_patch(true)

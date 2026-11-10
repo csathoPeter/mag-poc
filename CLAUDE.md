@@ -15,7 +15,7 @@ godot/                  A játék (Godot 4.7.1, GDScript)
   planet.gd             Kis bolygó: domborzat, légkör, holdak, gyűrű, fű, fénypontok; bolygó-DNS a növényekből
   plant_gen.gd          Növénygenerátor: ágak gyűrűkből, levelek és virágok MultiMesh-ben, részletességi szintek
   genes.gd              DNS → genom: 6 gén × 14 változat, termetek, égboltok; DNS-tábla sorai, rejtett éjszakai fény
-  shaders/              Fa, levél, virág (szél a fa keretében, éjszakai fény, érintéshullám), fű (régi kert), bolygó-fű (szálanként, GodotGrass-ötletek), bolygó, légkör, űr-ég, gyűrű, fénypontok, tiltshift
+  shaders/              Fa, levél, virág (szél a fa keretében, éjszakai fény, érintéshullám), fű (régi kert), bolygó-fű (szálanként, GodotGrass-ötletek), bolygó, légkör, űr-ég, gyűrű, fénypontok, lencse (makett-sáv / DSLR-mélységélesség)
   export_presets.cfg    "Web" preset (egyszálas)
 prototype-threejs/      Korábbi Three.js-prototípus egy fájlban. Itt van kész a DNS-tábla, a feladvány-generátor,
                         a keresztezés és a kettős spirál animáció – ezeket kell Godotba átvinni.
@@ -40,7 +40,8 @@ tools/render_shots.sh /tmp/a.png planet,bolygo01,14,12 planet,bolygo01,14,23,foc
 ```
 
 - A `--shot=kimenet.png,dna,kód,növekedés[,fly[,go]]` argumentumot a `main.gd` kezeli: betölti az állapotot, ha `go`, előretolja a kart, kiírja a `STATS` sort, ment egy képet és kilép.
-- Bolygó: `--shot=kimenet.png,planet,kód,fák száma[,óra[,focusN|plant]]`. Az óra a napszakot rögzíti (pl. 12 nappal, 19 alkony, 23 éjjel).
+- Bolygó: `--shot=kimenet.png,planet,kód,fák száma[,óra[,focusN|plant|zoomZ|macro]]`. Az óra a napszakot rögzíti (pl. 12 nappal, 19 alkony, 23 éjjel). `zoomZ`: bolygó-nézet közelsége (0 = egész bolygó, 1 = alacsony légi nézet), `macro`: leszállás a 0. fára és rá egy virágra.
+- A webes (Compatibility) renderert natívan is ki lehet próbálni: `xvfb-run -a godot --path . --rendering-method gl_compatibility --rendering-driver opengl3 -- --shot=...` – így derült ki, hogy weben a képernyő-textúrának nincs mipmapje.
 - **Automatikus mérés:** a „mérés” gomb (vagy a `?meres` URL-paraméter) terheléses mérést futtat: fű sűrűsége ×1–×6, részletes fák száma, 14/30/45 fa kint és lent. A `?meres&beall` a korábbi beállítás-mérés (felbontás, fű, árnyék, ragyogás, ég, tilt, AA ki-be), a `?meres&gyors` 2 lépéses próba. A végén HTML-rétegen táblázat + „Küldés GitHubra” (előre kitöltött issue a repóban) és „Másolás”. Natívan: `godot -- --bench [--gyors]` kiírja a `BENCH` táblázatot és kilép.
 - Mérési eredmény (iPhone 15, Safari, 2026. 11. 10., build 9257794): minden beállítás 60 fps (a böngésző felső határa), kint ~210k, lent ~650k háromszög. Az „árnyék ki” egyszeri akadása a shaderek újrafordítása, nem tartós költség.
 - Terheléses mérés (build 7ac52f3, 100% felbontás): lent fű ×1,5-ig 60 fps, ×2: 57, ×3: 50; lent 30 fa: 43; kint 30 fa: 60, 45 fa: 47. Ökölszabály: leszállva ~650–700k háromszög a határ; a pixelkitöltés is számít (75%-on +20%). Ezután jött a 3 szintű fa, az árnyék-helyettesítés, a 75%-os alapfelbontás és a kamera előtti fűfolt.

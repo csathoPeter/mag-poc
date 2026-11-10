@@ -64,6 +64,8 @@ var patch_sets: Array = []
 var patch_active := 0
 var patch_job := {}
 var patch_on := false
+## Kívülről (légi nézet) a ritka réteg is látszik a folt mellett, hogy a bolygó pereme se legyen kopasz.
+var global_with_patch := false
 var grass_on := true
 ## A fű sűrűségének szorzója (a terheléses méréshez): a bolygót borító réteg és a fa körüli folt is ennyiszer sűrűbb.
 var grass_mult := 1.0
@@ -471,8 +473,11 @@ func set_grass_mult(m: float) -> void:
 
 
 ## Leszálláskor a folt látszik, a bolygót borító ritka réteg nem (így nem duplázódik a fű).
-func show_patch(on: bool) -> void:
+func show_patch(on: bool, with_global := false) -> void:
+	if on == patch_on and with_global == global_with_patch:
+		return
 	patch_on = on
+	global_with_patch = with_global
 	_grass_visibility()
 
 
@@ -486,7 +491,7 @@ func _grass_visibility() -> void:
 	for set_i in 2:
 		for n in patch_sets[set_i]:
 			(n as Node3D).visible = patch_on and grass_on and set_i == patch_active
-	grass.visible = grass_on and not patch_on
+	grass.visible = grass_on and (not patch_on or global_with_patch)
 
 
 func _build_motes() -> void:
