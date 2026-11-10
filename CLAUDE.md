@@ -15,11 +15,16 @@ godot/                  A játék (Godot 4.7.1, GDScript)
   planet.gd             Kis bolygó: domborzat, légkör, holdak, gyűrű, fű, fénypontok; bolygó-DNS a növényekből
   plant_gen.gd          Növénygenerátor: ágak gyűrűkből, levelek és virágok MultiMesh-ben, részletességi szintek
   state.gd              Játékállapot és helyi mentés (GameState): játékos, bolygók, fák, csillagok, magos táska, today() + teszt-eltolás
-  genes.gd              DNS → genom: 6 gén × 14 változat, termetek, égboltok; DNS-tábla sorai, rejtett éjszakai fény
+  genes.gd              DNS → genom: 6 gén × 14 változat, termetek, égboltok; DNS-tábla sorai, rejtett éjszakai fény; változatnevek, fajnév a DNS-ből
+  dna_board.gd          DNS-tábla logikája (DnaBoard): szabályok, 11 222 tábla (lustán), következtetés, feladvány szabad sorokkal,
+                        a nap feladványa a napsorszámból (saját xorshift), legközelebbi szabályos DNS (keresztezéshez), önellenőrzés
+  board_view.gd         A tábla felülete (BoardView): lebegő, fénylő rács, génnevek a sorok mellett, finom hibajelzés, súgás;
+                        `parents`-szel 1 / 2 / M jelölés a sorok mellett (keresztezéshez kész); közös panel- és gombstílus
+  seed_bag.gd           Magos táska (SeedBag): magok + az elmúlt 7 nap megfejtetlen napi magjai, „Elvetem”
   shaders/              Fa, levél, virág (szél a fa keretében, éjszakai fény, érintéshullám), fű (régi kert), bolygó-fű (szálanként, GodotGrass-ötletek), bolygó, légkör, űr-ég, gyűrű, fénypontok, lencse (makett-sáv / DSLR-mélységélesség)
   export_presets.cfg    "Web" preset (egyszálas)
-prototype-threejs/      Korábbi Three.js-prototípus egy fájlban. Itt van kész a DNS-tábla, a feladvány-generátor,
-                        a keresztezés és a kettős spirál animáció – ezeket kell Godotba átvinni.
+prototype-threejs/      Korábbi Three.js-prototípus egy fájlban. A DNS-tábla és a feladvány-generátor már át van víve (dna_board.gd);
+                        a keresztezés és a kettős spirál animáció még innen jön.
 tools/setup_godot.sh    Godot + szoftveres Vulkan telepítése (felhős gépen). `--web` a webes export sablont is letölti (1,3 GB-os csomagból).
 tools/render_shots.sh   Fej nélküli képernyőképek ellenőrzéshez
 .github/workflows/      Push a main ágra → webes export → gh-pages
@@ -31,6 +36,7 @@ tools/render_shots.sh   Fej nélküli képernyőképek ellenőrzéshez
 - A `main` ágra pusholt minden `godot/` változás után a GitHub Actions lefordítja a webes buildet és kiteszi a `gh-pages` ágra (kb. 2–4 perc, majd a Pages további 1–2 perc). **A `gh-pages` ágat kézzel ne szerkeszd**, a workflow minden alkalommal felülírja.
 - Péternek adj hozzá egy új lekérdezési paramétert (pl. `?v=<rövid commit>`), hogy a Safari ne a régit töltse be.
 - **Mentés:** a játék induláskor a mentett kertet tölti be (első indításkor új játékoskód, 3 kezdő fa). URL-paraméterek teszteléshez: `?uj` törli a mentést és újat kezd (amíg az URL-ben van, minden betöltéskor!), `?nap=+1` napokkal előre tolja a játék napját (a mentésbe is bekerül, `?nap=0` állítja vissza), `?jatekos=KOD` új játéknál ezt a játékoskódot adja. A második apró gombsorban: „nap +N” (egy nappal előre), „próba” (véletlen bolygó, nem mentődik; „saját” = vissza), „törlés” (két koppintással), mellette az aktív bolygókód és a játék napja.
+- **A nap magja:** a fő gombsorban „A nap magja” (a mai tábla; ha kész, a táska) és „Táska (N)” (N = magok + megfejtetlen napok). A tábla minden koppintás után mentődik; kész táblánál a mag a táskába kerül, „Elvetem” = az aktív bolygóra, holnap kel ki (a „nap +1” gombbal azonnal látszik). `?tabla` / `?taska` induláskor megnyitja. A régi, azonnali véletlen ültetés a második apró sorban: „ültess”.
 - Ha a workflow nem fut vagy elhasal, mondd el Péternek, és ne próbáld megkerülni a Pages beállításait (innen a Pages API nem érhető el).
 
 ## Ellenőrzés munka közben
@@ -42,6 +48,8 @@ tools/render_shots.sh /tmp/a.png planet,bolygo01,14,12 planet,bolygo01,14,23,foc
 ```
 
 - **Mentésből induló kert:** `--shot=kimenet.png,state[,óra[,focusN|plant|zoomZ|macro]]`. A mentés helye `--state=fájl` (ha nincs meg, új játékot kezd és elmenti; a `plant` ide ültet és ment), `--player=KOD` az új játék kódja, `--nap=+1` eltolás, `--uj` törlés. `--state` nélkül csak olvassa a valódi `user://` mentést. A kimenet `STATE` sorában a játékos, a fák helye és a mentés lenyomata (hash) – mentés → újraindítás után ugyanannak kell lennie. A render_shots.sh-nak: `MAG_ARGS="--state=/tmp/s.json --player=TESZT1" tools/render_shots.sh /tmp/a.png state,12 state,12,zoom0`.
+- **DNS-tábla:** `godot --headless -- --boardtest[=napok]` (alap: 366 nap a mai naptól) minden nap feladványát legenerálja, és ellenőrzi: determinisztikus, logikával (találgatás nélkül) megoldható, a szabad sorokon kívül egyértelmű, a szabad sorokban van választás; a legközelebbi-DNS keresést is. `EREDMÉNY: rendben` a vége.
+- Tábla és táska képen (a `state` lövés 6. mezője): `board` (mai tábla üresen), `boardNN` (NN%-ban kitöltve), `boardNNx` (plusz egy szabálysértő mező), `boardplay` (valódi koppintás-eseményekkel kitölti, a szabad sorokban a másik változattal → táska), `solve` (megoldva → táska), `bag`, `sow` (megoldás + elvetés; `--nap=+1`-gyel a következő futásban kikel). Pl. `MAG_ARGS="--state=/tmp/s.json --player=T1 --nap=+2" tools/render_shots.sh /tmp/a.png state,12,board50x state,12,solve state,12,bag`.
 - A `--shot=kimenet.png,dna,kód,növekedés[,fly[,go]]` argumentumot a `main.gd` kezeli: betölti az állapotot, ha `go`, előretolja a kart, kiírja a `STATS` sort, ment egy képet és kilép.
 - Bolygó: `--shot=kimenet.png,planet,kód,fák száma[,óra[,focusN|plant|zoomZ|macro]]`. Az óra a napszakot rögzíti (pl. 12 nappal, 19 alkony, 23 éjjel). `zoomZ`: bolygó-nézet közelsége (0 = egész bolygó, 1 = alacsony légi nézet), `macro`: leszállás a 0. fára és rá egy virágra.
 - A webes (Compatibility) renderert natívan is ki lehet próbálni: `xvfb-run -a godot --path . --rendering-method gl_compatibility --rendering-driver opengl3 -- --shot=...` – így derült ki, hogy weben a képernyő-textúrának nincs mipmapje.
@@ -66,7 +74,7 @@ tools/render_shots.sh /tmp/a.png planet,bolygo01,14,12 planet,bolygo01,14,23,foc
 
 ## Következő lépések (prioritás szerint)
 
-1. DNS-tábla, feladvány-generátor, keresztezés és kettős spirál átvitele Godotba a `prototype-threejs/index.html`-ből.
-2. Saját növények a kertben, a mag másnap kel ki (a `hatch` mező és a `GameState.today()` már kész), öntözés.
+1. M3: kettős spirál (`prototype-threejs/index.html`) + elvetés látványa + másnapi kikelés-animáció (a táska „Elvetem” gombja és a `hatch` már kész).
+2. M4: öntözés, virágzás, maggyűjtés; M5: keresztezés (DnaBoard.nearest + BoardView `parents` 1/2/M jelöléssel kész alap).
 3. Közelről a levelek szögletesek: finomabb levélforma vagy textúra a részletes szinten.
 4. Webes színek hangolása (a Compatibility renderer fakóbb lombot, foltos talajt ad).

@@ -181,9 +181,25 @@ var saved_view := false
 var game_l := Label.new()
 var wipe_armed := 0
 
+# A nap magja és a magos táska (board_view.gd, seed_bag.gd; a logika: dna_board.gd)
+var board := BoardView.new()
+var bag := SeedBag.new()
+## Melyik nap feladványa van nyitva a táblán (-1 = egyik sem).
+var board_day := -1
+var ui_col: VBoxContainer
+var daily_btn: Button
+var bag_btn: Button
+
 
 func _ready() -> void:
 	game.persist = false
+	# --boardtest[=napok]: a DNS-tábla önellenőrzése (sok nap feladványa), kiírja az eredményt és kilép
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--boardtest"):
+			var days := int(a.get_slice("=", 1)) if a.contains("=") else 366
+			print("BOARDTEST\n", DnaBoard.self_test(GameState.real_day(), days))
+			get_tree().quit()
+			return
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	add_child(plants_root)
 	planet = Planet.new()
@@ -353,6 +369,7 @@ func _build_ui() -> void:
 	var col := VBoxContainer.new()
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(col)
+	ui_col = col
 	stats_l.add_theme_font_size_override("font_size", 12)
 	stats_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	stats_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .6))
@@ -367,7 +384,8 @@ func _build_ui() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	col.add_child(row)
-	_button(row, "Ültess", plant_new)
+	daily_btn = _button(row, "A nap magja", open_daily)
+	bag_btn = _button(row, "Táska", func() -> void: open_bag())
 	tod_btn = _button(row, "Napszak", func() -> void:
 		tod_i = (tod_i + 1) % TOD_PRESETS.size()
 		tod_btn.text = TOD_NAMES[tod_i])
@@ -408,6 +426,8 @@ func _build_ui() -> void:
 	btn.day = _small_button(dbg2, "nap +0", _next_day)
 	btn.try = _small_button(dbg2, "próba", _toggle_try)
 	btn.wipe = _small_button(dbg2, "törlés", _wipe_tap)
+	# régi, azonnali ültetés véletlen DNS-sel (próbához); a valódi út: a nap magja → táska → Elvetem
+	btn.plant = _small_button(dbg2, "ültess", plant_new)
 	game_l.add_theme_font_size_override("font_size", 11)
 	game_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .6))
 	game_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -423,6 +443,14 @@ func _build_ui() -> void:
 		joy.draw_arc(c, JOY_R, 0.0, TAU, 56, Color(1, 1, 1, .55), 2.0, true)
 		joy.draw_circle(c + joy_knob, 27.0, Color(1, 1, 1, .62)))
 	layer.add_child(joy)
+	layer.add_child(board)
+	layer.add_child(bag)
+	board.changed.connect(_on_board_changed)
+	board.finished.connect(_on_board_done)
+	board.closed.connect(_overlay_closed)
+	bag.sow.connect(_sow)
+	bag.solve.connect(open_daily_day)
+	bag.closed.connect(_overlay_closed)
 
 
 func _joy_center() -> Vector2:
@@ -697,17 +725,15 @@ func _fly(delta: float) -> void:
 	cam.rotate_object_local(Vector3.FORWARD, roll)
 
 
+## Fajnév: a DNS-ből (Genes.latin_name), így a magos táskában és a kikelt fán ugyanaz.
 func _latin(g: Dictionary) -> String:
-	var r := RandomNumberGenerator.new()
-	r.seed = g.gen_seed + 77
-	var a := ["Aur", "Sil", "Vel", "Lun", "Cor", "Ther", "Myr", "Hel", "Nym", "Ast", "Zeph", "Ori", "Cal", "Thal"]
-	var b := ["and", "ith", "ol", "an", "er", "ys", "am", "ion", "ul", "en"]
-	var c := ["ia", "ella", "ora", "ina", "ara", "ea", "anthe"]
-	var d := ["aurea", "rosea", "pendula", "arborea", "viridis", "ventosa", "erecta", "violacea"]
-	return "%s%s%s %s" % [a[r.randi() % a.size()], b[r.randi() % b.size()], c[r.randi() % c.size()], d[r.randi() % d.size()]]
+	return Genes.latin_name(g.dna)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# nyitott tábla vagy táska alatt a világ nem reagál az érintésre
+	if board.visible or bag.visible:
+		return
 	if garden_mode == "planet":
 		_planet_input(event)
 		return
@@ -821,6 +847,31 @@ func _process(delta: float) -> void:
 		if shot_frames == 1 and garden_mode == "planet" and shot_args.size() > 5:
 			if shot_args[5] == "plant":
 				plant_new()
+			elif (shot_args[5] as String).begins_with("board"):
+				# board: a mai tábla üresen; boardNN: NN%-ban kitöltve; boardNNx: egy szabálysértő mezővel is
+				open_daily_day(GameState.today())
+				var spec := (shot_args[5] as String).trim_prefix("board")
+				if spec != "":
+					board.fill_for_shot(float(spec.trim_suffix("x")) / 100.0, spec.ends_with("x"))
+				board.modulate.a = 1.0
+			elif shot_args[5] == "boardplay":
+				# a 3. képkockában szimulált koppintásokkal kitölti (a szabad soroknál az utolsó választható DNS-sel)
+				open_daily_day(GameState.today())
+				board.modulate.a = 1.0
+			elif shot_args[5] == "bag":
+				open_bag()
+				bag.modulate.a = 1.0
+			elif shot_args[5] == "sow":
+				# megoldás, majd a mag elvetése a táskából (holnap kel ki; --nap=+1-gyel látszik)
+				open_daily_day(GameState.today())
+				_on_board_done(board.puzzle.target)
+				var bag_seeds: Array = game.data.bag
+				_sow(int(bag_seeds[bag_seeds.size() - 1].id))
+			elif shot_args[5] == "solve":
+				# a mai feladvány megoldva (a céllal): a mag a táskába kerül, a táska nyílik
+				open_daily_day(GameState.today())
+				_on_board_done(board.puzzle.target)
+				bag.modulate.a = 1.0
 			elif (shot_args[5] as String).begins_with("zoom"):
 				orbit_zoom = float((shot_args[5] as String).trim_prefix("zoom"))
 			elif (shot_args[5] as String).begins_with("macro"):
@@ -836,6 +887,8 @@ func _process(delta: float) -> void:
 						m_dist = .9
 			else:
 				_focus(int((shot_args[5] as String).trim_prefix("focus")) if (shot_args[5] as String).length() > 5 else 0)
+		if shot_frames == 3 and shot_args.size() > 5 and shot_args[5] == "boardplay":
+			_shot_play_board()
 		if shot_frames == 1 and shot_args.size() > 5:
 			var c := _joy_center()
 			var t1 := InputEventScreenTouch.new()
@@ -972,7 +1025,8 @@ func _planet_texts() -> void:
 
 
 ## Új fa a bolygón: a bolygó-DNS változik, a bolygó lassan nő, a kamera odarepül a csírához.
-## Ideiglenes (amíg a DNS-tábla nem kész): véletlen DNS, és azonnal kikel. A mentett bolygón el is menti.
+## Teszt-ültetés (apró „ültess” gomb, --shot ...,plant): véletlen DNS, és azonnal kikel. A mentett bolygón el is menti.
+## A valódi út: a nap magja → magos táska → Elvetem (holnap kel ki).
 func plant_new() -> void:
 	if garden_mode != "planet" or queue.size() > 0 or retreating:
 		return
@@ -1409,6 +1463,10 @@ func _load_game(opts: Dictionary) -> void:
 	print("Mag: %s, játékos %s, bolygó %s, %d fa, ma %s (eltolás %+d)" % ["új játék" if fresh else "mentés betöltve", game.data.player, p.code,
 		(p.trees as Array).size(), GameState.day_label(GameState.today()), GameState.day_offset])
 	show_saved_planet()
+	if opts.open == "tabla":
+		open_daily.call_deferred()
+	elif opts.open == "taska":
+		open_bag.call_deferred()
 
 
 ## Teszt: egy nappal előre (a kikelés, öntözés, a nap magja így telefonon is kipróbálható). Visszaállítás: ?nap=0.
@@ -1467,6 +1525,7 @@ func _sync_game_dbg() -> void:
 	dbg_btn.day.text = "nap %+d" % GameState.day_offset
 	dbg_btn.try.text = "saját" if not saved_view and not game.data.is_empty() else "próba"
 	dbg_btn.wipe.text = "törlés"
+	_sync_daily()
 	var where: String = (game.active_planet().code as String) if saved_view else "nem mentődik"
 	game_l.text = "%s · %s" % [where, GameState.day_label(GameState.today())]
 
@@ -1489,6 +1548,120 @@ func _notification(what: int) -> void:
 			game.save()
 
 
+# ---------------------------------------------------------------- A nap magja, magos táska
+
+## „A nap magja” gomb: a mai feladvány, vagy ha ma már kész, a táska.
+func open_daily() -> void:
+	if not game.data.is_empty() and game.daily_done(GameState.today()):
+		open_bag(-1, "A mai mag már a tiéd. Holnap új tábla vár.")
+		return
+	open_daily_day(GameState.today())
+
+
+## Egy nap feladványa a táblán (a mai vagy egy kihagyott, a táskából). A félkész állapot a mentésből jön.
+func open_daily_day(day: int) -> void:
+	if bench_on:
+		return
+	bag.visible = false
+	board_day = day
+	var saved: Array = [] if game.data.is_empty() else game.daily_progress(day)
+	var today := GameState.today()
+	var when := "mindenkinek ugyanez a tábla" if day == today else "kihagyott nap, még elérhető"
+	board.open(DnaBoard.daily(day), "A nap magja", "%s · %s" % [GameState.day_label(day), when], saved)
+	ui_col.visible = false
+
+
+func open_bag(highlight := -1, msg := "") -> void:
+	if bench_on:
+		return
+	board.close()
+	bag.open(game, highlight, msg)
+	ui_col.visible = false
+
+
+func _overlay_closed() -> void:
+	board_day = -1
+	if not board.visible and not bag.visible:
+		ui_col.visible = true
+	_sync_daily()
+
+
+## Minden koppintás után mentjük a félkész táblát (a böngésző bármikor bezárhatja a lapot).
+func _on_board_changed(grid: Array) -> void:
+	if game.data.is_empty() or board_day < 0:
+		return
+	game.set_daily_progress(board_day, grid)
+	game.save()
+
+
+## Kész a tábla: a mag a táskába kerül (eredet: a nap magja + dátum), mentés, és a táska mutatja.
+## (M3: itt jön majd a kettős spirál és az elvetés látványa.)
+func _on_board_done(dna: Array) -> void:
+	board.close()
+	if game.data.is_empty():
+		_overlay_closed()
+		traits_l.text = "Kész: %s (próba, nem mentődik)" % Genes.latin_name(dna)
+		return
+	var s := game.finish_daily(board_day, dna)
+	game.save()
+	board_day = -1
+	open_bag(int(s.id), "Kész! %s a táskádba került." % Genes.latin_name(dna))
+	_sync_daily()
+
+
+## Elvetés a táskából: az aktív (mentett) bolygóra, holnap kel ki.
+func _sow(seed_id: int) -> void:
+	if game.data.is_empty() or retreating:
+		return
+	var s := game.find_seed(seed_id)
+	if s.is_empty():
+		return
+	var t := game.sow_seed(s)
+	if t.is_empty():
+		bag.open(game, -1, "A bolygó megtelt. Később mellette új kis bolygó születik.")
+		return
+	game.save()
+	bag.visible = false
+	_overlay_closed()
+	var p := game.active_planet()
+	var where: String = planet.planet_name() if saved_view else str(p.code)
+	var az := "az" if "AEIOUÁÉÍÓÖŐÚÜŰ".contains(where.left(1).to_upper()) else "a"
+	traits_l.text = "Elvetve: %s %s %s bolygón. Holnap kel ki. (Próbához: „nap +1”.)" % [Genes.latin_name(t.dna), az, where]
+	if not saved_view:
+		retreat(show_saved_planet)
+
+
+## Teszt (--shot ...,boardplay): a tábla kitöltése valódi koppintás-eseményekkel, a felület bemenetén át.
+func _shot_play_board() -> void:
+	var opts: Array = board.puzzle.options
+	var want := DnaBoard.grid_from_dna(opts[opts.size() - 1])
+	for y in DnaBoard.N:
+		for x in DnaBoard.N:
+			if int(board.grid[y][x]) != DnaBoard.EMPTY:
+				continue
+			for i in (1 if int(want[y][x]) == 0 else 2):
+				for down in [true, false]:
+					var e := InputEventMouseButton.new()
+					e.button_index = MOUSE_BUTTON_LEFT
+					e.pressed = down
+					e.position = board.cell_center(x, y)
+					e.global_position = e.position
+					Input.parse_input_event(e)
+	print("BOARDPLAY választott DNS: ", opts[opts.size() - 1], " (", Genes.latin_name(opts[opts.size() - 1]), "), cél: ", board.puzzle.target)
+
+
+## A gombok felirata: hány mag és megfejtetlen nap vár a táskában.
+func _sync_daily() -> void:
+	if daily_btn == null:
+		return
+	if game.data.is_empty():
+		bag_btn.text = "Táska"
+		return
+	var n: int = (game.data.bag as Array).size() + game.daily_open_days().size()
+	bag_btn.text = "Táska (%d)" % n if n > 0 else "Táska"
+	daily_btn.text = "A nap magja" + (" (kész)" if game.daily_done(GameState.today()) else "")
+
+
 # ---------------------------------------------------------------- Mérés
 
 ## Egységes alapállapot (azonos bolygó, nappal), aztán lépésenként egy-egy beállítás, kint és leszállva.
@@ -1496,6 +1669,9 @@ func start_bench() -> void:
 	if bench_on:
 		return
 	bench_on = true
+	board.close()
+	bag.visible = false
+	ui_col.visible = true
 	bench_rows.clear()
 	bench_steps = LOAD_STEPS
 	var q := str(JavaScriptBridge.eval("location.search", true)) if OS.has_feature("web") else ""

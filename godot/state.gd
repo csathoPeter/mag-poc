@@ -13,7 +13,7 @@ extends RefCounted
 ##   active       int      az aktív bolygó indexe a planets tömbben
 ##   planets      Array    bolygók, lásd new_planet()
 ##   bag          Array    magos táska, lásd new_seed()
-##   daily        Dict     a nap magja (később: melyik napot oldotta meg, mit választott)
+##   daily        Dict     a nap magja: napsorszám → félkész rács vagy kész jelző és a választott DNS (lásd lent)
 ##   flags        Dict     apró jelzők (pl. látott bemutatók), bármi, ami nem érdemel saját mezőt
 ##
 ## A napok egész számok: a helyi dátum napsorszáma 1970. 01. 01. óta. Mindenhol today()-t használj,
@@ -65,9 +65,9 @@ static func day_label(day: int) -> String:
 ## Kapcsolók a parancssorból (`-- --state=fájl --player=KOD --nap=+1 --uj`) és weben az URL-ből (`?nap=+1`, `?uj`, `?jatekos=KOD`).
 ##   state: a mentés helye a user:// helyett (teszteléshez), player: a játékoskód új játéknál,
 ##   day: teszt-eltolás napokban (null = nincs megadva; a mentésbe is bekerül, `?nap=0` állítja vissza),
-##   wipe: a mentés törlése indításkor (új játék).
+##   wipe: a mentés törlése indításkor (új játék), open: "tabla"/"taska" = indításkor nyitva (`?tabla`, `?taska`).
 static func launch_options() -> Dictionary:
-	var o := {"state": "", "player": "", "wipe": false, "day": null}
+	var o := {"state": "", "player": "", "wipe": false, "day": null, "open": ""}
 	var pairs: Array = []
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--"):
@@ -86,6 +86,9 @@ static func launch_options() -> Dictionary:
 				o.player = v.to_upper()
 			"uj":
 				o.wipe = true
+			"tabla", "taska":
+				# indításkor nyitva: a mai DNS-tábla vagy a magos táska (teszteléshez)
+				o.open = k
 			"nap":
 				# a „+” az URL-ben szóközként is megérkezhet
 				o.day = v.replace("%2B", "").replace("+", "").strip_edges().to_int()
@@ -365,6 +368,104 @@ func _fill_seed(s: Dictionary) -> Dictionary:
 		"parents": _dna_list(s.get("parents", [])),
 		"code": str(s.get("code", "")),
 	}
+
+
+func find_seed(id: int) -> Dictionary:
+	for s in data.bag:
+		if int(s.id) == id:
+			return s
+	return {}
+
+
+func remove_seed(id: int) -> void:
+	for s in data.bag:
+		if int(s.id) == id:
+			data.bag.erase(s)
+			return
+
+
+## Elvetés: a mag DNS-ével új fa az aktív bolygón, holnap kel ki (a DESIGN szerint minden elvetett mag másnap).
+## Visszaadja a fa-rekordot, vagy üreset, ha a bolygó megtelt.
+func sow_seed(seed: Dictionary) -> Dictionary:
+	var p := active_planet()
+	if is_full(p):
+		return {}
+	var t := new_tree(p, (seed.dna as Array).duplicate(), str(seed.origin))
+	t.parents = (seed.parents as Array).duplicate(true)
+	place_tree(p, t)
+	if (p.founders as Array).is_empty():
+		p.founders = [(seed.dna as Array).duplicate()]
+	remove_seed(int(seed.id))
+	return t
+
+
+# ---------------------------------------------------------------- A nap magja
+#
+# data.daily: napsorszám (szövegként) → {"grid": [36 érték, -1 = üres]} amíg folyamatban van,
+#   kész nap: {"done": true, "dna": [...], "solved": nap}. A régi, folyamatban lévő rácsokat a prune_daily() törli.
+
+## Ennyi nappal korábbi megfejtetlen feladványok várnak még a táskában (a mai mellett).
+const DAILY_BACK := 7
+
+
+func _daily(day: int) -> Dictionary:
+	var v: Variant = data.daily.get(str(day))
+	return v if v is Dictionary else {}
+
+
+func daily_done(day: int) -> bool:
+	return bool(_daily(day).get("done", false))
+
+
+## A félig kitöltött rács (6×6, -1 = üres), vagy üres tömb, ha még nem kezdte el.
+func daily_progress(day: int) -> Array:
+	var flat: Variant = _daily(day).get("grid")
+	if not (flat is Array) or (flat as Array).size() != 36:
+		return []
+	var g: Array = []
+	for y in 6:
+		var r: Array = []
+		for x in 6:
+			r.append(clampi(int(flat[y * 6 + x]), -1, 1))
+		g.append(r)
+	return g
+
+
+func set_daily_progress(day: int, grid: Array) -> void:
+	if daily_done(day):
+		return
+	var flat: Array = []
+	for r in grid:
+		for v in r:
+			flat.append(int(v))
+	data.daily[str(day)] = {"grid": flat}
+
+
+## Kész a nap feladványa: a mag a táskába kerül (eredet: „napi”, a feladvány napjával), és a nap késznek számít.
+func finish_daily(day: int, dna: Array) -> Dictionary:
+	data.daily[str(day)] = {"done": true, "dna": dna.duplicate(), "solved": today()}
+	prune_daily()
+	return new_seed(dna, "napi", {"day": day})
+
+
+## A még megfejtetlen napok, a maival kezdve, legfeljebb DAILY_BACK nappal visszamenőleg (de nem a játék kezdete elé).
+func daily_open_days() -> Array:
+	var out: Array = []
+	var d := today()
+	var first := maxi(d - DAILY_BACK, int(data.created))
+	for day in range(d, first - 1, -1):
+		if not daily_done(day):
+			out.append(day)
+	return out
+
+
+## A régi, már nem elérhető napok félkész rácsai törlődnek (a kész napok jelzője megmarad, kicsi).
+func prune_daily() -> void:
+	var limit := today() - DAILY_BACK
+	for k in data.daily.keys():
+		var e: Variant = data.daily[k]
+		if int(k) < limit and not (e is Dictionary and bool((e as Dictionary).get("done", false))):
+			data.daily.erase(k)
 
 
 # ---------------------------------------------------------------- Segédek

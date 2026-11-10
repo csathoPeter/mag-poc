@@ -16,7 +16,9 @@ Nyugodt, ingyenes telefonos játék (iOS, Android, web), amelyben DNS-ből kinö
 - Egy sorra 14 szabályos minta van, az egész táblára 11 222 szabályos kitöltés.
 - **A hat sor hat gén**, génenként 14 változat: virágszín, szirmok, levélforma, termet, kéreg, lombszín (táblák: `godot/genes.gd`).
 - A feladványok logikával, találgatás nélkül megoldhatók (300 generált táblán ellenőrizve), átlag ~19 üres mező.
-- **Szabad gének:** 1–2 sorban több jó megoldás van, ott a játékos dönt, így irányítja a tenyésztést.
+- **Szabad gének:** 2 sorban több jó megoldás van, ott a játékos dönt, így irányítja a tenyésztést. (Egy sorban eltérő szabályos tábla nem létezik: az oszlopösszegek miatt legalább két sornak kell eltérnie.) A tábla mellett látszik, miből választhat (pl. „Virágszín: magenta vagy éjkék”).
+- **Godotban (`godot/dna_board.gd`):** ugyanaz a sorrend és logika, mint a prototípusban (a sor mintájának sorszáma = a gén változata, `Genes.rows()`). Önellenőrzés: `--boardtest`, 366 napon 0 hiba, átlag 18,8 üres mező (16–24), feladvány-generálás ~10 ms. A 11 222 tábla felsorolása ~170 ms, ezért csak a keresztezés (legközelebbi szabályos DNS) kéri, lustán; a nap feladványa visszalépéses kereséssel, felsorolás nélkül készül.
+- **Felület (`godot/board_view.gd`):** a világ fölött lebegő, félig átlátszó, fénylő rács (2D réteg, a bolygó elmosva átlátszik). Koppintás: üres → A=T → G≡C → üres; a bázispárt saját rajz mutatja (két betű, 2 vagy 3 kötés), mert a webes betűkészletben nincs ≡. Szabályt sértő mező lassan lüktető korall kerettel, büntetés nélkül; „Súgás” egy mezőt kitölt, „Újra” két koppintással. A sorok mellett a gén és a kész sor változata (színes génnél színfolttal). Minden koppintás mentődik.
 
 ## Keresztezés
 
@@ -58,6 +60,8 @@ A herbárium és a tenyésztési célok csak halk háttérelemek, nem kényszer�
 - A tábla a dátumból determinisztikusan generálható, **szerver nélkül, offline is** működik.
 - Megosztás az első verzióban: kép + kód. „Mások mit választottak” statisztikához később szerver kell.
 - **Kihagyás:** az elmúlt 7 nap magjai a magos táskában várnak, bármikor elvethetők. Régebbiek nem.
+- **Megvalósítás (M2):** a feladvány a helyi dátum napsorszámából jön, saját, motorfüggetlen véletlenszám-generátorral (xorshift32), így minden eszközön ugyanaz. A táskában a mai és legfeljebb 7 korábbi nap megfejtetlen magja „Megfejtem” gombbal áll (a játék kezdete előtti napok nem), a kész napi mag „Elvetem” gombbal: az aktív bolygóra kerül, holnap kel ki. A félkész tábla naponként mentődik. A spirál és az elvetés látványa az M3-ban jön.
+- **Fajnév a DNS-ből:** ugyanaz a DNS mindig ugyanazt a latin nevet kapja (a második tag a virágszínből, pl. *rosea*, *violacea*), így a nap magja összevethető („nekem Calulina lilacina lett”), és a táskában és a kikelt fán ugyanaz a név.
 
 ### Tempó
 
@@ -181,6 +185,7 @@ Döntés: 2026. 11. 10. Az egész játék egyetlen JSON-állapot (`godot/state.g
 - **Bolygó:** kód, alapítók (az alapításkori növények DNS-e, rögzítve: ebből jön a darabos jelleg és a domborzat magassága, így újratöltéskor és az alapító elengedése után is ugyanaz a bolygó), fák, csillagok (elengedett fák, a nappal együtt).
 - **Fa:** DNS, kód, irány a bolygón (mentve, nem újraszámolva), forgatás, méret, eredet, szülők, ültetés napja, kikelés napja, látta-e már a kikelést, utolsó öntözés, alakítási lista, név.
 - **Magos táska:** mag = DNS + eredet (napi, gyűjtött, keresztezett, csillagról) + nap.
+- **A nap magja (`daily`):** napsorszám → félkész rács (36 érték), vagy kész jelző + a választott DNS. A 7 napnál régebbi félkész rácsok törlődnek.
 - **Napok:** a helyi dátum napsorszáma; minden napfüggő dolog a `GameState.today()`-t használja, amit a teszt-eltolás (`?nap=+1`, „nap +N” gomb) is módosít, így a „másnap” telefonon is kipróbálható.
 - **Verziószám** a későbbi migrációhoz; a hiányzó mezőket betöltéskor alapértékkel pótoljuk.
 - A `--shot` és a `--bench` nem olvas és nem ír mentést (a `--shot=...,state` csak olvas, vagy a `--state=fájl`-ba ír); a „próba” bolygó sem kerül a mentésbe.
@@ -214,9 +219,10 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [ ] Új bolygó születése, ha megtelt; bolygóváltás
 - [ ] Mérés iPhone 15-ön (bolygó-nézet, leszállás 4 részletes fával)
 - [ ] Csillagképek, visszahozás az égről
-- [ ] A nap magja: dátumból generált tábla, magos táska (7 nap)
+- [x] A nap magja: dátumból generált tábla, magos táska (7 nap), egyszerű elvetés (M2)
 - [ ] Alakítási lista a generátorban (metszés, kötözés)
-- [ ] DNS-tábla és spirál átvitele Godotba
+- [x] DNS-tábla átvitele Godotba (logika, feladvány, legközelebbi szabályos DNS, felület)
+- [ ] Kettős spirál és elvetés-animáció átvitele Godotba
 - [x] Helyi mentés (`godot/state.gd`): játékoskód, bolygók és fáik a helyükkel, csillagok, magos táska, napok teszt-eltolással; első indításkor 3 kezdő fa a játékoskódból
 - [ ] Több saját növény a kertben, másnapi kikelés (az állapotban már van hely: `planted`, `hatch`, `revealed`)
 - [ ] Öntözés, herbárium, keresztezés UI
