@@ -141,13 +141,17 @@ func _seed_card(w: float, sd: Dictionary, highlight: int, picking: bool, can_cro
 	var dna: Array = sd.dna
 	var sid := int(sd.id)
 	var origin := str(sd.origin)
-	var accent: Color = C_GATHERED if origin == "gyujtes" else C_CROSSED if origin == "keresztezes" else BoardView.C_AT
+	var accent: Color = C_GATHERED if origin == "gyujtes" else C_CROSSED if origin == "keresztezes" else Herbarium.C_STAR if origin == "csillag" else BoardView.C_AT
 	var title := GameState.seed_name(sd)
 	var body := ""
 	if origin == "gyujtes":
 		body = "%s\nSaját fádról szedted · %s" % [Genes.traits_text(dna), GameState.day_label(int(sd.day))]
 	elif origin == "keresztezes" and (sd.parents as Array).size() == 2:
 		body = "%s\nKeresztezés: %s × %s · %s" % [Genes.traits_text(dna), Genes.latin_name(sd.parents[0]), Genes.latin_name(sd.parents[1]), GameState.day_label(int(sd.day))]
+	elif origin == "csillag":
+		var so := str(sd.get("star_origin", ""))
+		var was := "el nem választott csíra volt" if so == "csira" else ("teszt-csillag volt" if so == "teszt" or so == "" else "elengedett fa volt")
+		body = "%s\nCsillagról hozott mag (%s) · %s" % [Genes.traits_text(dna), was, GameState.day_label(int(sd.day))]
 	else:
 		body = "%s\n%s · %s" % [Genes.traits_text(dna), ORIGIN_NAMES.get(origin, "Mag"), GameState.day_label(int(sd.day))]
 	var actions: Array = []

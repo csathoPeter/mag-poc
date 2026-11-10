@@ -64,6 +64,11 @@ var target := {}
 var cur := {}
 var night := 0.0
 var amp := .06
+## A bolygó legalább ennyi növényhez méreteződik (M6: az eddigi legtöbb kikelt fa), így egy fa elengedésekor nem
+## zsugorodik össze, és a fák közti távolság sem fogy el. A próba-bolygón 0.
+var min_plants := 0
+## az alapításkori növények DNS-e (setup); ha minden fát elengedtek, a bolygó színei is ezekből jönnek
+var founders: Array = []
 
 var noise := FastNoiseLite.new()
 var patch := FastNoiseLite.new()
@@ -148,6 +153,7 @@ func _ready() -> void:
 func setup(planet_code: String, plant_dnas: Array, founding: Array = []) -> void:
 	code = planet_code
 	var base: Array = founding if not founding.is_empty() else plant_dnas
+	founders = base.duplicate()
 	var founder: Array = base[0]
 	terrain = TERRAIN[Genes.TERMET[founder[3]][0]]
 	cover = COVER[COVER_OF_LEAF[founder[2]]]
@@ -187,6 +193,20 @@ func add_plant(dna: Array) -> void:
 	_tile_bounds()
 
 
+## Elengedett növény (M6): a színek a megmaradt növényekből állnak össze (lassan átúszik). A darabos jelleg és a
+## domborzat az alapítóból jön (setup), így nem változik; az első megmaradt növény veszi át az alapító súlyát.
+## Ha nem marad növény, a színek is az alapítóból jönnek (mint újratöltéskor).
+func remove_plant(dna: Array) -> void:
+	var i := dnas.find(dna)
+	if i < 0:
+		return
+	dnas.remove_at(i)
+	if dnas.is_empty():
+		dnas = founders.duplicate()
+	_compute()
+	_tile_bounds()
+
+
 func _compute() -> void:
 	var n := dnas.size()
 	var ws: Array = []
@@ -203,7 +223,7 @@ func _compute() -> void:
 		tall += ws[i] * float(Genes.TERMET[d[3]][2])
 		petals += ws[i] * float(d[1] % 6) / 5.0
 		leaf += ws[i] * float(Genes.LEAF[d[2]][1])
-	radius_target = radius_for(n)
+	radius_target = radius_for(maxi(n, min_plants))
 	target = {
 		"atmo": Genes.hsl(fl.x, minf(fl.y, .8) * .85, .72),
 		"atmo_h": fl.x,

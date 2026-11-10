@@ -17,6 +17,10 @@
 #     tábla, a lezárt sorok kitöltve, 1/2/M jellel) | sprouts / sproutsNN (a három csíra, a kinövés NN%-ánál) | starsNN (a 0. csíra
 #     választva: a két csillag felszáll, NN% ≈ 45 a spirál eleje) | crossplay (valódi koppintások: Keresztezem → Ezzel → tábla →
 #     Ezt nevelem; --state=fájl-lal a mentésbe is)
+#   Csillagok (M6; ha 6-nál kevesebb csillag van, teszt-csillagokkal pótolja): state,óra,sky / skyZ (kívülről, Z közelséggel) |
+#     skyland (leszállva, a fa mögötti égen) | herb / herbN (a csillagkép-nézet, az N. csillag lapja) | herbland (ugyanez
+#     leszállva) | releaseask (az elengedés megerősítése) | releaseNN (a 0. fa elengedése NN%-nál: 25 oszlik, 55 a fény
+#     felszáll, 92 a csillag kigyullad) | releaseplay / herbplay (valódi koppintásokkal; --state=fájl-lal a mentésbe is)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 G="$HOME/godot-bin/godot"

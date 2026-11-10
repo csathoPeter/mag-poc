@@ -97,6 +97,8 @@ func _on_chosen(k: int) -> void:
 	var s := game.choose_sprout(k)
 	game.save()
 	host._sync_daily()
+	# a két csillag a felszállásuk végén kigyullad a bolygó egén (a csillagkép: sky_stars.gd)
+	host.get_tree().create_timer(SproutPick.STAR_LEN - .3).timeout.connect(host.stars.sync)
 	if s.is_empty():
 		return
 	host.helix_seed = int(s.id)

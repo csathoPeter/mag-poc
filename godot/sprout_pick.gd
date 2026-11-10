@@ -6,7 +6,7 @@ extends Control
 ## a hat gén változata 1 / 2 / M jellel (melyik szülőtől jött, vagy mutáció), ha előbújt, a rejtett szín, a DNS kis
 ## rácsa, és „Ezt nevelem”.
 ## Választáskor a másik kettő összemegy, fénnyé válik, és felszáll az égre (csillag lesz – az adat a state.gd-ben,
-## a csillagkép az M6 dolga); a választott kártya rácsából indul a kettős spirál (seed_fx.gd), a mag a táskába repül.
+## a csillagkép: sky_stars.gd); a választott kártya rácsából indul a kettős spirál (seed_fx.gd), a mag a táskába repül.
 
 ## Választott (k = 0–2); a hívó indítja a spirált (grid_cells/grid_vals), és teszi a magot a táskába.
 signal chosen(k: int)
@@ -350,6 +350,34 @@ func _build_plants() -> void:
 ## Egy csíra az előnézetben: egyszerűsített részletesség (ugyanaz a váz, mint a kertben), a saját oszlopában,
 ## a magasságához és szélességéhez méretezve, egy kis földkupacon.
 func _make_plant(g: Dictionary, k: int) -> Dictionary:
+	var p := build_preview(g)
+	_world.add_child(p.node)
+	var mound := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = .2
+	sm.height = .1
+	sm.radial_segments = 16
+	sm.rings = 6
+	mound.mesh = sm
+	var mm := StandardMaterial3D.new()
+	mm.albedo_color = Color(.36, .26, .3)
+	mm.roughness = 1.0
+	mm.emission_enabled = true
+	mm.emission = Color(.42, .3, .62)
+	mm.emission_energy_multiplier = .25
+	mound.material_override = mm
+	_world.add_child(mound)
+	var base := Vector3(_col_x(k), -.66, 0)
+	mound.position = base + Vector3(0, -.02, 0)
+	p.base = base
+	p.mound = mound
+	return p
+
+
+## Egy növény kis 3D-előnézethez (a csíraválasztó és a herbárium is ezt használja): egyszerűsített részletesség, a
+## kertivel azonos vázzal, ~1,1 egység magasra méretezve. A hívó teszi a világába, és állítja a "grow" és a "tree_xf"
+## paramétereket (lásd pose_preview()).
+static func build_preview(g: Dictionary) -> Dictionary:
 	var pg := PlantGen.new()
 	pg.build(g, .22)
 	var node := Node3D.new()
@@ -390,27 +418,23 @@ func _make_plant(g: Dictionary, k: int) -> Dictionary:
 		m.set_shader_parameter("max_path", pg.max_path)
 		m.set_shader_parameter("plant_h", 5.0)
 		m.set_shader_parameter("grow", 0.0)
-	_world.add_child(node)
-	var mound := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = .2
-	sm.height = .1
-	sm.radial_segments = 16
-	sm.rings = 6
-	mound.mesh = sm
-	var mm := StandardMaterial3D.new()
-	mm.albedo_color = Color(.36, .26, .3)
-	mm.roughness = 1.0
-	mm.emission_enabled = true
-	mm.emission = Color(.42, .3, .62)
-	mm.emission_energy_multiplier = .25
-	mound.material_override = mm
-	_world.add_child(mound)
-	var base := Vector3(_col_x(k), -.66, 0)
-	mound.position = base + Vector3(0, -.02, 0)
 	var rot := float(Care.str_hash(str(g.code)) % 628) / 100.0
-	return {"node": node, "mats": mats, "s": s, "top": top, "base": base, "rot": rot, "mound": mound,
+	return {"node": node, "mats": mats, "s": s, "top": top, "rot": rot,
 		"cx": (pg.bb_max.x + pg.bb_min.x) * .5, "cz": (pg.bb_max.z + pg.bb_min.z) * .5, "col": Genes.hsl(g.petal_h, .8, .7)}
+
+
+## Az előnézet növényének helye, forgása, mérete és növekedése (a tövének közepe a base pontban áll).
+static func pose_preview(p: Dictionary, base: Vector3, angle: float, scale_k: float, grow: float) -> void:
+	var node: Node3D = p.node
+	var s: float = p.s * maxf(scale_k, .001)
+	var b := Basis(Vector3.UP, angle).scaled(Vector3.ONE * s)
+	node.transform = Transform3D(b, base - b * Vector3(p.cx, 0, p.cz))
+	for m in p.mats:
+		var sm := m as ShaderMaterial
+		sm.set_shader_parameter("grow", grow)
+		sm.set_shader_parameter("tree_xf", node.transform)
+		sm.set_shader_parameter("tree_inv", node.transform.affine_inverse())
+		sm.set_shader_parameter("tree_scale", 5.0 / float(p.top))
 
 
 func _process(delta: float) -> void:
@@ -434,17 +458,8 @@ func _process(delta: float) -> void:
 		if choice >= 0 and k != choice:
 			# a nem választott csíra összemegy és fénnyé válik
 			shrink = 1.0 - _smooth(pick_t / .7)
-		var node: Node3D = p.node
-		var s: float = p.s * maxf(shrink, .001)
-		var b := Basis(Vector3.UP, float(p.rot) + tg * .22).scaled(Vector3.ONE * s)
-		node.transform = Transform3D(b, p.base - b * Vector3(p.cx, 0, p.cz))
+		pose_preview(p, p.base, float(p.rot) + tg * .22, shrink, grow)
 		(p.mound as Node3D).scale = Vector3.ONE * (.6 + .4 * shrink)
-		for m in p.mats:
-			var sm := m as ShaderMaterial
-			sm.set_shader_parameter("grow", grow)
-			sm.set_shader_parameter("tree_xf", node.transform)
-			sm.set_shader_parameter("tree_inv", node.transform.affine_inverse())
-			sm.set_shader_parameter("tree_scale", 5.0 / float(p.top))
 	_panel.reset_size()
 	_panel.position = ((get_viewport_rect().size - _panel.size) * .5).floor() + Vector2(0, sin(t * .9) * 3.0 if choice < 0 else 0.0)
 	if pick_t >= 0.0:

@@ -63,7 +63,8 @@ func _process(delta: float) -> void:
 
 func _can_start() -> bool:
 	return host.garden_mode == "planet" and host.saved_view and (host.queue as Array).is_empty() and not host.retreating \
-		and not host.board.visible and not host.bag.visible and not host.crossing.is_open() and not host.fx.busy() and not host.bench_on
+		and not host.board.visible and not host.bag.visible and not host.crossing.is_open() and not host.fx.busy() and not host.bench_on \
+		and not host.herb.is_open() and not host.stars.busy()
 
 
 func _index(id: int) -> int:
