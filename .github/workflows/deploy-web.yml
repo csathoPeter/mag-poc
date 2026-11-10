@@ -1,0 +1,64 @@
+name: Webes build a GitHub Pages-re
+
+on:
+  push:
+    branches: [main]
+    paths: ['godot/**', '.github/workflows/deploy-web.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Godot gyorsítótár
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot-bin
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-web
+
+      - name: Godot letöltése
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/godot-bin ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          curl -sSL -o /tmp/g.zip https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
+          unzip -q /tmp/g.zip -d ~/godot-bin && mv ~/godot-bin/Godot_v* ~/godot-bin/godot
+          curl -sSL -o /tmp/t.tpz https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          unzip -q -j /tmp/t.tpz templates/web_nothreads_release.zip templates/version.txt -d ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+
+      - name: Export
+        run: |
+          # A fájlnév a commitból jön, így a telefon nem a gyorsítótárazott régi verziót tölti be.
+          NAME=v-$(git rev-parse --short HEAD)
+          mkdir -p build/web
+          cd godot
+          ~/godot-bin/godot --headless --import || true
+          ~/godot-bin/godot --headless --export-release "Web" ../build/web/$NAME.html
+          cd ../build/web
+          test -f $NAME.wasm
+          mv $NAME.html index.html
+          # A GitHub Pages nem küld COOP/COEP fejlécet; az egyszálas build enélkül is fut.
+          sed -i 's/"ensureCrossOriginIsolationHeaders":true/"ensureCrossOriginIsolationHeaders":false/' index.html
+          touch .nojekyll
+
+      - name: Közzététel a gh-pages ágra
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: build/web
+          force_orphan: true

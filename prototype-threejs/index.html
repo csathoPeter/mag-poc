@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magról nőtt kert</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* A jelenet maga a felület: egy élő növény teljes képernyőn, rajta herbáriumi címke és három gomb. */
+:root {
+  color-scheme: dark;
+  --ink: #f6efe0;
+  --ink-soft: rgba(246, 239, 224, .74);
+  --line: rgba(246, 239, 224, .34);
+  --night: #141a26;
+  --seed: #f3d48a;
+  --at: #f0b35a;
+  --gc: #55c6c0;
+  --warn: #ff8a75;
+  --display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --mono: "DM Mono", ui-monospace, Menlo, monospace;
+}
+html, body { height: 100%; margin: 0; overflow: hidden; background: var(--night); color: var(--ink); }
+canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+.label, .deck { position: fixed; left: 0; right: 0; z-index: 2; pointer-events: none; padding: 16px 18px; text-shadow: 0 1px 14px rgba(10, 14, 24, .65); }
+.label { top: 0; display: grid; gap: 2px; background: linear-gradient(to bottom, rgba(12, 15, 22, .62) 40%, rgba(12, 15, 22, 0)); padding-bottom: 40px; }
+.plate { display: flex; justify-content: space-between; gap: 12px; white-space: nowrap; font: 400 11px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+h1 { margin: 2px 0 0; font: italic 400 clamp(38px, 11vw, 60px)/.98 var(--display); letter-spacing: -.01em; text-wrap: balance; }
+.traits { margin: 4px 0 0; font: 400 12px/1.5 var(--mono); color: var(--ink-soft); max-width: 44ch; }
+.deck { bottom: 0; display: grid; gap: 10px; background: linear-gradient(to top, rgba(12, 15, 22, .55), rgba(12, 15, 22, 0)); padding-top: 42px; }
+.hint { margin: 0; font: 400 11px/1.4 var(--mono); color: var(--ink-soft); }
+.buttons { display: grid; grid-template-columns: minmax(0, .62fr) minmax(0, 1fr) minmax(0, 1.02fr); gap: 8px; pointer-events: auto; }
+button { min-height: 48px; padding: 6px; border-radius: 3px; border: 1px solid var(--line); background: rgba(16, 20, 30, .42); color: var(--ink); font: 500 12px/1.2 var(--mono); cursor: pointer; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+button.primary { background: var(--seed); border-color: var(--seed); color: var(--night); }
+button:disabled { opacity: .42; cursor: default; }
+button:not(:disabled):hover { border-color: var(--ink); }
+button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+@media (max-width: 340px) { button { font-size: 11px; padding: 6px 3px; } }
+#editor { position: fixed; inset: 0; z-index: 5; display: grid; align-content: center; gap: 12px; padding: 16px 18px; overflow-y: auto; background: rgba(12, 15, 22, .88); }
+#editor[hidden] { display: none; }
+#editor > * { width: 100%; max-width: 470px; margin-inline: auto; }
+.ed-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+h2 { margin: 0; font: italic 400 34px/1 var(--display); }
+#progress { font: 400 12px/1.4 var(--mono); color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rules { margin: 0; font: 400 12px/1.5 var(--mono); color: var(--ink-soft); }
+#board { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)) 92px; gap: 4px; align-items: center; }
+button.cell { min-height: 0; aspect-ratio: 1; width: 100%; padding: 0; border-radius: 3px; font: 500 12px/1 var(--mono); background: transparent; border: 1px dashed var(--line); backdrop-filter: none; -webkit-backdrop-filter: none; touch-action: manipulation; }
+button.cell.at { background: rgba(240, 179, 90, .2); border: 1px solid var(--at); color: var(--at); }
+button.cell.gc { background: rgba(85, 198, 192, .2); border: 1px solid var(--gc); color: var(--gc); }
+button.cell.lock { opacity: 1; color: var(--night); }
+button.cell.lock.at { background: var(--at); }
+button.cell.lock.gc { background: var(--gc); }
+button.cell.open-gene:not(.at):not(.gc) { border-color: var(--seed); }
+button.cell.bad { outline: 2px solid var(--warn); outline-offset: -2px; }
+.gene { padding-left: 6px; min-width: 0; font: 400 11px/1.25 var(--mono); }
+.gene b { display: block; font-weight: 400; color: var(--ink-soft); }
+.gene span { display: block; color: var(--ink); overflow-wrap: anywhere; }
+.gene.free b { color: var(--seed); }
+.gene i { font-style: normal; color: var(--seed); }
+.ed-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.error { position: fixed; inset: auto 18px 40%; z-index: 3; font: 400 14px/1.5 var(--mono); }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="scene" aria-label="Forgatható, magról növekvő háromdimenziós növény"></canvas>
+
+<header class="label">
+  <div class="plate"><span id="plate">No. 001</span><span id="stats">mérés…</span></div>
+  <h1 id="name">Csírázik</h1>
+  <p class="traits" id="traits">Egy mag kel ki.</p>
+</header>
+
+<footer class="deck">
+  <p class="hint" id="hint">Húzással forgatod, csippentéssel nagyítod.</p>
+  <div class="buttons">
+    <button class="primary" id="btn-new" type="button">Új DNS</button>
+    <button id="btn-cross" type="button" disabled>Keresztezés az előzővel</button>
+    <button id="btn-regrow" type="button">Újranövesztés</button>
+  </div>
+</footer>
+
+<section id="editor" hidden aria-label="DNS kirakása">
+  <div class="ed-head"><h2>A mag DNS-e</h2><span id="progress"></span></div>
+  <p class="rules" id="rules"></p>
+  <div id="board"></div>
+  <div class="ed-actions">
+    <button id="ed-cancel" type="button">Mégse</button>
+    <button id="ed-clear" type="button">Törlés</button>
+    <button id="ed-hint" type="button">Tipp</button>
+  </div>
+</section>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ---------- véletlen ---------- */
+const hash = s => { let h = 1779033703 ^ s.length; for (let i = 0; i < s.length; i++) { h = Math.imul(h ^ s.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; } h = Math.imul(h ^ h >>> 16, 2246822507); h = Math.imul(h ^ h >>> 13, 3266489909); return (h ^= h >>> 16) >>> 0; };
+const rng = seed => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const newCode = () => Array.from({ length: 6 }, () => 'abcdefghjkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 31)]).join('');
+
+/* ---------- genom ---------- */
+const HABITS = {
+  arbor:     { label: 'terebélyes', height: 4.5, stems: 1, b0: 9,  b1: 6, b2: 5, a0: 44, a1: 38, a2: 36, r0: .56, r1: .55, r2: .62, s0: .40, s1: .12, s2: .12, t0: .10, t1: .16, t2: .10, t3: .06, wobble: .42, wind: 0,   taper: .36, flare: .55, crown: .68, leafDens: 13, thick: 1,   flowerOdds: .22 },
+  weeping:   { label: 'szomorú',    height: 4.2, stems: 1, b0: 9,  b1: 6, b2: 5, a0: 56, a1: 40, a2: 22, r0: .60, r1: .78, r2: 1.05, s0: .52, s1: .06, s2: .05, t0: .14, t1: -.34, t2: -1.15, t3: -1.7, wobble: .3, wind: 0, taper: .40, flare: .5, crown: .25, leafDens: 19, thick: .95, flowerOdds: .12 },
+  windswept: { label: 'szélfútta',  height: 3.4, stems: 1, b0: 7,  b1: 5, b2: 4, a0: 48, a1: 44, a2: 40, r0: .62, r1: .52, r2: .58, s0: .30, s1: .15, s2: .10, t0: .05, t1: .10, t2: .06, t3: .05, wobble: .95, wind: .42, taper: .32, flare: .8, crown: .5, leafDens: 15, thick: 1.25, flowerOdds: .28 },
+  shrub:     { label: 'bokros',     height: 2.0, stems: 7, b0: 5,  b1: 4, b2: 3, a0: 40, a1: 42, a2: 38, r0: .55, r1: .55, r2: .6,  s0: .28, s1: .10, s2: .10, t0: .16, t1: .08, t2: .04, t3: .02, wobble: .6, wind: 0, taper: .34, flare: .1, crown: .3, leafDens: 17, thick: .42, flowerOdds: .62 },
+  spire:     { label: 'oszlopos',   height: 6.0, stems: 1, b0: 22, b1: 4, b2: 3, a0: 30, a1: 34, a2: 34, r0: .26, r1: .55, r2: .62, s0: .18, s1: .12, s2: .15, t0: .02, t1: .34, t2: .20, t3: .10, wobble: .24, wind: 0, taper: .22, flare: .5, crown: .85, leafDens: 22, thick: .72, flowerOdds: .1 },
+};
+const SKIES = [
+  { name: 'aranyóra', zenith: '#1a2a52', horizon: '#f2a765', land: '#37351f', moss: '#6c7a39', sunColor: '#ffc78a', ambient: '#7f92c4', bounce: '#6a5336', dir: [.62, .30, -.62] },
+  { name: 'hajnal',   zenith: '#25346a', horizon: '#f3b8b2', land: '#3a3c34', moss: '#74855a', sunColor: '#ffd2c4', ambient: '#92a4d8', bounce: '#6f5a5c', dir: [-.55, .26, -.68] },
+  { name: 'pára',     zenith: '#274b52', horizon: '#c3d8c4', land: '#2c3d31', moss: '#5a7d58', sunColor: '#fff0d2', ambient: '#a3c6c3', bounce: '#51604c', dir: [.42, .62, -.50] },
+  { name: 'alkony',   zenith: '#17123a', horizon: '#d9648c', land: '#2a2036', moss: '#4f5d55', sunColor: '#ff9f83', ambient: '#6a64b4', bounce: '#5a3853', dir: [.68, .20, -.55] },
+];
+
+function wildGenome(code) {
+  const r = rng(hash(code));
+  const names = Object.keys(HABITS);
+  const habit = names[Math.floor(r() * names.length)];
+  const G = { ...HABITS[habit] };
+  delete G.label;
+  for (const k of Object.keys(G)) if (typeof G[k] === 'number' && !INT_KEYS.includes(k)) G[k] *= .84 + r() * .32;
+  G.code = code; G.seed = hash(code + 'g'); G.habit = HABITS[habit].label;
+  const roll = r();
+  G.leafH = roll < .56 ? .23 + r() * .13 : roll < .68 ? .08 + r() * .05 : roll < .77 ? .985 + r() * .03 : roll < .89 ? .44 + r() * .07 : .79 + r() * .06;
+  G.leafH %= 1;
+  G.leafTipH = (G.leafH + (r() - .5) * .14 + 1) % 1;
+  G.leafS = .36 + r() * .34; G.leafL = .27 + r() * .16;
+  G.leafLen = .28 + r() * .28; G.leafW = .14 + r() * .28; G.leafPow = .6 + r() * .9;
+  G.leafLobes = r() < .35 ? 3 + Math.floor(r() * 4) : 0; G.leafFold = .1 + r() * .35; G.leafCurl = -.1 - r() * .4; G.leafUp = -.1 + r() * .35;
+  G.barkH = r() < .84 ? .05 + r() * .06 : .6 + r() * .1; G.barkS = .12 + r() * .24; G.barkL = r() < .14 ? .5 + r() * .12 : .16 + r() * .14;
+  G.petals = 4 + Math.floor(r() * 6); G.layers = r() < .4 ? 2 : 1;
+  G.petalLen = .6 + r() * .5; G.petalW = .3 + r() * .4; G.petalCup = 12 + r() * 52;
+  G.petalH = r(); G.petalTipH = (G.petalH + (r() - .5) * .22 + 1) % 1; G.petalS = .5 + r() * .45; G.petalL = .55 + r() * .28;
+  G.centerH = .1 + r() * .08; G.flowerSize = .11 + r() * .13;
+  G.windDir = r() * 6.283; G.sky = Math.floor(r() * SKIES.length);
+  return G;
+}
+
+function crossGenome(a, b) {
+  const code = a.code.slice(0, 3) + b.code.slice(0, 3);
+  const r = rng(hash(code + a.seed + b.seed));
+  const C = {};
+  for (const k of Object.keys(a)) {
+    if (typeof a[k] !== 'number' || k === 'seed') continue;
+    const pick = r() < .5 ? a[k] : b[k];
+    if (HUE_KEYS.includes(k)) {
+      let d = ((b[k] - a[k] + 1.5) % 1) - .5;
+      C[k] = (r() < .55 ? pick : (a[k] + d * r() + 1) % 1);
+    } else if (INT_KEYS.includes(k)) C[k] = r() < .5 ? a[k] : b[k];
+    else C[k] = lerp(pick, lerp(a[k], b[k], r()), .5) * (.96 + r() * .08);
+  }
+  C.sky = r() < .5 ? a.sky : b.sky;
+  C.code = code; C.seed = hash(code + 'x'); C.habit = 'hibrid';
+  C.parents = [a, b];
+  return C;
+}
+
+/* ---------- DNS-tábla: 0 = A=T, 1 = G≡C ---------- */
+const N = 6;
+const hasTriple = a => { for (let i = 0; i + 2 < a.length; i++) if (a[i] != null && a[i] === a[i + 1] && a[i] === a[i + 2]) return true; return false; };
+const ROWS = [];
+for (let m = 0; m < 64; m++) { const r = Array.from({ length: N }, (_, i) => m >> (N - 1 - i) & 1); if (r.reduce((a, b) => a + b) === 3 && !hasTriple(r)) ROWS.push(r); }
+const rowIndex = new Map(ROWS.map((r, i) => [r.join(''), i]));
+const BOARDS = (() => {
+  const out = [], pick = [], cnt = new Array(N).fill(0);
+  (function go(y) {
+    if (y === N) { out.push(...pick); return; }
+    for (let k = 0; k < ROWS.length; k++) {
+      const r = ROWS[k]; let ok = true;
+      for (let x = 0; x < N && ok; x++) {
+        const ones = cnt[x] + r[x];
+        if (ones > 3 || y + 1 - ones > 3) ok = false;
+        else if (y >= 2 && ROWS[pick[y - 1]][x] === r[x] && ROWS[pick[y - 2]][x] === r[x]) ok = false;
+      }
+      if (!ok) continue;
+      pick[y] = k; for (let x = 0; x < N; x++) cnt[x] += r[x];
+      go(y + 1);
+      for (let x = 0; x < N; x++) cnt[x] -= r[x];
+    }
+  })(0);
+  return Uint8Array.from(out);
+})();
+const BOARD_COUNT = BOARDS.length / N;
+const boardRows = b => Array.from(BOARDS.subarray(b * N, b * N + N));
+const hamming = (a, b) => ROWS[a].reduce((d, v, i) => d + (v !== ROWS[b][i]), 0);
+
+/* soronként és oszloponként levezethető mezők: ugyanaz, amit egy játékos is ki tud következtetni */
+function deduce(cells) {
+  const g = cells.map(r => r.slice());
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let axis = 0; axis < 2; axis++) for (let i = 0; i < N; i++) {
+      const get = j => axis ? g[j][i] : g[i][j];
+      const fits = ROWS.filter(r => r.every((v, j) => get(j) == null || get(j) === v));
+      if (!fits.length) return null;
+      for (let j = 0; j < N; j++) if (get(j) == null && fits.every(r => r[j] === fits[0][j])) {
+        if (axis) g[j][i] = fits[0][j]; else g[i][j] = fits[0][j];
+        changed = true;
+      }
+    }
+  }
+  return g;
+}
+
+function makePuzzle(dna, R, emptyCells = 12) {
+  const target = dna.map(k => ROWS[k].slice());
+  const groups = new Map();
+  for (let b = 0; b < BOARD_COUNT; b++) {
+    const rows = boardRows(b), diff = [];
+    for (let y = 0; y < N && diff.length < 3; y++) if (rows[y] !== dna[y]) diff.push(y);
+    if (diff.length === 2) { const key = diff.join(','); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(rows); }
+  }
+  const clue = target.map(r => r.slice());
+  let free = [];
+  const keys = [...groups.keys()];
+  if (keys.length) {
+    const key = keys[Math.floor(R() * keys.length)];
+    free = key.split(',').map(Number);
+    for (const y of free) for (let x = 0; x < N; x++) if (groups.get(key).some(rows => ROWS[rows[y]][x] !== target[y][x])) clue[y][x] = null;
+  }
+  const order = [];
+  for (let y = 0; y < N; y++) if (!free.includes(y)) for (let x = 0; x < N; x++) order.push([y, x]);
+  for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+  let removed = 0;
+  for (const [y, x] of order) {
+    if (removed >= emptyCells) break;
+    const keep = clue[y][x];
+    clue[y][x] = null;
+    const g = deduce(clue);
+    const solved = g && g.every((row, yy) => free.includes(yy) || row.every(v => v != null));
+    if (solved) removed++; else clue[y][x] = keep;
+  }
+  return { clue, free, target };
+}
+
+function nearestBoard(wanted, R) {
+  let best = Infinity, ties = [];
+  for (let b = 0; b < BOARD_COUNT; b++) {
+    const rows = boardRows(b);
+    let d = 0;
+    for (let y = 0; y < N; y++) d += hamming(rows[y], wanted[y]);
+    if (d < best) { best = d; ties = [b]; } else if (d === best) ties.push(b);
+  }
+  return boardRows(ties[Math.floor(R() * ties.length)]);
+}
+
+/* ---------- gének: minden sor egy tulajdonság, 14 változattal ---------- */
+const GENES = ['Virágszín', 'Szirmok', 'Levél', 'Termet', 'Kéreg', 'Lomb'];
+const FLOWER = [['korall', .02, .78, .64], ['cseresznye', .96, .72, .62], ['rózsa', .93, .75, .74], ['magenta', .87, .78, .58], ['ibolya', .77, .62, .64], ['orgona', .72, .55, .72], ['azúr', .58, .8, .64], ['türkiz', .5, .7, .58], ['menta', .43, .55, .72], ['citrom', .15, .85, .66], ['arany', .12, .9, .56], ['barack', .07, .85, .72], ['hófehér', .12, .25, .93], ['éjkék', .64, .7, .42]];
+const FOLIAGE = [['smaragd', .40, .55, .32], ['fűzöld', .28, .55, .36], ['olíva', .2, .45, .32], ['almazöld', .24, .62, .44], ['kékeszöld', .47, .5, .32], ['türkiz', .5, .62, .42], ['ezüstös', .42, .18, .56], ['aranysárga', .13, .68, .46], ['borostyán', .09, .72, .42], ['rozsda', .05, .6, .34], ['bordó', .97, .52, .3], ['bíbor', .83, .4, .34], ['lila', .77, .42, .4], ['fenyő', .37, .42, .2]];
+const BARK = [['hamu', .08, .08, .36], ['füst', .62, .08, .28], ['mogyoró', .07, .32, .3], ['dió', .06, .3, .2], ['ében', .05, .12, .11], ['réz', .05, .42, .3], ['vörösfenyő', .03, .36, .24], ['nyírfa', .12, .12, .62], ['ezüst', .6, .08, .54], ['homok', .1, .26, .46], ['moha', .25, .22, .24], ['palakék', .6, .2, .3], ['mahagóni', .01, .42, .2], ['szén', .6, .05, .14]];
+const LEAF = [['keskeny', .34, .13, 1.1, 0], ['lándzsás', .46, .16, .85, 0], ['hosszú', .54, .2, 1, 0], ['ovális', .36, .26, 1, 0], ['kerek', .3, .38, 1, 0], ['szív alakú', .34, .36, .68, 0], ['csúcsos', .4, .25, 1.4, 0], ['széles', .4, .42, .9, 0], ['apró', .22, .24, 1, 0], ['karéjos', .38, .32, .95, 3], ['csipkés', .36, .3, 1, 6], ['tölgyes', .42, .3, .85, 5], ['ujjas', .4, .36, 1, 4], ['tollas', .5, .22, 1, 7]];
+const TERMET = [['arbor', 'terebélyes', 1, 1], ['arbor', 'magas terebélyes', 1.18, .86], ['arbor', 'zömök terebélyes', .8, 1.28], ['weeping', 'szomorú', 1, 1], ['weeping', 'magas szomorú', 1.18, .88], ['weeping', 'törpe szomorú', .76, 1.18], ['windswept', 'szélfútta', 1, 1], ['windswept', 'magas szélfútta', 1.2, .85], ['windswept', 'göcsörtös', .82, 1.35], ['shrub', 'bokros', 1, 1], ['shrub', 'magas bokros', 1.28, .9], ['shrub', 'párnás', .7, 1.1], ['spire', 'oszlopos', 1, 1], ['spire', 'karcsú oszlopos', 1.15, .8]];
+const petalAllele = k => { const petals = 4 + k % 6, layers = k >= 6 && k < 12 ? 2 : 1, cup = [15, 32, 48, 62][k % 4]; return { petals, layers, cup, name: `${petals}${layers === 2 ? ', telt' : ''}${cup >= 48 ? ', harangos' : ''}` }; };
+const alleleName = (g, k) => g === 0 ? FLOWER[k][0] : g === 1 ? petalAllele(k).name : g === 2 ? LEAF[k][0] : g === 3 ? TERMET[k][1] : g === 4 ? BARK[k][0] : FOLIAGE[k][0];
+
+function genomeFromDNA(dna, code, parents) {
+  const r = rng(hash(dna.join('.') + code));
+  const [flo, pet, lea, ter, kor, lom] = dna;
+  const [habit, form, tall, stout] = TERMET[ter];
+  const G = { ...HABITS[habit] };
+  const label = G.label; delete G.label;
+  for (const k of Object.keys(G)) if (typeof G[k] === 'number' && k !== 'stems') G[k] *= .93 + r() * .14;
+  G.height *= tall; G.thick *= stout;
+  G.dna = dna.slice(); G.code = code; G.seed = hash(code + dna.join('')); G.habit = label; G.form = form;
+  if (parents) G.parents = parents;
+  const f = FLOWER[flo], l = FOLIAGE[lom], b = BARK[kor], lf = LEAF[lea], p = petalAllele(pet);
+  G.petalH = f[1]; G.petalTipH = (f[1] + (r() - .5) * .08 + 1) % 1; G.petalS = f[2]; G.petalL = f[3];
+  G.petals = p.petals; G.layers = p.layers; G.petalCup = p.cup; G.petalLen = .72 + r() * .3; G.petalW = .38 + r() * .26;
+  G.centerH = .11 + r() * .05; G.flowerSize = .12 + r() * .1;
+  G.leafH = l[1]; G.leafTipH = (l[1] + (r() - .5) * .08 + 1) % 1; G.leafS = l[2]; G.leafL = l[3];
+  G.leafLen = lf[1]; G.leafW = lf[2]; G.leafPow = lf[3]; G.leafLobes = lf[4];
+  G.leafFold = .12 + r() * .3; G.leafCurl = -.1 - r() * .4; G.leafUp = -.1 + r() * .35;
+  G.barkH = b[1]; G.barkS = b[2]; G.barkL = b[3];
+  G.windDir = r() * 6.283; G.sky = Math.floor(r() * SKIES.length);
+  return G;
+}
+
+const GENUS_A = ['Aur', 'Sil', 'Vel', 'Lun', 'Cor', 'Ther', 'Myr', 'Hel', 'Nym', 'Ast', 'Zeph', 'Ori', 'Cal', 'Thal', 'Eryn', 'Vio', 'Amar', 'Lys'];
+const GENUS_B = ['and', 'ith', 'ol', 'an', 'er', 'ys', 'am', 'ion', 'ul', 'en'];
+const GENUS_C = ['ia', 'ella', 'ora', 'ina', 'ara', 'ea', 'anthe'];
+const HABIT_LATIN = { 'terebélyes': 'arborea', 'szomorú': 'pendula', 'szélfútta': 'ventosa', 'bokros': 'fruticosa', 'oszlopos': 'erecta', 'hibrid': 'hybrida' };
+const hueLatin = h => h < .04 || h > .95 ? 'rubra' : h < .1 ? 'flammea' : h < .17 ? 'aurea' : h < .42 ? 'viridis' : h < .55 ? 'marina' : h < .7 ? 'caerulea' : h < .84 ? 'violacea' : 'rosea';
+function latinName(G) {
+  const r = rng(G.seed ^ 77);
+  const p = a => a[Math.floor(r() * a.length)];
+  const genus = p(GENUS_A) + p(GENUS_B) + p(GENUS_C);
+  return `${genus} ${G.parents ? 'hybrida' : (r() < .5 ? HABIT_LATIN[G.habit] : hueLatin(G.petalH))}`;
+}
+function traitsLine(G) {
+  const birth = G.parents ? `szülők: ${G.parents[0].code} × ${G.parents[1].code}` : `DNS: ${G.code}`;
+  return `${G.form} termet · ${alleleName(2, G.dna[2])} levél · ${alleleName(0, G.dna[0])} virág · ${alleleName(5, G.dna[5])} lomb · ${SKIES[G.sky].name}\n${birth}`;
+}
+
+/* ---------- növény felépítése ---------- */
+const V3 = THREE.Vector3;
+function perpendicular(d) { const a = Math.abs(d.y) < .9 ? new V3(0, 1, 0) : new V3(1, 0, 0); return new V3().crossVectors(d, a).normalize(); }
+
+function generate(G, budget) {
+  const R = rng(G.seed);
+  const T = { pos: [], cen: [], prev: [], nor: [], birth: [], col: [], ring: [], idx: [], n: 0 };
+  const leaves = [], flowers = [];
+  const windV = new V3(Math.cos(G.windDir), 0, Math.sin(G.windDir));
+  const bark = new THREE.Color().setHSL(G.barkH, G.barkS, G.barkL);
+  const up = new V3(0, 1, 0);
+  const maxLvl = G.b2 < .6 ? 2 : 3;
+  const SIDES = [9, 6, 5, 3], STEP = [.2, .15, .12, .1];
+  let twigs = 0, maxPath = 0;
+  const maxTwigs = 1100 * budget, maxLeaves = 2600 * budget, maxFlowers = 260 * budget;
+  const leafDens = G.leafDens * 1.4 * clamp(budget, .6, 1);
+
+  function grow(p0, d0, len, rad, lvl, path) {
+    if (++twigs > maxTwigs) return;
+    const segs = clamp(Math.round(len / STEP[lvl]), 3, 28), step = len / segs;
+    const phase = R() * 6.283, freq = .8 + R() * 1.5;
+    const d = d0.clone().normalize(), n = perpendicular(d), p = p0.clone();
+    const pts = [], ds = [], ns = [], rs = [], ps = [];
+    const trop = G['t' + lvl];
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs;
+      let r = Math.max(rad * lerp(1, G.taper, t), .007);
+      if (lvl === 0) r *= 1 + G.flare * Math.pow(1 - t, 7);
+      pts.push(p.clone()); ds.push(d.clone()); ns.push(n.clone()); rs.push(r); ps.push(path + step * i);
+      if (i === segs) break;
+      const b = new V3().crossVectors(d, n);
+      d.addScaledVector(n, Math.sin(phase + t * freq * 6.283) * G.wobble * step)
+       .addScaledVector(b, Math.cos(phase * 1.7 + t * freq * 5.1) * G.wobble * step);
+      d.y += trop * step;
+      d.addScaledVector(windV, G.wind * step * (.4 + .6 * lvl));
+      d.normalize();
+      n.addScaledVector(d, -n.dot(d)).normalize();
+      p.addScaledVector(d, step);
+    }
+    maxPath = Math.max(maxPath, ps[segs]);
+
+    /* gyűrűk */
+    const sides = SIDES[lvl], base = T.n;
+    for (let i = 0; i <= segs; i++) {
+      const c = pts[i], prev = pts[Math.max(0, i - 1)], b = new V3().crossVectors(ds[i], ns[i]);
+      const shade = .86 + R() * .24;
+      for (let s = 0; s < sides; s++) {
+        const a = s / sides * 6.283;
+        const nx = ns[i].x * Math.cos(a) + b.x * Math.sin(a), ny = ns[i].y * Math.cos(a) + b.y * Math.sin(a), nz = ns[i].z * Math.cos(a) + b.z * Math.sin(a);
+        let r = rs[i];
+        if (lvl === 0) r *= 1 + .22 * G.flare * Math.sin(a * 3 + phase) * Math.pow(1 - i / segs, 3);
+        T.pos.push(c.x + nx * r, c.y + ny * r, c.z + nz * r);
+        T.cen.push(c.x, c.y, c.z); T.prev.push(prev.x, prev.y, prev.z);
+        T.nor.push(nx, ny, nz); T.birth.push(ps[i]); T.ring.push(Math.cos(a), Math.sin(a));
+        const k = shade * (s % 2 ? .9 : 1.1);
+        T.col.push(bark.r * k, bark.g * k, bark.b * k);
+      }
+    }
+    for (let i = 0; i < segs; i++) for (let s = 0; s < sides; s++) {
+      const a = base + i * sides + s, b = base + i * sides + (s + 1) % sides, c = a + sides, e = b + sides;
+      T.idx.push(a, c, b, b, c, e);
+    }
+    T.n += (segs + 1) * sides;
+
+    /* levelek, virágok */
+    if (lvl >= maxLvl - 1 && leaves.length < maxLeaves) {
+      const count = Math.round(len * leafDens * (lvl === maxLvl ? 1 : .4));
+      let az = R() * 6.283;
+      for (let k = 0; k < count; k++) {
+        const t = lerp(.1, 1, (k + R()) / count), i = Math.min(segs, Math.floor(t * segs));
+        const b = new V3().crossVectors(ds[i], ns[i]);
+        const out = ns[i].clone().multiplyScalar(Math.cos(az)).addScaledVector(b, Math.sin(az));
+        const dir = ds[i].clone().multiplyScalar(.45).addScaledVector(out, .85); dir.y += G.leafUp; dir.normalize();
+        const nor = up.clone().addScaledVector(dir, -dir.y).add(new V3(R() - .5, R() - .5, R() - .5).multiplyScalar(.5));
+        leaves.push({ p: pts[i], dir, nor, s: G.leafLen * (.65 + R() * .6) * (1 - .25 * t), path: ps[i], tint: R() });
+        az += 2.39996;
+      }
+    }
+    if (lvl === maxLvl) {
+      if (flowers.length < maxFlowers && R() < G.flowerOdds) flowers.push({ p: pts[segs], dir: ds[segs].clone().multiplyScalar(.55).add(new V3(R() - .5, .7, R() - .5).multiplyScalar(.8)).normalize(), s: G.flowerSize * (.8 + R() * .4), path: ps[segs] });
+      if (flowers.length < maxFlowers && R() < G.flowerOdds * .5) { const i = Math.floor(segs * (.3 + R() * .5)); flowers.push({ p: pts[i], dir: new V3(R() - .5, .9, R() - .5).normalize(), s: G.flowerSize * (.7 + R() * .35), path: ps[i] }); }
+    }
+
+    /* ágak */
+    if (lvl < maxLvl) {
+      const cnt = Math.round(G['b' + lvl]);
+      const start = G['s' + lvl];
+      let az = R() * 6.283;
+      for (let c = 0; c < cnt; c++) {
+        const u = (c + .2 + R() * .6) / cnt, t = lerp(start, .97, u), i = clamp(Math.floor(t * segs), 0, segs);
+        const b = new V3().crossVectors(ds[i], ns[i]);
+        const out = ns[i].clone().multiplyScalar(Math.cos(az)).addScaledVector(b, Math.sin(az));
+        const a = G['a' + lvl] * Math.PI / 180 * (.8 + R() * .4);
+        const cd = ds[i].clone().multiplyScalar(Math.cos(a)).addScaledVector(out, Math.sin(a));
+        const profile = lerp(1, 1 - u * .8, G.crown);
+        grow(pts[i], cd, len * G['r' + lvl] * profile * (.8 + R() * .4), rs[i] * (lvl === 0 ? .62 : .68), lvl + 1, ps[i] + .02);
+        az += 2.39996 + (R() - .5) * .4;
+      }
+    }
+  }
+
+  const stems = Math.max(1, Math.round(G.stems));
+  for (let s = 0; s < stems; s++) {
+    const a = s / stems * 6.283 + R();
+    const splay = stems > 1 ? .22 + R() * .3 : .04 + G.wind * .5;
+    const dir = new V3(Math.cos(a) * splay, 1, Math.sin(a) * splay);
+    const off = stems > 1 ? new V3(Math.cos(a) * .12, 0, Math.sin(a) * .12) : new V3();
+    off.y = -.06;
+    grow(off, dir, G.height * (stems > 1 ? .75 + R() * .35 : 1), G.height * .055 * G.thick, 0, 0);
+  }
+
+  return { T, leaves, flowers, maxPath };
+}
+
+/* ---------- megosztott shader-darabok ---------- */
+const SWAY = `
+uniform float uTime, uH, uAmp;
+vec3 sway(vec3 p){
+  float h = max(p.y, 0.) / uH;
+  float a = h * h * uAmp;
+  return vec3(sin(uTime * .7 + p.y * .4 + p.z * .3) * a + sin(uTime * 1.7 + p.x * 1.3) * a * .22, 0., cos(uTime * .6 + p.x * .35) * a * .7);
+}`;
+const SHADE = `
+uniform vec3 uSun, uSunCol, uAmbient, uBounce;
+vec3 shade(vec3 alb, vec3 N, vec3 V, float trans){
+  float ndl = dot(N, uSun);
+  float wrap = pow(clamp(ndl * .5 + .5, 0., 1.), 1.7);
+  vec3 c = alb * (mix(uBounce, uAmbient, N.y * .5 + .5) * .88 + uSunCol * wrap * 1.15);
+  float back = pow(clamp(dot(-V, uSun), 0., 1.), 2.5) * (.45 + .55 * clamp(-ndl, 0., 1.));
+  c += alb * uSunCol * back * trans * 2.1;
+  c += uAmbient * pow(1. - clamp(dot(N, V), 0., 1.), 3.) * .10;
+  return c;
+}`;
+
+/* ---------- jelenet ---------- */
+const canvas = document.getElementById('scene');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const lowEnd = (navigator.deviceMemory && navigator.deviceMemory <= 3) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
+const budget = lowEnd ? .55 : 1;
+
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' }); }
+catch (e) { document.body.insertAdjacentHTML('beforeend', '<p class="error">Ez a böngésző nem tud WebGL-t futtatni, ezért a növény nem jeleníthető meg. Próbáld meg másik böngészőben.</p>'); throw e; }
+
+let pixelRatio = Math.min(devicePixelRatio || 1, 2);
+renderer.setPixelRatio(pixelRatio);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, 1, .1, 300);
+const controls = new OrbitControls(camera, canvas);
+Object.assign(controls, { enablePan: false, enableDamping: true, dampingFactor: .07, autoRotate: !reduced, autoRotateSpeed: .32, minPolarAngle: .6, maxPolarAngle: 1.6 });
+
+const U = {
+  uTime: { value: 0 }, uGrow: { value: 0 }, uH: { value: 5 }, uAmp: { value: reduced ? 0 : .09 },
+  uSun: { value: new V3(.6, .3, -.6).normalize() }, uSunCol: { value: new THREE.Color() }, uAmbient: { value: new THREE.Color() }, uBounce: { value: new THREE.Color() },
+  uZenith: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uLand: { value: new THREE.Color() }, uMoss: { value: new THREE.Color() },
+  uDpr: { value: pixelRatio },
+};
+
+const dome = new THREE.Mesh(new THREE.SphereGeometry(100, 32, 18), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, depthTest: false,
+  uniforms: U,
+  vertexShader: `varying vec3 vD; void main(){ vD = normalize(position); vec4 p = projectionMatrix * mat4(mat3(viewMatrix)) * vec4(position, 1.); gl_Position = p.xyww; }`,
+  fragmentShader: `uniform vec3 uZenith, uHorizon, uLand, uSun, uSunCol; varying vec3 vD;
+  void main(){ vec3 d = normalize(vD);
+    vec3 c = d.y > 0. ? mix(uHorizon, uZenith, pow(smoothstep(0., .26, d.y), .8)) : uHorizon;
+    float s = max(dot(d, uSun), 0.);
+    c += uSunCol * (pow(s, 240.) * 1.6 + pow(s, 24.) * .42 + pow(s, 5.) * .16) * smoothstep(-.1, .03, d.y);
+    c += (fract(sin(dot(gl_FragCoord.xy, vec2(12.99, 78.23))) * 43758.5) - .5) / 180.;
+    gl_FragColor = vec4(c, 1.);
+#include <colorspace_fragment>
+  }`,
+}));
+dome.frustumCulled = false; dome.renderOrder = -2;
+scene.add(dome);
+
+const groundGeo = new THREE.CircleGeometry(34, 72).rotateX(-Math.PI / 2);
+const ground = new THREE.Mesh(groundGeo, new THREE.ShaderMaterial({
+  uniforms: { ...U, uCrown: { value: 2 }, uLift: { value: new V3() } },
+  vertexShader: `varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+  fragmentShader: `uniform vec3 uMoss, uLand, uHorizon, uSun, uSunCol, uAmbient; uniform float uGrow, uCrown; varying vec3 vP;
+  float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+  void main(){ float r = length(vP.xz);
+    float tex = n(vP.xz * 1.1) * .5 + n(vP.xz * 3.7) * .3 + n(vP.xz * 11.) * .2;
+    vec3 c = uMoss * (.62 + .62 * tex) * (uAmbient * .55 + uSunCol * .75);
+    vec2 sd = normalize(uSun.xz) * uCrown * .95 * clamp(.32 / max(uSun.y, .12), .3, 1.5);
+    vec2 q = vP.xz + sd;
+    float dapple = .72 + .28 * n(vP.xz * 2.4);
+    float sh = exp(-dot(q, q) / (uCrown * uCrown * 1.5)) * smoothstep(.2, .85, uGrow) * dapple;
+    float contact = exp(-r * r / .5) * .55;
+    c *= (1. - .62 * sh) * (1. - contact);
+    c = mix(c, uHorizon, smoothstep(7., 29., r));
+    gl_FragColor = vec4(c, 1.);
+#include <colorspace_fragment>
+  }`,
+}));
+scene.add(ground);
+
+/* pollen */
+const POLLEN = 70;
+const pg = new THREE.BufferGeometry();
+{ const a = new Float32Array(POLLEN * 3), ph = new Float32Array(POLLEN), r = rng(7);
+  for (let i = 0; i < POLLEN; i++) { a[i * 3] = (r() - .5) * 11; a[i * 3 + 1] = r() * 7; a[i * 3 + 2] = (r() - .5) * 11; ph[i] = r() * 6.28; }
+  pg.setAttribute('position', new THREE.BufferAttribute(a, 3)); pg.setAttribute('aPhase', new THREE.BufferAttribute(ph, 1)); }
+const pollen = new THREE.Points(pg, new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: U,
+  vertexShader: `attribute float aPhase; uniform float uTime, uDpr; varying float vA;
+  void main(){ vec3 p = position + vec3(sin(uTime * .17 + aPhase) * .8, sin(uTime * .11 + aPhase * 2.) * .5, cos(uTime * .13 + aPhase * 1.4) * .8);
+    vec4 mv = modelViewMatrix * vec4(p, 1.); gl_Position = projectionMatrix * mv; gl_PointSize = 26. * uDpr / -mv.z; vA = .5 + .5 * sin(uTime * .6 + aPhase * 3.); }`,
+  fragmentShader: `uniform vec3 uSunCol; varying float vA; void main(){ float d = length(gl_PointCoord - .5); gl_FragColor = vec4(uSunCol, smoothstep(.5, .05, d) * .38 * vA);
+#include <colorspace_fragment>
+  }`,
+}));
+pollen.frustumCulled = false; scene.add(pollen);
+
+/* anyagok */
+const FOLIAGE_VS = `
+attribute float aBirth, aT, aAcross, aKind, aAO; attribute vec3 aTint;
+uniform float uGrow, uFlut, uBud; varying vec3 vN, vW, vTint; varying float vT, vAcross, vKind, vAO;
+${SWAY}
+void main(){
+  float g = aBirth < 0. ? 1. : smoothstep(aBirth, aBirth + .07, uGrow);
+  float open = aBirth < 0. ? 1. : smoothstep(aBirth + .03, aBirth + .15, uGrow);
+  vec3 p = position;
+  p.xz *= mix(1., mix(.32, 1., open), uBud);
+  p *= g;
+  vec3 o = instanceMatrix[3].xyz;
+  p.z += sin(uTime * 2.3 + o.x * 6. + o.z * 4.) * .07 * position.y * uFlut * step(.001, uAmp);
+  vec3 local = (instanceMatrix * vec4(p, 1.)).xyz + sway(o);
+  vec4 w = modelMatrix * vec4(local, 1.);
+  vW = w.xyz; vN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * normal);
+  vT = aT; vAcross = aAcross; vKind = aKind; vTint = aTint; vAO = aAO;
+  gl_Position = projectionMatrix * viewMatrix * w;
+}`;
+const FOLIAGE_FS = `
+uniform float uMode; uniform vec3 uA, uB, uC, uD; varying vec3 vN, vW, vTint; varying float vT, vAcross, vKind, vAO;
+${SHADE}
+void main(){
+  vec3 N = normalize(vN); if (!gl_FrontFacing) N = -N;
+  vec3 V = normalize(cameraPosition - vW);
+  vec3 alb; float trans = .75;
+  if (uMode < .5) {
+    alb = mix(uA, uB, vT * vT) * vTint;
+    float rib = smoothstep(.13, 0., vAcross);
+    float vein = smoothstep(.72, 1., sin(vT * 44. + vAcross * 16.)) * (1. - rib);
+    alb = mix(alb, alb * 1.5 + .012, rib * .6 + vein * .16);
+  } else if (uMode < 1.5) {
+    if (vKind > .5) { alb = uD; trans = .1; }
+    else { alb = mix(uC, mix(uA, uB, smoothstep(.25, 1., vT)), smoothstep(0., .34, vT)) * vTint; alb *= .94 + .1 * sin(vAcross * 22.); trans = 1.1; }
+  } else { alb = mix(uA * 1.05, uA * 2.2, vT) * vTint; trans = .5; }
+  vec3 c = shade(alb, N, V, trans) * vAO;
+  gl_FragColor = vec4(c, 1.);
+#include <colorspace_fragment>
+}`;
+const foliageMaterial = (mode, flut, bud) => new THREE.ShaderMaterial({
+  side: THREE.DoubleSide,
+  uniforms: { ...U, uMode: { value: mode }, uFlut: { value: flut }, uBud: { value: bud }, uA: { value: new THREE.Color() }, uB: { value: new THREE.Color() }, uC: { value: new THREE.Color() }, uD: { value: new THREE.Color() } },
+  vertexShader: FOLIAGE_VS, fragmentShader: FOLIAGE_FS,
+});
+const leafMat = foliageMaterial(0, 1, 0), flowerMat = foliageMaterial(1, .3, 1), grassMat = foliageMaterial(2, 1.3, 0);
+const woodMat = new THREE.ShaderMaterial({
+  uniforms: U,
+  vertexShader: `attribute vec3 aCenter, aPrev, aColor; attribute vec2 aRing; attribute float aBirth, aPath; uniform float uGrow; varying vec3 vN, vW, vC; varying vec2 vR; varying float vPath;
+  ${SWAY}
+  void main(){
+    float g = smoothstep(aBirth, aBirth + .045, uGrow);
+    float t = smoothstep(aBirth, aBirth + .42, uGrow);
+    vec3 c = mix(aPrev, aCenter, g);
+    vec3 p = c + (position - aCenter) * (.22 * g + .78 * t) + sway(aCenter);
+    vec4 w = modelMatrix * vec4(p, 1.);
+    vW = w.xyz; vN = normalize(mat3(modelMatrix) * normal); vC = aColor; vR = aRing; vPath = aPath;
+    gl_Position = projectionMatrix * viewMatrix * w; }`,
+  fragmentShader: `varying vec3 vN, vW, vC; varying vec2 vR; varying float vPath; ${SHADE}
+  void main(){ float a = atan(vR.y, vR.x);
+    float ridge = .5 + .5 * sin(a * 7. + sin(vPath * 5. + a * 2.) * 1.7);
+    float fine = .5 + .5 * sin(a * 19. + vPath * 9. + sin(vPath * 23.) * 2.);
+    vec3 c = shade(vC * (.56 + .5 * ridge + .22 * fine), normalize(vN), normalize(cameraPosition - vW), 0.); gl_FragColor = vec4(c, 1.);
+#include <colorspace_fragment>
+  }`,
+});
+
+/* levél és virág geometria */
+function makeLeafGeometry(G) {
+  const rows = 6, pos = [], ts = [], acr = [], idx = [];
+  const width = t => {
+    let w = Math.pow(Math.sin(Math.PI * Math.pow(t, G.leafPow)), .8) * G.leafW;
+    if (G.leafLobes) w *= .76 + .24 * Math.abs(Math.sin(t * Math.PI * G.leafLobes));
+    return w;
+  };
+  for (let i = 0; i <= rows; i++) {
+    const t = i / rows, w = width(t), z = G.leafCurl * t * t;
+    pos.push(-w, t, z + G.leafFold * w, 0, t, z, w, t, z + G.leafFold * w);
+    ts.push(t, t, t); acr.push(1, 0, 1);
+  }
+  for (let i = 0; i < rows; i++) { const a = i * 3; for (let s = 0; s < 2; s++) idx.push(a + s, a + s + 1, a + s + 3, a + s + 1, a + s + 4, a + s + 3); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aT', new THREE.Float32BufferAttribute(ts, 1));
+  g.setAttribute('aAcross', new THREE.Float32BufferAttribute(acr, 1));
+  g.setAttribute('aKind', new THREE.Float32BufferAttribute(new Array(ts.length).fill(0), 1));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+function makeFlowerGeometry(G) {
+  const pos = [], ts = [], acr = [], kind = [], idx = [];
+  const rows = 4;
+  const addPetal = (angle, len, wid, cup) => {
+    const base = pos.length / 3;
+    const ca = Math.cos(angle), sa = Math.sin(angle), cc = Math.cos(cup), sc = Math.sin(cup);
+    for (let i = 0; i <= rows; i++) {
+      const t = i / rows, w = Math.pow(Math.sin(Math.PI * Math.pow(t, .75)), .7) * wid;
+      const r = t * len * cc, y = t * len * sc + (t * t) * len * .28 * sc - t * t * len * .18;
+      for (const s of [-1, 0, 1]) {
+        const x = r, z = s * w, yy = y + Math.abs(s) * w * .22;
+        pos.push(x * ca - z * sa, yy, x * sa + z * ca);
+        ts.push(t); acr.push(Math.abs(s)); kind.push(0);
+      }
+    }
+    for (let i = 0; i < rows; i++) for (let s = 0; s < 2; s++) { const a = base + i * 3 + s; idx.push(a, a + 3, a + 1, a + 1, a + 3, a + 4); }
+  };
+  const n = Math.round(G.petals);
+  for (let i = 0; i < n; i++) addPetal(i / n * 6.283, G.petalLen, G.petalW * G.petalLen * .62, G.petalCup * Math.PI / 180);
+  if (Math.round(G.layers) === 2) for (let i = 0; i < n; i++) addPetal((i + .5) / n * 6.283, G.petalLen * .68, G.petalW * G.petalLen * .46, (G.petalCup + 18) * Math.PI / 180);
+  /* porzók: apró gömb a közepén */
+  const ball = new THREE.IcosahedronGeometry(.16 * G.petalLen, 0), bp = ball.getAttribute('position');
+  const base = pos.length / 3;
+  for (let i = 0; i < bp.count; i++) { pos.push(bp.getX(i), bp.getY(i) + .06, bp.getZ(i)); ts.push(0); acr.push(0); kind.push(1); idx.push(base + i); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aT', new THREE.Float32BufferAttribute(ts, 1));
+  g.setAttribute('aAcross', new THREE.Float32BufferAttribute(acr, 1));
+  g.setAttribute('aKind', new THREE.Float32BufferAttribute(kind, 1));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+function instanced(geo, mat, items, build) {
+  const m = new THREE.InstancedMesh(geo, mat, items.length);
+  const birth = new Float32Array(items.length), tint = new Float32Array(items.length * 3), ao = new Float32Array(items.length);
+  const M = new THREE.Matrix4();
+  items.forEach((it, i) => { build(it, i, M, birth, tint, ao); m.setMatrixAt(i, M); });
+  geo.setAttribute('aBirth', new THREE.InstancedBufferAttribute(birth, 1));
+  geo.setAttribute('aTint', new THREE.InstancedBufferAttribute(tint, 3));
+  geo.setAttribute('aAO', new THREE.InstancedBufferAttribute(ao, 1));
+  m.frustumCulled = false;
+  return m;
+}
+
+/* fű */
+{
+  const r = rng(11), blades = Array.from({ length: Math.round(2600 * budget) }, () => {
+    const rad = Math.pow(r(), .75) * 7.5, a = r() * 6.283;
+    return { x: Math.cos(a) * rad, z: Math.sin(a) * rad, rot: r() * 6.283, h: .1 + r() * .18, tint: r() };
+  });
+  const seg = 3, pos = [], ts = [], acr = [], idx = [];
+  for (let i = 0; i <= seg; i++) { const t = i / seg, w = .05 * (1 - t * .85), z = .3 * t * t; pos.push(-w, t, z, w, t, z); ts.push(t, t); acr.push(1, 1); }
+  for (let i = 0; i < seg; i++) { const a = i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('aT', new THREE.Float32BufferAttribute(ts, 1));
+  geo.setAttribute('aAcross', new THREE.Float32BufferAttribute(acr, 1));
+  geo.setAttribute('aKind', new THREE.Float32BufferAttribute(new Array(ts.length).fill(0), 1));
+  geo.setIndex(idx); geo.computeVertexNormals();
+  const q = new THREE.Quaternion(), yAxis = new V3(0, 1, 0), pp = new V3(), ss = new V3();
+  const grass = instanced(geo, grassMat, blades, (b, i, M, birth, tint, ao) => {
+    q.setFromAxisAngle(yAxis, b.rot); pp.set(b.x, 0, b.z); ss.set(b.h * 1.4, b.h, b.h);
+    M.compose(pp, q, ss); birth[i] = -1;
+    const k = .75 + b.tint * .5; tint[i * 3] = k; tint[i * 3 + 1] = k; tint[i * 3 + 2] = k * .9; ao[i] = 1;
+  });
+  scene.add(grass);
+}
+
+/* ---------- aktuális példány ---------- */
+const plantGroup = new THREE.Group();
+scene.add(plantGroup);
+let current = null, previous = null, plate = 0;
+let grow = reduced ? 1 : 0, growTarget = 1, growSpeed = 1 / 11, onRetreated = null;
+
+function clearPlant() {
+  for (const c of [...plantGroup.children]) { plantGroup.remove(c); c.geometry.dispose(); c.dispose?.(); }
+}
+function setColor(c, h, s, l) { c.setHSL(((h % 1) + 1) % 1, clamp(s, 0, 1), clamp(l, 0, 1)); }
+
+function plantIt(G) {
+  clearPlant();
+  const { T, leaves, flowers, maxPath } = generate(G, budget);
+  const nb = b => b / maxPath;
+
+  const wood = new THREE.BufferGeometry();
+  wood.setAttribute('position', new THREE.Float32BufferAttribute(T.pos, 3));
+  wood.setAttribute('normal', new THREE.Float32BufferAttribute(T.nor, 3));
+  wood.setAttribute('aCenter', new THREE.Float32BufferAttribute(T.cen, 3));
+  wood.setAttribute('aPrev', new THREE.Float32BufferAttribute(T.prev, 3));
+  wood.setAttribute('aColor', new THREE.Float32BufferAttribute(T.col, 3));
+  wood.setAttribute('aRing', new THREE.Float32BufferAttribute(T.ring, 2));
+  wood.setAttribute('aPath', new THREE.Float32BufferAttribute(T.birth, 1));
+  wood.setAttribute('aBirth', new THREE.Float32BufferAttribute(T.birth.map(b => nb(b) * .64), 1));
+  wood.setIndex(T.idx);
+  const woodMesh = new THREE.Mesh(wood, woodMat); woodMesh.frustumCulled = false;
+  plantGroup.add(woodMesh);
+
+  /* korona */
+  const center = new V3();
+  leaves.forEach(l => center.add(l.p)); if (leaves.length) center.multiplyScalar(1 / leaves.length);
+  let far = .001, crownRadius = 0, top = 0;
+  leaves.forEach(l => { far = Math.max(far, l.p.distanceTo(center)); crownRadius = Math.max(crownRadius, Math.hypot(l.p.x - center.x, l.p.z - center.z)); });
+  const bbox = new THREE.Box3();
+  wood.computeBoundingBox(); bbox.copy(wood.boundingBox);
+  leaves.forEach(l => bbox.expandByPoint(l.p)); flowers.forEach(f => bbox.expandByPoint(f.p));
+  top = bbox.max.y;
+
+  const X = new V3(), Y = new V3(), Z = new V3(), S = new V3();
+  const place = (M, p, dir, nor, s) => {
+    Y.copy(dir); Z.copy(nor).addScaledVector(Y, -nor.dot(Y)).normalize(); X.crossVectors(Y, Z);
+    M.makeBasis(X.multiplyScalar(s), Y.multiplyScalar(s), Z.multiplyScalar(s)); M.setPosition(p);
+  };
+  if (leaves.length) {
+    const lm = instanced(makeLeafGeometry(G), leafMat, leaves, (l, i, M, birth, tint, ao) => {
+      place(M, l.p, l.dir, l.nor, l.s);
+      birth[i] = nb(l.path) * .64 + .05;
+      const v = .8 + l.tint * .42; tint[i * 3] = v; tint[i * 3 + 1] = v * (.96 + l.tint * .06); tint[i * 3 + 2] = v * .94;
+      const d = l.p.distanceTo(center) / far;
+      ao[i] = .42 + .58 * Math.pow(d, 1.25);
+    });
+    plantGroup.add(lm);
+  }
+  if (flowers.length) {
+    const fm = instanced(makeFlowerGeometry(G), flowerMat, flowers, (f, i, M, birth, tint, ao) => {
+      const nor = Math.abs(f.dir.y) < .9 ? new V3(0, 1, 0) : new V3(1, 0, 0);
+      place(M, f.p, f.dir, nor, f.s);
+      birth[i] = .74 + nb(f.path) * .14;
+      const v = .9 + (i * .618 % 1) * .22; tint[i * 3] = v; tint[i * 3 + 1] = v; tint[i * 3 + 2] = v;
+      ao[i] = 1;
+    });
+    plantGroup.add(fm);
+  }
+
+  /* színek és fény */
+  setColor(leafMat.uniforms.uA.value, G.leafH, G.leafS, G.leafL);
+  setColor(leafMat.uniforms.uB.value, G.leafTipH, G.leafS * .9, G.leafL + .12);
+  setColor(flowerMat.uniforms.uA.value, G.petalH, G.petalS, G.petalL);
+  setColor(flowerMat.uniforms.uB.value, G.petalTipH, G.petalS * .9, Math.min(.9, G.petalL + .12));
+  setColor(flowerMat.uniforms.uC.value, G.centerH, .7, .55);
+  setColor(flowerMat.uniforms.uD.value, G.centerH, .85, .5);
+  const sky = SKIES[G.sky];
+  U.uSun.value.fromArray(sky.dir).normalize();
+  U.uZenith.value.set(sky.zenith); U.uHorizon.value.set(sky.horizon); U.uLand.value.set(sky.land); U.uMoss.value.set(sky.moss);
+  U.uSunCol.value.set(sky.sunColor); U.uAmbient.value.set(sky.ambient); U.uBounce.value.set(sky.bounce);
+  grassMat.uniforms.uA.value.set(sky.moss);
+
+  /* keretezés */
+  const scale = 5 / Math.max(top, 1.6);
+  plantGroup.scale.setScalar(scale);
+  U.uH.value = Math.max(top, 1.6);
+  ground.material.uniforms.uCrown.value = Math.max(crownRadius, .8) * scale;
+  const h = top * scale, w = Math.max(bbox.max.x - bbox.min.x, bbox.max.z - bbox.min.z) * scale;
+  const cx = (bbox.max.x + bbox.min.x) * .5 * scale, cz = (bbox.max.z + bbox.min.z) * .5 * scale;
+  const t = Math.tan(camera.fov * Math.PI / 360);
+  const dist = Math.max((h * .5 + .4) / t * 1.5, (w * .5 + .6) / (t * camera.aspect) * 1.16);
+  controls.target.set(cx, h * .58, cz);
+  const sunAz = Math.atan2(U.uSun.value.x, U.uSun.value.z) + Math.PI + .75;
+  const polar = 1.36;
+  camera.position.set(cx + Math.sin(sunAz) * Math.sin(polar) * dist, controls.target.y + Math.cos(polar) * dist, cz + Math.cos(sunAz) * Math.sin(polar) * dist);
+  controls.minDistance = dist * .3; controls.maxDistance = dist * 1.5;
+  controls.update();
+
+  /* címke */
+  plate++;
+  document.getElementById('plate').textContent = `No. ${String(plate).padStart(3, '0')}`;
+  document.getElementById('name').textContent = latinName(G);
+  document.getElementById('traits').innerText = traitsLine(G);
+  document.getElementById('btn-cross').disabled = !previous;
+  current = G;
+}
+
+function retreatThen(fn) {
+  if (reduced) { fn(); grow = 1; return; }
+  growTarget = 0; growSpeed = 1 / .55; onRetreated = () => { fn(); growTarget = 1; growSpeed = 1 / 11; };
+}
+const el = id => document.getElementById(id);
+
+/* ---------- kettős spirál ---------- */
+const AT_COLOR = new THREE.Color('#f0b35a'), GC_COLOR = new THREE.Color('#55c6c0'), BALL_COLOR = new THREE.Color('#f6efe0');
+const helix = new THREE.Group(); helix.visible = false; scene.add(helix);
+const rungs = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 6), new THREE.MeshBasicMaterial(), 36);
+const balls = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshBasicMaterial(), 72);
+rungs.frustumCulled = balls.frustumCulled = false;
+for (let i = 0; i < 72; i++) balls.setColorAt(i, BALL_COLOR);
+for (let i = 0; i < 36; i++) rungs.setColorAt(i, AT_COLOR);
+helix.add(rungs, balls);
+let H = null;
+const smooth = x => { const t = clamp(x, 0, 1); return t * t * (3 - 2 * t); };
+
+function startHelix(flat, cellPx, cx, cy) {
+  camera.updateMatrixWorld();
+  const dist = camera.position.distanceTo(controls.target);
+  const perPx = 2 * dist * Math.tan(camera.fov * Math.PI / 360) / innerHeight;
+  const right = new V3().setFromMatrixColumn(camera.matrixWorld, 0), up = new V3().setFromMatrixColumn(camera.matrixWorld, 1);
+  const center = controls.target.clone().addScaledVector(right, (cx - innerWidth / 2) * perPx).addScaledVector(up, (innerHeight / 2 - cy) * perPx);
+  flat.forEach((v, i) => rungs.setColorAt(i, v ? GC_COLOR : AT_COLOR));
+  rungs.instanceColor.needsUpdate = true; balls.instanceColor.needsUpdate = true;
+  H = { t: 0, cell: cellPx * perPx, center, right, up };
+  controls.autoRotate = false;
+  helix.visible = true;
+  updateHelix(0);
+}
+const HA = new V3(), HB = new V3(), HM = new V3(), HD = new V3(), HS = new V3(), HQ = new THREE.Quaternion(), HM4 = new THREE.Matrix4(), Y_AXIS = new V3(0, 1, 0);
+function updateHelix(dt) {
+  H.t += dt;
+  const t = H.t, morph = smooth(t / .95), collapse = smooth((t - 1.95) / .75), fallRaw = clamp((t - 2.7) / .55, 0, 1), fall = fallRaw * fallRaw;
+  const spin = t * 2.4, cell = H.cell, Rr = cell * 1.05, hs = cell * .34;
+  const seed = controls.target.clone().lerp(new V3(0, .03, 0), fall);
+  const target = controls.target;
+  for (let k = 0; k < 36; k++) {
+    const y = Math.floor(k / 6), x = k % 6;
+    const gc = H.center.clone().addScaledVector(H.right, (x - 2.5) * cell).addScaledVector(H.up, (2.5 - y) * cell);
+    const th = k * .62 + spin;
+    const hc = target.clone().addScaledVector(Y_AXIS, (17.5 - k) * hs);
+    const off = new V3(Math.cos(th), 0, Math.sin(th)).multiplyScalar(Rr);
+    HA.copy(gc).addScaledVector(H.right, -cell * .36).lerp(hc.clone().add(off), morph).lerp(seed, collapse);
+    HB.copy(gc).addScaledVector(H.right, cell * .36).lerp(hc.clone().sub(off), morph).lerp(seed, collapse);
+    HM.copy(HA).add(HB).multiplyScalar(.5);
+    HD.copy(HB).sub(HA);
+    const len = Math.max(HD.length(), 1e-4);
+    HQ.setFromUnitVectors(Y_AXIS, HD.divideScalar(len));
+    const rw = cell * .06 * (1 - collapse * .8);
+    HS.set(rw, len, rw);
+    rungs.setMatrixAt(k, HM4.compose(HM, HQ, HS));
+    const br = cell * .14 * (1 - collapse * .35);
+    HS.setScalar(br);
+    balls.setMatrixAt(k * 2, HM4.compose(HA, HQ, HS));
+    balls.setMatrixAt(k * 2 + 1, HM4.compose(HB, HQ, HS));
+  }
+  rungs.instanceMatrix.needsUpdate = true; balls.instanceMatrix.needsUpdate = true;
+  if (t >= 3.3) {
+    helix.visible = false; H = null;
+    controls.autoRotate = !reduced;
+    grow = 0; growTarget = 1; growSpeed = 1 / 11;
+  }
+}
+
+/* ---------- DNS-szerkesztő ---------- */
+let B = null, boardOpen = false, finishing = false;
+const LABEL = ['A=T', 'G≡C'];
+
+function openBoard(parents) {
+  const R = Math.random;
+  let dna;
+  if (parents) dna = nearestBoard(GENES.map((_, y) => R() < .5 ? parents[0].dna[y] : parents[1].dna[y]), R);
+  else dna = boardRows(Math.floor(R() * BOARD_COUNT));
+  const P = makePuzzle(dna, R);
+  B = { ...P, grid: P.clue.map(r => r.slice()), parents: parents || null };
+  B.total = P.clue.flat().filter(v => v == null).length;
+  const board = el('board');
+  board.textContent = '';
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const c = document.createElement('button');
+      c.type = 'button'; c.id = `c-${y}-${x}`; c.className = 'cell';
+      if (P.clue[y][x] != null) { c.classList.add('lock'); c.disabled = true; }
+      else c.addEventListener('click', () => tapCell(y, x));
+      if (P.free.includes(y)) c.classList.add('open-gene');
+      board.appendChild(c);
+    }
+    const g = document.createElement('div');
+    g.className = 'gene' + (P.free.includes(y) ? ' free' : '');
+    g.id = `g-${y}`;
+    board.appendChild(g);
+  }
+  el('rules').textContent = parents
+    ? 'Soronként és oszloponként 3 A=T és 3 G≡C legyen, három egyforma nem állhat egymás mellett. A sárga sorokban te döntesz. 1 és 2: melyik szülőtől jött, M: mutáció.'
+    : 'Soronként és oszloponként 3 A=T és 3 G≡C legyen, három egyforma nem állhat egymás mellett. A sárga sorokban több jó megoldás van, ott te döntesz.';
+  updateBoard();
+  el('editor').hidden = false; boardOpen = true; finishing = false;
+  controls.autoRotate = false;
+}
+function closeBoard() { el('editor').hidden = true; boardOpen = false; B = null; if (!H) controls.autoRotate = !reduced; }
+
+function badCells(grid) {
+  const bad = new Set();
+  const line = (get, key) => {
+    for (const sym of [0, 1]) {
+      const idx = []; for (let j = 0; j < N; j++) if (get(j) === sym) idx.push(j);
+      if (idx.length > 3) idx.forEach(j => bad.add(key(j)));
+    }
+    for (let j = 0; j + 2 < N; j++) if (get(j) != null && get(j) === get(j + 1) && get(j) === get(j + 2)) [j, j + 1, j + 2].forEach(q => bad.add(key(q)));
+  };
+  for (let i = 0; i < N; i++) { line(j => grid[i][j], j => `${i}-${j}`); line(j => grid[j][i], j => `${j}-${i}`); }
+  return bad;
+}
+
+function updateBoard() {
+  const bad = badCells(B.grid);
+  let empty = 0;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const v = B.grid[y][x], c = el(`c-${y}-${x}`);
+      c.textContent = v == null ? '' : LABEL[v];
+      c.classList.toggle('at', v === 0); c.classList.toggle('gc', v === 1); c.classList.toggle('bad', bad.has(`${y}-${x}`));
+      c.setAttribute('aria-label', `${GENES[y]}, ${x + 1}. oszlop: ${v == null ? 'üres' : LABEL[v]}`);
+      if (v == null) empty++;
+    }
+    const key = B.grid[y].join(''), done = B.grid[y].every(v => v != null), k = done ? rowIndex.get(key) : undefined;
+    let tag = '';
+    if (k !== undefined && B.parents) tag = k === B.parents[0].dna[y] ? ' <i>1</i>' : k === B.parents[1].dna[y] ? ' <i>2</i>' : ' <i>M</i>';
+    const g = el(`g-${y}`);
+    g.innerHTML = `<b>${GENES[y]}${tag}</b><span></span>`;
+    g.querySelector('span').textContent = k !== undefined ? alleleName(y, k) : B.free.includes(y) ? 'te döntesz' : '…';
+  }
+  el('progress').textContent = `${B.total - empty} / ${B.total} bázispár`;
+  if (empty === 0 && bad.size === 0 && !finishing) { finishing = true; setTimeout(finishBoard, 450); }
+}
+function tapCell(y, x) { if (finishing) return; const v = B.grid[y][x]; B.grid[y][x] = v == null ? 0 : v === 0 ? 1 : null; updateBoard(); }
+
+function finishBoard() {
+  const dna = B.grid.map(r => rowIndex.get(r.join('')));
+  const G = genomeFromDNA(dna, newCode(), B.parents || undefined);
+  const a = el('c-0-0').getBoundingClientRect(), b = el('c-5-5').getBoundingClientRect();
+  const cellPx = (b.left - a.left) / 5, cx = (a.left + b.right) / 2, cy = (a.top + b.bottom) / 2;
+  const flat = B.grid.flat();
+  previous = current;
+  grow = 0; growTarget = 0; onRetreated = null; U.uGrow.value = 0;
+  plantIt(G);
+  closeBoard();
+  if (reduced) { grow = 1; growTarget = 1; return; }
+  startHelix(flat, cellPx, cx, cy);
+}
+
+el('btn-new').addEventListener('click', () => openBoard(null));
+el('btn-cross').addEventListener('click', () => { if (previous) openBoard([previous, current]); });
+el('btn-regrow').addEventListener('click', () => { if (!H) retreatThen(() => {}); });
+el('ed-cancel').addEventListener('click', closeBoard);
+el('ed-clear').addEventListener('click', () => { if (finishing) return; B.grid = B.clue.map(r => r.slice()); updateBoard(); });
+el('ed-hint').addEventListener('click', () => {
+  if (finishing) return;
+  const order = [];
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (B.grid[y][x] !== B.target[y][x] && !B.free.includes(y) ) order.push([y, x]);
+  const [y, x] = order[0] || [];
+  if (y === undefined) { el('rules').textContent = 'A lezárt génekkel kész vagy, már csak a sárga sorokban kell döntened.'; return; }
+  B.grid[y][x] = B.target[y][x];
+  updateBoard();
+});
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setPixelRatio(pixelRatio); renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  U.uDpr.value = pixelRatio;
+}
+addEventListener('resize', resize);
+resize();
+
+/* ---------- ciklus ---------- */
+let frames = 0, acc = 0, slow = 0, last = performance.now(), interacting = false, frameMs = 0;
+const probe = new Uint8Array(4);
+const stats = el('stats');
+renderer.info.autoReset = false;
+controls.addEventListener('start', () => { interacting = true; });
+controls.addEventListener('end', () => { interacting = false; });
+function tick() {
+  requestAnimationFrame(tick);
+  const now = performance.now();
+  /* nyugalomban 30 fps elég, forgatás és spirál közben fut teljes sebességgel */
+  const minGap = boardOpen ? 66 : (interacting || H) ? 0 : 31;
+  if (now - last < minGap) return;
+  const real = (now - last) / 1000, dt = Math.min(real, .1);
+  last = now;
+  U.uTime.value += dt;
+  if (grow !== growTarget) {
+    const dir = Math.sign(growTarget - grow);
+    grow = clamp(grow + dir * growSpeed * dt, Math.min(grow, growTarget), Math.max(grow, growTarget));
+    if (grow === 0 && onRetreated) { const f = onRetreated; onRetreated = null; f(); }
+  }
+  U.uGrow.value = 1 - Math.pow(1 - grow, 1.7);
+  if (H) updateHelix(dt);
+  controls.update();
+  renderer.info.reset();
+  /* másodpercenként egyszer megmérjük a valódi GPU-időt: a readPixels megvárja, hogy a kép elkészüljön, így a böngésző fps-korlátja nem torzítja */
+  const measure = acc + real >= 1;
+  const t0 = measure ? performance.now() : 0;
+  renderer.render(scene, camera);
+  if (measure) { renderer.getContext().readPixels(0, 0, 1, 1, renderer.getContext().RGBA, renderer.getContext().UNSIGNED_BYTE, probe); frameMs = performance.now() - t0; }
+  frames++; acc += real;
+  if (acc >= 1) {
+    const fps = Math.round(frames / acc);
+    stats.textContent = `${fps} fps · ${Math.round(frameMs)} ms · ${Math.round(renderer.info.render.triangles / 1000)}k`;
+    if (!boardOpen && !interacting && !H && fps < 24) { if (++slow >= 3 && pixelRatio > 1) { pixelRatio = Math.max(1, pixelRatio - .25); resize(); slow = 0; } } else slow = 0;
+    frames = 0; acc = 0;
+  }
+}
+
+/* ellenőrző horog */
+window.__garden = {
+  boards: BOARD_COUNT, rows: ROWS.length,
+  stats(n) {
+    const R = rng(123); let empties = 0, minE = 99, maxE = 0, withFree = 0, broken = 0, alts = 0;
+    for (let i = 0; i < n; i++) {
+      const dna = boardRows(Math.floor(R() * BOARD_COUNT));
+      const P = makePuzzle(dna, R);
+      const e = P.clue.flat().filter(v => v == null).length;
+      empties += e; minE = Math.min(minE, e); maxE = Math.max(maxE, e);
+      if (P.free.length) withFree++;
+      const d = deduce(P.clue);
+      if (!d || !d.every((row, y) => P.free.includes(y) || row.every((v, x) => v === P.target[y][x]))) broken++;
+      let m = 0;
+      for (let b = 0; b < BOARD_COUNT; b++) { const rows = boardRows(b); if (rows.every((k, y) => ROWS[k].every((v, x) => P.clue[y][x] == null || P.clue[y][x] === v))) { m++; if (!rows.every((k, y) => P.free.includes(y) || k === dna[y])) broken++; } }
+      if (m >= 2) alts++;
+    }
+    return { n, avgEmpty: empties / n, minE, maxE, withFree, multipleChoices: alts, broken };
+  },
+  solveBoard() { B.grid = B.target.map(r => r.slice()); updateBoard(); },
+  dna: () => current.dna, phase: () => H ? H.t : null, grow: () => grow,
+  plantDNA(dna, code) { previous = current; plantIt(genomeFromDNA(dna, code || 'teszt')); grow = 1; growTarget = 1; },
+  setGrow(v) { grow = v; growTarget = v; }, stopRotate() { controls.autoRotate = false; },
+};
+
+plantIt(genomeFromDNA(nearestBoard([2, 5, 1, 3, 0, 5], rng(3)), 'kert01'));
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
