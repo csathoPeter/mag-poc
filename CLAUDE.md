@@ -41,6 +41,7 @@ tools/render_shots.sh /tmp/a.png planet,bolygo01,14,12 planet,bolygo01,14,23,foc
 
 - A `--shot=kimenet.png,dna,kód,növekedés[,fly[,go]]` argumentumot a `main.gd` kezeli: betölti az állapotot, ha `go`, előretolja a kart, kiírja a `STATS` sort, ment egy képet és kilép.
 - Bolygó: `--shot=kimenet.png,planet,kód,fák száma[,óra[,focusN|plant]]`. Az óra a napszakot rögzíti (pl. 12 nappal, 19 alkony, 23 éjjel).
+- **Automatikus mérés:** a „mérés” gomb (vagy a `?meres` URL-paraméter) kb. 2 perc alatt végigpróbálja a beállításokat kint és leszállva, a végén HTML-rétegen táblázat + „Küldés GitHubra” (előre kitöltött issue a repóban) és „Másolás”. Az eredményt az issue-ból olvasd ki. Natívan: `godot -- --bench` kiírja a `BENCH` táblázatot és kilép.
 - A webes buildben a második, apró gombsor mérőkapcsoló: belső 3D-felbontás (100/75/60/50%), fű be/ki, részletes fák száma (4/1), ég (textúra/sima/régi), tiltshift, élsimítás. A sarokban a valódi és a 3D renderfelbontás is látszik.
 - A szoftveres renderelés 1–6 fps-t ad: ez **nem** teljesítménymérés, csak a kép és a hibák ellenőrzése. A valódi teljesítményt Péter méri iPhone 15-ön (a sarokban fps, CPU/GPU ms, háromszögszám, fák száma).
 - Minden változtatás után nézd meg legalább egy képernyőképen, mielőtt pusholsz. A Compatibility (webes) renderer másképp néz ki: ha a látványt hangolod, azt is nézd meg, pl. a webes exportot fej nélküli Chrome-mal.

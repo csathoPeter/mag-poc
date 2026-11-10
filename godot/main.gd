@@ -97,6 +97,42 @@ var scale_i := 0
 var sky_i := 0
 var tilt_ok := true
 var hi_trees := 4
+var dbg_btn := {}
+
+# Automatikus mérés: végigpróbálja a beállításokat kint és leszállva, a végén táblázat + küldés GitHubra
+const BENCH_SETTLE := 1.2
+const BENCH_MEASURE := 3.5
+const BENCH_STEPS := [
+	["kint", "alap", {}],
+	["kint", "75%", {"scale": .75}],
+	["kint", "50%", {"scale": .5}],
+	["kint", "fű ki", {"grass": false}],
+	["kint", "árnyék ki", {"shadow": false}],
+	["kint", "ragyogás ki", {"glow": false}],
+	["kint", "ég sima", {"sky": 1}],
+	["kint", "AA ki", {"aa": false}],
+	["lent", "alap", {}],
+	["lent", "75%", {"scale": .75}],
+	["lent", "60%", {"scale": .6}],
+	["lent", "50%", {"scale": .5}],
+	["lent", "fű ki", {"grass": false}],
+	["lent", "1 részletes fa", {"hi": 1}],
+	["lent", "árnyék ki", {"shadow": false}],
+	["lent", "ragyogás ki", {"glow": false}],
+	["lent", "ég sima", {"sky": 1}],
+	["lent", "tilt ki", {"tilt": false}],
+	["lent", "AA ki", {"aa": false}],
+	["lent", "minden ki, 50%", {"scale": .5, "grass": false, "hi": 1, "shadow": false, "glow": false, "sky": 1, "tilt": false, "aa": false}],
+]
+var bench_on := false
+var bench_i := -1
+var bench_t := 0.0
+var bench_dt := PackedFloat32Array()
+var bench_cpu := 0.0
+var bench_tris := 0
+var bench_rows: Array = []
+var bench_cli := false
+var bench_tod := 0
 
 
 func _ready() -> void:
@@ -113,6 +149,8 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shot="):
 			shot_args = a.substr(7).split(",")
+		if a == "--bench":
+			bench_cli = true
 	_build_tag()
 	if shot_args.size() > 0 and shot_args[1] == "planet":
 		grow_start = 1.0
@@ -129,6 +167,8 @@ func _ready() -> void:
 			start_garden()
 	else:
 		start_planet("bolygo01", 14)
+	if bench_cli or (OS.has_feature("web") and str(JavaScriptBridge.eval("location.search", true)).contains("meres")):
+		start_bench.call_deferred()
 
 
 func _build_world() -> void:
@@ -274,31 +314,32 @@ func _build_ui() -> void:
 	var dbg := HBoxContainer.new()
 	dbg.add_theme_constant_override("separation", 3)
 	col.add_child(dbg)
-	# a lambdák a helyi változót létrehozáskor másolják, ezért a gombokat egy szótárból érik el
-	var btn := {}
+	# a gombok egy tagváltozó szótárában vannak, hogy a lambdák és a mérés is elérje őket
+	var btn := dbg_btn
 	btn.sc = _small_button(dbg, "100%", func() -> void:
 		scale_i = (scale_i + 1) % SCALES.size()
 		get_viewport().scaling_3d_scale = SCALES[scale_i]
-		btn.sc.text = "%d%%" % roundi(SCALES[scale_i] * 100.0))
+		_sync_dbg())
 	btn.gr = _small_button(dbg, "fű be", func() -> void:
 		planet.set_grass(not planet.grass_on)
-		btn.gr.text = "fű be" if planet.grass_on else "fű ki")
+		_sync_dbg())
 	btn.ht = _small_button(dbg, "fa 4", func() -> void:
 		hi_trees = 1 if hi_trees == 4 else 4
-		btn.ht.text = "fa %d" % hi_trees
-		_planet_lod())
+		_planet_lod()
+		_sync_dbg())
 	btn.sk = _small_button(dbg, SKY_MODES[0], func() -> void:
 		sky_i = (sky_i + 1) % SKY_MODES.size()
 		space_mat.set_shader_parameter("mode", sky_i)
-		btn.sk.text = SKY_MODES[sky_i])
+		_sync_dbg())
 	btn.tl = _small_button(dbg, "tilt be", func() -> void:
 		tilt_ok = not tilt_ok
 		tilt_quad.visible = tilt_ok and garden_mode == "planet" and view == "surface"
-		btn.tl.text = "tilt be" if tilt_ok else "tilt ki")
+		_sync_dbg())
 	btn.aa = _small_button(dbg, "AA 2x", func() -> void:
 		var vp := get_viewport()
 		vp.msaa_3d = Viewport.MSAA_DISABLED if vp.msaa_3d != Viewport.MSAA_DISABLED else Viewport.MSAA_2X
-		btn.aa.text = "AA ki" if vp.msaa_3d == Viewport.MSAA_DISABLED else "AA 2x")
+		_sync_dbg())
+	btn.bm = _small_button(dbg, "mérés", start_bench)
 	joy.set_anchors_preset(Control.PRESET_FULL_RECT)
 	joy.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	joy.draw.connect(func() -> void:
@@ -318,6 +359,15 @@ func _joy_move(p: Vector2) -> void:
 	joy_knob = (p - _joy_center()).limit_length(JOY_R)
 	stick = joy_knob / JOY_R
 	joy.queue_redraw()
+
+
+func _sync_dbg() -> void:
+	dbg_btn.sc.text = "%d%%" % roundi(get_viewport().scaling_3d_scale * 100.0)
+	dbg_btn.gr.text = "fű be" if planet.grass_on else "fű ki"
+	dbg_btn.ht.text = "fa %d" % hi_trees
+	dbg_btn.sk.text = SKY_MODES[sky_i]
+	dbg_btn.tl.text = "tilt be" if tilt_ok else "tilt ki"
+	dbg_btn.aa.text = "AA ki" if get_viewport().msaa_3d == Viewport.MSAA_DISABLED else "AA 2x"
 
 
 func _small_button(parent: Container, text: String, cb: Callable) -> Button:
@@ -686,6 +736,9 @@ func _process(delta: float) -> void:
 		var k: float = get_viewport().scaling_3d_scale
 		stats_l.text = "%d fps · GPU %.1f · CPU %.1f ms · %dk · %d fa · %d×%d 3D %d×%d" % [Engine.get_frames_per_second(), gpu, cpu, tris / 1000, (trees.size() if garden_mode != "" else plants.size()), ws.x, ws.y, roundi(ws.x * k), roundi(ws.y * k)]
 
+	if bench_on:
+		_bench_process(delta)
+
 	if shot_args.size() > 0 and queue.is_empty():
 		shot_frames += 1
 		if shot_frames == 1 and garden_mode == "planet" and shot_args.size() > 5:
@@ -931,6 +984,8 @@ func _tap(pos: Vector2) -> void:
 
 
 func _planet_input(event: InputEvent) -> void:
+	if bench_on:
+		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			touches[event.index] = event.position
@@ -1107,3 +1162,140 @@ func _update_tod(delta: float, snap: bool) -> void:
 	env.ambient_light_energy = lerpf(1.2, 1.6, night)
 	if crossed:
 		_tag_text()
+
+
+# ---------------------------------------------------------------- Mérés
+
+## Egységes alapállapot (azonos bolygó, nappal), aztán lépésenként egy-egy beállítás, kint és leszállva.
+func start_bench() -> void:
+	if bench_on:
+		return
+	bench_on = true
+	bench_rows.clear()
+	bench_tod = tod_i
+	tod_i = 2
+	tod_btn.text = TOD_NAMES[tod_i]
+	grow_start = 1.0
+	start_planet("bolygo01", 14)
+	grow_start = 0.0
+	bench_i = -1
+	bench_t = 0.0
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("var o=document.getElementById('mag-bench'); if(o) o.remove();", true)
+
+
+func _bench_cfg(cfg: Dictionary) -> void:
+	get_viewport().scaling_3d_scale = cfg.get("scale", 1.0)
+	planet.set_grass(cfg.get("grass", true))
+	hi_trees = cfg.get("hi", 4)
+	sun.shadow_enabled = cfg.get("shadow", true)
+	env.glow_enabled = cfg.get("glow", true)
+	sky_i = cfg.get("sky", 0)
+	space_mat.set_shader_parameter("mode", sky_i)
+	tilt_ok = cfg.get("tilt", true)
+	tilt_quad.visible = tilt_ok and view == "surface"
+	get_viewport().msaa_3d = Viewport.MSAA_2X if cfg.get("aa", true) else Viewport.MSAA_DISABLED
+	_planet_lod()
+	_sync_dbg()
+
+
+func _bench_next() -> void:
+	bench_i += 1
+	bench_t = 0.0
+	bench_dt.clear()
+	bench_cpu = 0.0
+	if bench_i >= BENCH_STEPS.size():
+		_bench_done()
+		return
+	var step: Array = BENCH_STEPS[bench_i]
+	var want_view: String = "surface" if step[0] == "lent" else "orbit"
+	if want_view != view:
+		if want_view == "surface":
+			_focus(0)
+		else:
+			_unfocus()
+		# nézetváltáskor tovább várunk: a kamera odarepül, a fűfolt felépül
+		bench_t = -2.5
+	_bench_cfg(step[2])
+
+
+func _bench_process(delta: float) -> void:
+	if bench_i < 0:
+		# a bolygó összes fája elkészült, a kamera beért
+		if queue.is_empty():
+			bench_t += delta
+			if bench_t > 2.0:
+				_bench_next()
+		return
+	bench_t += delta
+	var step: Array = BENCH_STEPS[bench_i]
+	name_l.text = "Mérés %d/%d" % [bench_i + 1, BENCH_STEPS.size()]
+	traits_l.text = "%s · %s – kérlek, ne nyúlj a képernyőhöz (kb. %d mp)" % [step[0], step[1], roundi((BENCH_STEPS.size() - bench_i) * (BENCH_SETTLE + BENCH_MEASURE))]
+	if bench_t < BENCH_SETTLE:
+		return
+	bench_dt.append(delta)
+	bench_cpu += RenderingServer.viewport_get_measured_render_time_cpu(get_viewport().get_viewport_rid())
+	bench_tris = RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
+	if bench_t >= BENCH_SETTLE + BENCH_MEASURE:
+		var n := bench_dt.size()
+		var total := 0.0
+		for d in bench_dt:
+			total += d
+		var sorted := bench_dt.duplicate()
+		sorted.sort()
+		bench_rows.append({"view": step[0], "name": step[1], "fps": n / maxf(total, .001), "avg": total / maxi(n, 1) * 1000.0,
+			"p95": sorted[mini(n - 1, int(n * .95))] * 1000.0, "cpu": bench_cpu / maxi(n, 1), "tris": bench_tris})
+		_bench_next()
+
+
+func _bench_info() -> String:
+	var ws := get_window().size
+	var info := "%s · %s · %s · ablak %d×%d · skála %.1f" % [OS.get_name(), RenderingServer.get_current_rendering_method(), RenderingServer.get_video_adapter_name(), ws.x, ws.y, DisplayServer.screen_get_scale()]
+	if OS.has_feature("web"):
+		var build := str(JavaScriptBridge.eval("(function(){try{return GODOT_CONFIG.executable}catch(e){return ''}})()", true))
+		var ua := str(JavaScriptBridge.eval("navigator.userAgent", true))
+		info = "build %s · %s\n%s" % [build, info, ua]
+	return info
+
+
+func _bench_done() -> void:
+	bench_on = false
+	_bench_cfg({})
+	tod_i = bench_tod
+	tod_btn.text = TOD_NAMES[tod_i]
+	_unfocus()
+	_planet_texts()
+	var info := _bench_info()
+	var txt := "Mag mérés\n%s\n\n" % info
+	var md := "Automatikus mérés a játékból.\n\n%s\n\n| nézet | beállítás | fps | átlag ms | 95%% ms | CPU ms | háromszög |\n|---|---|---|---|---|---|---|\n" % info.replace("\n", "  \n")
+	for r in bench_rows:
+		txt += "%-4s %-15s %5.1f fps  %5.1f ms  95%%: %5.1f  CPU %4.1f  %dk\n" % [r.view, r.name, r.fps, r.avg, r.p95, r.cpu, r.tris / 1000]
+		md += "| %s | %s | %.1f | %.1f | %.1f | %.1f | %dk |\n" % [r.view, r.name, r.fps, r.avg, r.p95, r.cpu, r.tris / 1000]
+	print("BENCH\n", txt)
+	traits_l.text = "Mérés kész."
+	if bench_cli:
+		get_tree().quit()
+		return
+	if OS.has_feature("web"):
+		_bench_overlay(txt, md)
+	else:
+		DisplayServer.clipboard_set(txt)
+		traits_l.text = "Mérés kész, az eredmény a vágólapon."
+
+
+## Weben valódi HTML-réteg: a link és a másolás gomb így a böngésző saját érintésére fut (iOS-en ez kell hozzá).
+func _bench_overlay(txt: String, md: String) -> void:
+	var title := "Mérés %s" % Time.get_datetime_string_from_system(false, true)
+	var js := """(function(txt, md, title){
+var old=document.getElementById('mag-bench'); if(old) old.remove();
+var d=document.createElement('div'); d.id='mag-bench';
+d.style.cssText='position:fixed;left:10px;right:10px;top:10px;bottom:10px;z-index:9999;background:rgba(24,18,44,.94);color:#fff;font:14px/1.4 -apple-system,system-ui,sans-serif;padding:14px;border-radius:16px;display:flex;flex-direction:column;gap:10px;box-sizing:border-box';
+var h=document.createElement('div'); h.textContent='Mérés kész – küldd el, és megnézem!'; h.style.cssText='font-weight:600;font-size:16px';
+var pre=document.createElement('pre'); pre.textContent=txt; pre.style.cssText='white-space:pre-wrap;margin:0;font:10.5px/1.35 ui-monospace,Menlo,monospace;flex:1;overflow:auto;background:rgba(255,255,255,.06);padding:8px;border-radius:10px';
+function btn(t){var b=document.createElement('a'); b.textContent=t; b.style.cssText='display:block;text-align:center;padding:12px;border-radius:12px;background:#7a6cf0;color:#fff;text-decoration:none;font-weight:600'; return b;}
+var a=btn('Küldés GitHubra (új issue)'); a.href='https://github.com/csathoPeter/mag-poc/issues/new?title='+encodeURIComponent(title)+'&body='+encodeURIComponent(md); a.target='_blank'; a.rel='noopener';
+var c=btn('Másolás'); c.href='#'; c.style.background='#4b4570'; c.onclick=function(e){e.preventDefault(); navigator.clipboard.writeText(txt).then(function(){c.textContent='Kimásolva ✓';},function(){c.textContent='Nem sikerült, jelöld ki a szöveget';});};
+var x=btn('Bezár'); x.href='#'; x.style.background='transparent'; x.style.border='1px solid rgba(255,255,255,.3)'; x.onclick=function(e){e.preventDefault(); d.remove();};
+d.appendChild(h); d.appendChild(pre); d.appendChild(a); d.appendChild(c); d.appendChild(x); document.body.appendChild(d);
+})(%s, %s, %s);""" % [JSON.stringify(txt), JSON.stringify(md), JSON.stringify(title)]
+	JavaScriptBridge.eval(js, true)
