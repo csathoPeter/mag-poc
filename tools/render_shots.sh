@@ -13,6 +13,10 @@
 #     sow (a mag földet ért: jel + felirat) | sowNN (az elvetés NN%-ánál, pl. sow30 = a mag hullik)
 #     hatchNN (elvetés, nap +1, a kikelés NN%-ánál, pl. hatch50) | revealNN (a mentésből kikelő fa, --state és --nap=+1 kell)
 #   Gondozás: state,óra,thirsty (3 nap múlva, lekonyulva) | waterNN (öntözés NN%-nál) | bloom | bud | wilt | gatherNN (maggyűjtés)
+#   Keresztezés (két teszt-maggal a kert fáiról): state,óra,crossbag (táska párválasztó módban) | cross / crossNN (a keresztezett
+#     tábla, a lezárt sorok kitöltve, 1/2/M jellel) | sprouts / sproutsNN (a három csíra, a kinövés NN%-ánál) | starsNN (a 0. csíra
+#     választva: a két csillag felszáll, NN% ≈ 45 a spirál eleje) | crossplay (valódi koppintások: Keresztezem → Ezzel → tábla →
+#     Ezt nevelem; --state=fájl-lal a mentésbe is)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 G="$HOME/godot-bin/godot"

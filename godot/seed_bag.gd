@@ -3,16 +3,25 @@ extends Control
 ## A magos táska: a táskában lévő magok (név, főbb tulajdonságok, eredet, nap) és a még megfejtetlen napi magok
 ## (a mai és az elmúlt 7 nap kihagyottjai; koppintásra a táblájuk nyílik). Lebegő, fénylő panel, mint a DNS-tábla.
 ## „Elvetem”: a táska bezárul, a mag fénypontként a bolygóra hull (seed_fx.gd), másnap kikel (hatching.gd).
+## „Keresztezem” (M5, gyűjtött és keresztezett magon): a táska párválasztó módba vált – a többi magon „Ezzel”,
+## a választotton „Mégse”; két koppintással indul a keresztezés (crossing.gd). Ha a keresztezett tábla kész, de
+## a három csíra közül még nem választottál, legfelül „Három csíra vár” kártya.
 
 signal sow(seed_id: int)
 signal solve(day: int)
 signal closed
+## Keresztezés: a (1. szülő) és b (2. szülő) magja.
+signal cross(a_id: int, b_id: int)
+## A választásra váró csírák megnyitása.
+signal sprouts
 
 const ORIGIN_NAMES := {"napi": "A nap magja", "gyujtes": "Gyűjtött mag", "keresztezes": "Keresztezett mag", "csillag": "Csillagról hozott mag"}
 ## A táska szakaszai ebben a sorrendben (ha egynél több fajta mag van, fejléccel elválasztva).
 const SECTIONS := [["napi", "A nap magjai"], ["gyujtes", "Gyűjtött magok – a virágzó fáidról"], ["keresztezes", "Keresztezett magok"], ["csillag", "Csillagról hozott magok"]]
 ## A gyűjtött mag színe a táskában (kerti zöld), hogy jól elváljon a nap magjától (menta) és a megfejtetlentől (arany).
 const C_GATHERED := Color(.80, .95, .52)
+## A keresztezett mag színe (levendula, mint a mutáció jele a táblán).
+const C_CROSSED := Color(.86, .66, 1.0)
 
 var _panel := PanelContainer.new()
 var _title := Label.new()
@@ -22,6 +31,8 @@ var _list := VBoxContainer.new()
 var _t := 0.0
 var _laid_for := Vector2.ZERO
 var _args: Array = []
+## Párválasztó mód: ennek a magnak keresünk párt (-1 = nincs).
+var pick_a := -1
 
 
 func _ready() -> void:
@@ -42,6 +53,8 @@ func _ready() -> void:
 	_msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_msg)
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# húzással görgethető, de görgetősáv nélkül: a megjelenő-eltűnő sáv minden képkockában átrendezte (rángatta) a panelt
+	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	_scroll.scroll_deadzone = 8
 	col.add_child(_scroll)
 	_list.add_theme_constant_override("separation", 8)
@@ -52,6 +65,7 @@ func _ready() -> void:
 	col.add_child(row)
 	BoardView.make_button(row, "Bezár", func() -> void:
 		visible = false
+		pick_a = -1
 		closed.emit())
 
 
@@ -64,20 +78,31 @@ func open(game: GameState, highlight := -1, msg := "", fade := true) -> void:
 	var vp := get_viewport_rect().size
 	_laid_for = vp
 	var w := minf(vp.x - 16.0, 440.0) - 24.0
-	_msg.text = msg
-	_msg.visible = msg != ""
-	_msg.custom_minimum_size = Vector2(w, 0)
 	var count := 0
 	if not game.data.is_empty():
+		if pick_a >= 0 and game.find_seed(pick_a).is_empty():
+			pick_a = -1
+		var picking := pick_a >= 0
 		var today := GameState.today()
-		for day in game.daily_open_days():
-			var when := "ma" if day == today else "tegnap" if day == today - 1 else "%d napja" % (today - day)
-			_card(w, {}, "A mai mag vár" if day == today else "Megfejtetlen napi mag",
-				"%s · %s\nA DNS-táblája még kitöltésre vár." % [GameState.day_label(day), when],
-				"Megfejtem", func() -> void: solve.emit(day), false, BoardView.C_FREE)
-			count += 1
+		var pend := game.pending_sprouts()
 		var seeds: Array = (game.data.bag as Array).duplicate()
 		seeds.reverse()
+		if picking:
+			var a := game.find_seed(pick_a)
+			msg = ("Kivel keresztezed? A párja mellett koppints: „Ezzel”. (%s)" % GameState.seed_name(a)) if seeds.size() > 1 \
+				else "A keresztezéshez kell még egy mag: gyűjts egy virágzó fáról, vagy fejtsd meg a nap magját."
+		if not pend.is_empty() and not picking:
+			var names: Array = pend.names
+			_card(w, {"sprouts": pend.sprouts}, "Három csíra vár", "%s × %s\nVálassz közülük: egy mag lesz, kettő csillag." % [names[0], names[1]],
+				[["Választok", func() -> void: sprouts.emit(), BoardView.C_FREE]], highlight == -2, BoardView.C_FREE)
+			count += 1
+		if not picking:
+			for day in game.daily_open_days():
+				var when := "ma" if day == today else "tegnap" if day == today - 1 else "%d napja" % (today - day)
+				_card(w, {}, "A mai mag vár" if day == today else "Megfejtetlen napi mag",
+					"%s · %s\nA DNS-táblája még kitöltésre vár." % [GameState.day_label(day), when],
+					[["Megfejtem", func() -> void: solve.emit(day), BoardView.C_FREE]], false, BoardView.C_FREE)
+				count += 1
 		# szakaszonként (a nap magjai, gyűjtött magok, …), mindegyikben a legújabb elöl
 		var groups: Array = []
 		for sec in SECTIONS:
@@ -90,18 +115,12 @@ func open(game: GameState, highlight := -1, msg := "", fade := true) -> void:
 				continue
 			if filled > 1 or count > 0:
 				_header(w, gr[0])
-			for s in gr[1]:
-				var dna: Array = s.dna
-				var sid := int(s.id)
-				if str(s.origin) == "gyujtes":
-					var title: String = s.name if str(s.name) != "" else "%s magja" % Genes.latin_name(dna)
-					_card(w, s, title, "%s\nSaját fádról szedted · %s" % [Genes.traits_text(dna), GameState.day_label(int(s.day))],
-						"Elvetem", func() -> void: sow.emit(sid), sid == highlight, C_GATHERED)
-				else:
-					var origin: String = ORIGIN_NAMES.get(str(s.origin), "Mag")
-					_card(w, s, Genes.latin_name(dna), "%s\n%s · %s" % [Genes.traits_text(dna), origin, GameState.day_label(int(s.day))],
-						"Elvetem", func() -> void: sow.emit(sid), sid == highlight, BoardView.C_AT)
+			for sd in gr[1]:
+				_seed_card(w, sd, highlight, picking, pend.is_empty())
 				count += 1
+	_msg.text = msg
+	_msg.visible = msg != ""
+	_msg.custom_minimum_size = Vector2(w, 0)
 	if count == 0:
 		var l := Label.new()
 		BoardView._style_label(l, 13, BoardView.C_DIM)
@@ -116,6 +135,49 @@ func open(game: GameState, highlight := -1, msg := "", fade := true) -> void:
 		create_tween().tween_property(self, "modulate:a", 1.0, .3)
 
 
+## Egy mag kártyája. Párválasztáskor: a választott magon „Mégse”, a többin „Ezzel”; máskor „Elvetem”, és a gyűjtött
+## és keresztezett magon „Keresztezem” is (ha nem vár választásra korábbi keresztezés csírája).
+func _seed_card(w: float, sd: Dictionary, highlight: int, picking: bool, can_cross: bool) -> void:
+	var dna: Array = sd.dna
+	var sid := int(sd.id)
+	var origin := str(sd.origin)
+	var accent: Color = C_GATHERED if origin == "gyujtes" else C_CROSSED if origin == "keresztezes" else BoardView.C_AT
+	var title := GameState.seed_name(sd)
+	var body := ""
+	if origin == "gyujtes":
+		body = "%s\nSaját fádról szedted · %s" % [Genes.traits_text(dna), GameState.day_label(int(sd.day))]
+	elif origin == "keresztezes" and (sd.parents as Array).size() == 2:
+		body = "%s\nKeresztezés: %s × %s · %s" % [Genes.traits_text(dna), Genes.latin_name(sd.parents[0]), Genes.latin_name(sd.parents[1]), GameState.day_label(int(sd.day))]
+	else:
+		body = "%s\n%s · %s" % [Genes.traits_text(dna), ORIGIN_NAMES.get(origin, "Mag"), GameState.day_label(int(sd.day))]
+	var actions: Array = []
+	var hl := sid == highlight
+	if picking:
+		if sid == pick_a:
+			actions.append(["Mégse", func() -> void: _pick(-1), BoardView.C_DIM])
+			hl = true
+		else:
+			actions.append(["Ezzel", func() -> void: _partner(sid), BoardView.C_FREE])
+	else:
+		actions.append(["Elvetem", func() -> void: sow.emit(sid), accent])
+		if can_cross and (origin == "gyujtes" or origin == "keresztezes"):
+			actions.append(["Keresztezem", func() -> void: _pick(sid), BoardView.C_FREE])
+	_card(w, sd, title, body, actions, hl, accent)
+
+
+func _partner(sid: int) -> void:
+	var a := pick_a
+	pick_a = -1
+	cross.emit(a, sid)
+
+
+## Párválasztó mód be (a mag azonosítója) vagy ki (-1); a lista helyben újraépül.
+func _pick(id: int) -> void:
+	pick_a = id
+	if not _args.is_empty():
+		open(_args[0], -1, "", false)
+
+
 func _header(w: float, text: String) -> void:
 	var l := Label.new()
 	BoardView._style_label(l, 12, BoardView.C_DIM)
@@ -125,7 +187,8 @@ func _header(w: float, text: String) -> void:
 	_list.add_child(l)
 
 
-func _card(w: float, seed: Dictionary, title: String, body: String, action: String, cb: Callable, hl: bool, accent: Color) -> void:
+## actions: [[felirat, Callable, szín], …] – egymás alatt a kártya jobb oldalán.
+func _card(w: float, seed: Dictionary, title: String, body: String, actions: Array, hl: bool, accent: Color) -> void:
 	var card := PanelContainer.new()
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(1, 1, 1, .07 if not hl else .14)
@@ -166,10 +229,17 @@ func _card(w: float, seed: Dictionary, title: String, body: String, action: Stri
 	bl.text = body
 	bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(bl)
-	var b := BoardView.make_button(row, action, cb, accent)
-	b.size_flags_horizontal = Control.SIZE_SHRINK_END
-	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	b.custom_minimum_size = Vector2(96, 44)
+	var bc := VBoxContainer.new()
+	bc.add_theme_constant_override("separation", 6)
+	bc.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bc.mouse_filter = Control.MOUSE_FILTER_PASS
+	row.add_child(bc)
+	for ac in actions:
+		var b := BoardView.make_button(bc, ac[0], ac[1], ac[2])
+		b.size_flags_horizontal = Control.SIZE_SHRINK_END
+		b.custom_minimum_size = Vector2(104, 44 if actions.size() == 1 else 40)
+		if actions.size() > 1:
+			b.add_theme_font_size_override("font_size", 14)
 
 
 ## A mag kis képe: a virág színe középen, körülötte a lomb és a kéreg színe; a megfejtetlen magnál egy halvány rács.
@@ -180,6 +250,14 @@ func _draw_swatch(c: Control, seed: Dictionary, accent: Color) -> void:
 		for y in 3:
 			for x in 3:
 				c.draw_rect(Rect2(m + Vector2((x - 1.5) * (w + 3), (y - 1.5) * (w + 3)), Vector2(w, w)), Color(accent, .3 + .2 * float((x + y) % 2)))
+		return
+	if seed.has("sprouts"):
+		# választásra váró csírák: három kis virágszín-korong
+		var sp: Array = seed.sprouts
+		for i in sp.size():
+			var p := m + Vector2((i - 1) * 11.0, 5.0 - (6.0 if i == 1 else 0.0))
+			c.draw_circle(p, 7.5, Color(Genes.allele_color(5, sp[i].dna[5]), .9))
+			c.draw_circle(p, 4.5, Genes.allele_color(0, sp[i].dna[0]))
 		return
 	var dna: Array = seed.dna
 	c.draw_circle(m, 18.0, Color(Genes.allele_color(4, dna[4]), .9))

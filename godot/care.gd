@@ -97,9 +97,48 @@ static func gathered_today(t: Dictionary, day: int) -> bool:
 	return int(t.get("gathered", -1)) == day
 
 
-## Hozhat-e ma magot: virágzik, nem szomjas, és ma még nem szedtél róla (naponta fánként egy – a természet a korlát).
-static func can_gather(t: Dictionary, day: int) -> bool:
-	return stage(t, day).kind == BLOOM and not thirsty(t, day) and not gathered_today(t, day)
+## Tempó (M5): a kert egészében naponta kb. 1–3 mag legyen, akárhány fa van. Sok fánál nem minden virágzó fa hoz
+## magot: a nap „magot érlelő” fái a virágzó fák közül az első K a fa kódjából és a napból számolt sorrendben
+## (determinisztikus, minden nap más fák). K ≈ 0,4 + 0,6·√n (n = a bolygó kikelt fái), legfeljebb 3; a tört részt
+## a nap dönti el (pl. 1,44 → hol 1, hol 2). 3 fánál így minden virágzó fa hoz, 10 fánál ~2,3, 30 fánál 3.
+## A szomjas fa is lehet a kiválasztott, de csak öntözés után ad magot (újabb ok a gondozásra).
+const SEEDS_MAX := 3.0
+
+
+## Ennyi mag a cél naponta n kikelt fánál.
+static func seeds_per_day(n: int) -> float:
+	return minf(SEEDS_MAX, .4 + .6 * sqrt(float(maxi(n, 1))))
+
+
+## A nap magot érlelő fáinak kódjai a kert (a bolygó kikelt fái) közül.
+static func bearers(garden: Array, day: int) -> Array:
+	var bloom: Array = []
+	for t in garden:
+		if stage(t, day).kind == BLOOM:
+			bloom.append([str_hash("%s:mag:%d" % [str(t.get("code", "")), day]), str(t.get("code", ""))])
+	bloom.sort_custom(func(x: Array, y: Array) -> bool: return x[0] < y[0] or (x[0] == y[0] and x[1] < y[1]))
+	var target := seeds_per_day(garden.size())
+	var k := floori(target + float(str_hash("nap:%d" % day) % 1000) / 1000.0)
+	var out: Array = []
+	for i in mini(k, bloom.size()):
+		out.append(bloom[i][1])
+	return out
+
+
+## Érlel-e ma magot a fa (virágzik, és a kertben épp ő a nap magot érlelő fái között). garden: a bolygó kikelt fái
+## (üres = nincs korlát, pl. önellenőrzésben).
+static func bears_seed(t: Dictionary, day: int, garden: Array = []) -> bool:
+	if stage(t, day).kind != BLOOM:
+		return false
+	if garden.is_empty():
+		return true
+	return bearers(garden, day).has(str(t.get("code", "")))
+
+
+## Hozhat-e ma magot: virágzik, nem szomjas, ma még nem szedtél róla (naponta fánként egy – a természet a korlát),
+## és a kertben épp ő érlel ma magot (bears_seed).
+static func can_gather(t: Dictionary, day: int, garden: Array = []) -> bool:
+	return not thirsty(t, day) and not gathered_today(t, day) and bears_seed(t, day, garden)
 
 
 ## A virágok kinézete a shadernek: size (0 = nincs virág), open (0 = zárt bimbó, 1 = nyílt, >1 = szétterül),
@@ -126,8 +165,8 @@ static func flower_look(t: Dictionary, day: int) -> Dictionary:
 	return out
 
 
-## Rövid állapot a lebegő táblára (a fa neve alatt).
-static func status_text(t: Dictionary, day: int) -> String:
+## Rövid állapot a lebegő táblára (a fa neve alatt). garden: a bolygó kikelt fái (a maghozáshoz).
+static func status_text(t: Dictionary, day: int, garden: Array = []) -> String:
 	if thirsty(t, day):
 		return "szomjas\nkoppints rá, és megöntözöd"
 	var st := stage(t, day)
@@ -141,7 +180,12 @@ static func status_text(t: Dictionary, day: int) -> String:
 			s = "bimbós · %s kinyílik" % _when(int(st.left))
 		BLOOM:
 			s = "virágzik (ma még)" if int(st.left) <= 1 else "virágzik (még %d napig)" % int(st.left)
-			s += " · magot hozott ma" if gathered_today(t, day) else "\nkoppints egy virágra: mag"
+			if gathered_today(t, day):
+				s += " · magot hozott ma"
+			elif bears_seed(t, day, garden):
+				s += "\nkoppints egy virágra: mag"
+			else:
+				s += "\nma nem érlelt magot"
 		WILT:
 			s = "elnyílt · %s újra bimbózik" % _when(int(st.next))
 	return s

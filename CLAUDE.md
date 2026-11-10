@@ -14,26 +14,36 @@ godot/                  A játék (Godot 4.7.1, GDScript)
   main.gd               Jelenet, UI, kamera (bolygó: forgatás/leszállás; régi: egy fa, repülős kert), napszak, növekedés, mérőszámok
   planet.gd             Kis bolygó: domborzat, légkör, holdak, gyűrű, fű, fénypontok; bolygó-DNS a növényekből
   plant_gen.gd          Növénygenerátor: ágak gyűrűkből, levelek és virágok MultiMesh-ben, részletességi szintek
-  state.gd              Játékállapot és helyi mentés (GameState): játékos, bolygók, fák, csillagok, magos táska, today() + teszt-eltolás
+  state.gd              Játékállapot és helyi mentés (GameState, v3): játékos, bolygók, fák, csillagok, magos táska, keresztezés
+                        (félkész tábla / választásra váró csírák), lappangó virágszín (hidden), today() + teszt-eltolás
   genes.gd              DNS → genom: 6 gén × 14 változat, termetek, égboltok; DNS-tábla sorai, rejtett éjszakai fény; változatnevek, fajnév a DNS-ből
   dna_board.gd          DNS-tábla logikája (DnaBoard): szabályok, 11 222 tábla (lustán), következtetés, feladvány szabad sorokkal,
                         a nap feladványa a napsorszámból (saját xorshift), legközelebbi szabályos DNS (keresztezéshez), önellenőrzés
   board_view.gd         A tábla felülete (BoardView): lebegő, fénylő rács, génnevek a sorok mellett, finom hibajelzés, súgás;
-                        `parents`-szel 1 / 2 / M jelölés a sorok mellett (keresztezéshez kész); közös panel- és gombstílus
-  seed_bag.gd           Magos táska (SeedBag): magok + az elmúlt 7 nap megfejtetlen napi magjai, „Elvetem”
+                        `parents`-szel színes 1 / 2 / M jelvény a sorok mellett, a szabad sorok választékában (1)/(2)/(M);
+                        közös panel- és gombstílus
+  seed_bag.gd           Magos táska (SeedBag): magok + az elmúlt 7 nap megfejtetlen napi magjai, „Elvetem”; gyűjtött/keresztezett
+                        magon „Keresztezem” → párválasztó mód („Ezzel” / „Mégse”); „Három csíra vár” kártya
+  breeding.gd           Keresztezés szabályai (Breeding, tiszta függvények): a szülők génjeiből kívánt sorok → legközelebbi szabályos
+                        DNS, feladvány a szülők génjeit kínáló szabad sorokkal, három csíra (a játékos táblája + 2 testvér), rejtett
+                        virágszín (LATENT), önellenőrzés (`--crosstest`)
+  crossing.gd           Keresztezés folyamata (Crossing): táska → keresztezett tábla → három csíra → spirál / csillagok; mentés
+  sprout_pick.gd        „Három csíra” (SproutPick): közös 3D-előnézet egy SubViewportban (a csírák kinőnek, forognak), kártyánként
+                        fajnév, 6 gén 1/2/M jellel, rejtett szín, mini DNS-rács, „Ezt nevelem”; a másik kettő fényként felszáll
   seed_fx.gd            A nagy pillanat (SeedFx): kettős spirál a kész táblából (a mezőkből csavarodik, maggá húzódik, a táskába
                         repül), elvetéskor a mag hullása a bolygóra, fénygyűrű, lebegő felirat; koppintás: gyorsít / átugrik
   seed_marks.gd         A kelésre váró magok jele a bolygón (SeedMarks): földkupac + lüktető fénypont, a mentésből
   hatching.gd           Másnapi kikelés (Hatching): a kamera odarepül, a csíra kinő, „Kikelt a tegnapi magod: …”, revealed = igaz
   care.gd               Gondozás szabályai (Care, tiszta függvények): szomjazás (3 nap), virágzási ciklus (9 nap: bimbó, virágzás,
-                        elnyílás, pihenés; eltolás a hely sorszámából), maggyűjtés (naponta fánként 1), állapotszöveg
+                        elnyílás, pihenés; eltolás a hely sorszámából), maggyűjtés (naponta fánként 1, a kertben összesen
+                        ~0,4 + 0,6·√n, legfeljebb 3: a nap „magot érlelő” fái), állapotszöveg
   tending.gd            Gondozás a bolygón (Tending): lekonyulás/virágzás shader-uniformokkal, vízcsepp- és mag-csillanás jel,
                         öntözés (cseppek, rugalmas felegyenesedés), maggyűjtés (a mag a Táska gombjába repül, 2D rétegben)
   shaders/              Fa, levél, virág (szél a fa keretében, éjszakai fény, érintéshullám, lekonyulás, virágzási szakasz), fű (régi kert), bolygó-fű (szálanként, GodotGrass-ötletek), bolygó, légkör, űr-ég, gyűrű, fénypontok, lencse (makett-sáv / DSLR-mélységélesség);
                         glow_dot (fénylő pont additív halóval, MultiMesh), glow_bar (spirál-kötések), veil (fátyol a spirál alatt)
   export_presets.cfg    "Web" preset (egyszálas)
-prototype-threejs/      Korábbi Three.js-prototípus egy fájlban. A DNS-tábla, a feladvány-generátor (dna_board.gd) és a kettős spirál
-                        (seed_fx.gd) már át van víve; a keresztezés még innen jön.
+prototype-threejs/      Korábbi Three.js-prototípus egy fájlban. A DNS-tábla, a feladvány-generátor (dna_board.gd), a kettős spirál
+                        (seed_fx.gd) és a keresztezés (breeding.gd) már át van víve.
 tools/setup_godot.sh    Godot + szoftveres Vulkan telepítése (felhős gépen). `--web` a webes export sablont is letölti (1,3 GB-os csomagból).
 tools/render_shots.sh   Fej nélküli képernyőképek ellenőrzéshez
 .github/workflows/      Push a main ágra → webes export → gh-pages
@@ -47,6 +57,7 @@ tools/render_shots.sh   Fej nélküli képernyőképek ellenőrzéshez
 - **Mentés:** a játék induláskor a mentett kertet tölti be (első indításkor új játékoskód, 3 kezdő fa). URL-paraméterek teszteléshez: `?uj` törli a mentést és újat kezd (amíg az URL-ben van, minden betöltéskor!), `?nap=+1` napokkal előre tolja a játék napját (a mentésbe is bekerül, `?nap=0` állítja vissza), `?jatekos=KOD` új játéknál ezt a játékoskódot adja. A második apró gombsorban: „nap +N” (egy nappal előre), „próba” (véletlen bolygó, nem mentődik; „saját” = vissza), „törlés” (két koppintással), mellette az aktív bolygókód és a játék napja.
 - **A nap magja:** a fő gombsorban „A nap magja” (a mai tábla; ha kész, a táska) és „Táska (N)” (N = magok + megfejtetlen napok). A tábla minden koppintás után mentődik; kész táblánál a sorok kettős spirállá csavarodnak, a mag a táskába repül (koppintás: gyorsít, másodszor átugrik); „Elvetem” = a kamera a bolygó felé fordul, a mag a helyére hull, ott földkupac + lüktető fény jelzi (mentés után is). Holnap kel ki: „nap +1” vagy `?nap=+1` újratöltés után a kamera odarepül, a csíra kinő, „Kikelt a tegnapi magod: …” (koppintás: átugrik). `?tabla` / `?taska` induláskor megnyitja. A régi, azonnali véletlen ültetés a második apró sorban: „ültess”.
 - **Gondozás:** egy fára koppintva leszállsz, a lebegő táblán az állapota („szomjas”, „bimbós”, „virágzik (még N napig)”, „magot hozott ma”…). Szomjas fa (3 napja nem öntözték: lekonyul, fakó, mellette kék vízcsepp-fény): még egy koppintás rá = öntözés. Virágzó fán arany csillanás: egy virágra (vagy a csillanásra) koppintva a mag a Táskába repül (naponta fánként egy). A táskában a gyűjtött magok külön szakaszban, zöldes kerettel, ugyanúgy elvethetők. Kipróbálás: „nap +1” háromszor → minden fa szomjas; a napok léptetésével a virágzás (bimbó → virágzás → elnyílás) is látszik.
+- **Keresztezés:** a táskában egy gyűjtött (vagy keresztezett) magon „Keresztezem”, majd a párján (bármelyik másik mag, a nap magja is) „Ezzel” → keresztezett tábla: a lezárt sorok mellett színes 1 / 2 / M jel, a két arany sorban a játékos dönt (a választékban (1)/(2)/(M)). Kész tábla → „Három csíra”: egyet „Ezt nevelem” → kettős spirál, mag a táskába (`keresztezes`), a másik kettő fényként felszáll (csillag lett, adatszinten); „Később” = a csírák a táskában várnak („Három csíra vár”). A két mag elfogy. **Teszt:** a második apró sorban „+2 mag” két gyűjtött magot tesz a táskába a kert fáiról (bármikor, virágzástól függetlenül); `?kereszt` induláskor két teszt-maggal megnyitja a keresztezett táblát, `?kereszt=kesz` rögtön a három csírát (mindkettő a mentésbe ír).
 - Ha a workflow nem fut vagy elhasal, mondd el Péternek, és ne próbáld megkerülni a Pages beállításait (innen a Pages API nem érhető el).
 
 ## Ellenőrzés munka közben
@@ -61,6 +72,7 @@ tools/render_shots.sh /tmp/a.png planet,bolygo01,14,12 planet,bolygo01,14,23,foc
 - **DNS-tábla:** `godot --headless -- --boardtest[=napok]` (alap: 366 nap a mai naptól) minden nap feladványát legenerálja, és ellenőrzi: determinisztikus, logikával (találgatás nélkül) megoldható, a szabad sorokon kívül egyértelmű, a szabad sorokban van választás; a legközelebbi-DNS keresést is. `EREDMÉNY: rendben` a vége.
 - Tábla és táska képen (a `state` lövés 6. mezője): `board` (mai tábla üresen), `boardNN` (NN%-ban kitöltve), `boardNNx` (plusz egy szabálysértő mező), `boardplay` (valódi koppintás-eseményekkel kitölti, a szabad sorokban a másik változattal → táska), `solve` (megoldva → táska), `bag`. A nagy pillanat: `helixNN` (a kettős spirál NN%-ánál, pl. `helix45` a közepe), `sow` (megoldás + elvetés, a mag már földet ért: jel + felirat), `sowNN` (az elvetés NN%-ánál, pl. `sow30`: a mag hullik), `hatchNN` (megoldás, elvetés, nap +1, a kikelés NN%-ánál, pl. `hatch50`), `revealNN` (a mentésből kikelő fák, `--state=… --nap=+1` kell; `reveal` magában lefut és elmenti a `revealed`-et). A kikelés képernyőképnél csak `hatch`/`reveal` módban fut, máskor a még nem látott fák is kinőve látszanak. Pl. `MAG_ARGS="--state=/tmp/s.json --player=T1 --nap=+2" tools/render_shots.sh /tmp/a.png state,12,board50x state,12,solve state,12,bag`.
 - Gondozás képen (a `state` lövés 6. mezője): `thirsty` (3 nappal később, a 0. fa lekonyulva, vízcsepp-jel), `waterNN` (ugyanez, az öntözés NN%-ánál), `bloom` / `bud` / `wilt` (az első ilyen szakaszú fa; ha ma nincs, a napot előretolja), `gatherNN` (virágzó fáról maggyűjtés, a mag repülésének NN%-ánál). `--state`-tel az öntözés és a gyűjtés (és a napeltolás) a mentésbe is bekerül, így újratöltve (`state,12,bloom`, `state,12,bag`) ellenőrizhető; a `STATE` sor fánként kiírja az öntözés/gyűjtés napját és az állapotot, és a táska magjait. Pl. `MAG_ARGS="--state=/tmp/s.json --player=T1" tools/render_shots.sh /tmp/a.png state,12,thirsty state,12,water40 state,12,gather50 state,12,bag`.
+- **Keresztezés:** `godot --headless -- --crosstest[=párok]` (alap 300 véletlen pár): a csírák szabályosak, különbözők, determinisztikusak; hány mező a mutáció; milyen gyakran bújik elő a rejtett szín (két kék szülőtől fehér); a maghozás tempója 3–30 fánál. Képen (a `state` lövés 6. mezője, két teszt-maggal): `crossbag` (párválasztó táska), `cross` / `crossNN` (keresztezett tábla, 1/2/M jellel), `sprouts` / `sproutsNN` (a három csíra, a kinövés NN%-ánál), `starsNN` (a 0. csíra választva: csillagok felszállnak, ~45-től a spirál), `crossplay` (valódi kattintás-eseményekkel végig: Keresztezem → Ezzel → tábla → Ezt nevelem → táska; `--state`-tel mentve, a `STATE` sor kiírja a csillagokat is). Pl. `MAG_ARGS="--player=TESZT1" tools/render_shots.sh /tmp/a.png state,12,cross state,12,sprouts state,12,stars45`.
 - A `--shot=kimenet.png,dna,kód,növekedés[,fly[,go]]` argumentumot a `main.gd` kezeli: betölti az állapotot, ha `go`, előretolja a kart, kiírja a `STATS` sort, ment egy képet és kilép.
 - Bolygó: `--shot=kimenet.png,planet,kód,fák száma[,óra[,focusN|plant|zoomZ|macro]]`. Az óra a napszakot rögzíti (pl. 12 nappal, 19 alkony, 23 éjjel). `zoomZ`: bolygó-nézet közelsége (0 = egész bolygó, 1 = alacsony légi nézet), `macro`: leszállás a 0. fára és rá egy virágra. Hetedik elemként `yawX`: a kamera X radiánnal arrébb (a fű rögzítettségének ellenőrzéséhez). A `STATS` sor a fű rajzolásait és csomóit is kiírja.
 - A webes (Compatibility) renderert natívan is ki lehet próbálni: `xvfb-run -a godot --path . --rendering-method gl_compatibility --rendering-driver opengl3 -- --shot=...` – így derült ki, hogy weben a 3D képernyő-textúrának nincs használható mipmapje (a szintjeit a ragyogás tölti, ezért ott a lencse csak a 0. szintet olvassa); a 2D rétegben (canvas_item) viszont van, ha a ragyogás ki van kapcsolva.
@@ -86,7 +98,7 @@ tools/render_shots.sh /tmp/a.png planet,bolygo01,14,12 planet,bolygo01,14,23,foc
 
 ## Következő lépések (prioritás szerint)
 
-1. M5: keresztezés a gyűjtött magokból (a táskában `origin == "gyujtes"`, `parents` = [az anyafa DNS-e], `tree` = az anyafa id; DnaBoard.nearest + BoardView `parents` 1/2/M jelöléssel kész alap; a spirál `SeedFx.play_helix` a keresztezett táblával is megy). A virágzás / magtempó hangolása sok fánál (care.gd: CYCLE, bloom_len).
+1. M6: csillagképek a bolygó egén (`planet.stars`: elengedett fák és a keresztezés el nem választott csírái, `origin == "csira"`, saját `code`-dal és `hidden`-nel), koppintásra a fa, visszahozás magként (`origin` „csillag”, a `hidden` és a `code` maradjon).
 2. A nagy pillanatok hangja (M9) és napi egy értesítés („Kikelt a tegnapi magod”).
 3. Közelről a levelek szögletesek: finomabb levélforma vagy textúra a részletes szinten.
 4. Webes színek hangolása (a Compatibility renderer fakóbb lombot, foltos talajt ad).

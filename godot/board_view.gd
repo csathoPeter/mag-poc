@@ -19,6 +19,11 @@ const C_FREE := Color(1.0, .86, .48)
 const C_BAD := Color(1.0, .46, .52)
 const C_TEXT := Color(.95, .93, 1.0)
 const C_DIM := Color(.80, .76, .95, .62)
+## A mutáció jele (keresztezés): levendula, nem a hibát jelző korall.
+const C_MUT := Color(.86, .66, 1.0)
+
+const RULES := "Soronként és oszloponként 3-3 legyen mindkét bázispárból, és három egyforma nem állhat egymás mellett. Koppintásra a mező vált: üres, kettős (AT), hármas (GC), majd újra üres. Nincs hiba, csak próbálkozás."
+const RULES_CROSS := " A kész sor mellett 1 / 2: melyik szülőtől jött a gén, M: mutáció (a két szülő génjei ritkán férnek össze szabályosan)."
 
 var puzzle: Dictionary = {}
 var grid: Array = []
@@ -84,7 +89,6 @@ func _ready() -> void:
 	col.add_child(_choices)
 	_style_label(_rules, 11, C_DIM)
 	_rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_rules.text = "Soronként és oszloponként 3-3 legyen mindkét bázispárból, és három egyforma nem állhat egymás mellett. Koppintásra a mező vált: üres, kettős (AT), hármas (GC), majd újra üres. Nincs hiba, csak próbálkozás."
 	col.add_child(_rules)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
@@ -106,6 +110,7 @@ func open(p: Dictionary, title: String, subtitle: String, saved: Array = [], par
 				grid[y][x] = p.clue[y][x]
 	_title.text = title
 	_sub.text = subtitle
+	_rules.text = RULES + (RULES_CROSS if not parents.is_empty() else "")
 	finishing = false
 	_done_t = -1.0
 	_pop.clear()
@@ -285,6 +290,15 @@ func _draw_cell(pos: Vector2, x: int, y: int, is_bad: bool, is_free: bool) -> vo
 		draw_pair(_grid, get_theme_default_font(), r.get_center(), r.size.x, v, Color(col.lerp(Color.WHITE, .55), .62 if fixed else 1.0))
 
 
+## A keresztezés jelvénye: kis színes korong a betűvel (1 = menta, 2 = barack, M = levendula, mutáció).
+static func draw_mark(ci: CanvasItem, font: Font, c: Vector2, mark: String, r: float) -> void:
+	var col: Color = C_AT if mark == "1" else C_GC if mark == "2" else C_MUT
+	ci.draw_circle(c, r + 1.5, Color(col, .25))
+	ci.draw_circle(c, r, Color(col, .85))
+	var fs := int(r * 1.5)
+	ci.draw_string(font, Vector2(c.x - r, c.y + font.get_ascent(fs) * .36), mark, HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, fs, Color(.12, .07, .22))
+
+
 ## Egy bázispár rajza: két betű, köztük 2 (A=T) vagy 3 (G≡C) kötés. Saját rajz, mert a webes betűkészletben nincs ≡.
 static func draw_pair(ci: CanvasItem, font: Font, c: Vector2, w: float, v: int, col: Color) -> void:
 	var fs := int(w * .34)
@@ -308,9 +322,12 @@ func _draw_label(font: Font, pos: Vector2, y: int) -> void:
 	var k := DnaBoard.row_index(row) if complete else -1
 	var is_free := (puzzle.free as Array).has(y)
 	var head: String = Genes.GENE_NAMES[y]
-	if k >= 0 and not parents.is_empty():
-		head += "  " + ("1" if k == int(parents[0][y]) else "2" if k == int(parents[1][y]) else "M")
 	_grid.draw_string(font, pos + Vector2(0, 12), head, HORIZONTAL_ALIGNMENT_LEFT, label_w, 10, C_FREE if is_free else C_DIM)
+	if k >= 0 and not parents.is_empty():
+		# keresztezés: kis jelvény a gén neve mellett – 1 / 2 = melyik szülőtől jött, M = mutáció
+		var mk := "1" if k == int(parents[0][y]) else "2" if k == int(parents[1][y]) else "M"
+		var hw := font.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
+		draw_mark(_grid, font, pos + Vector2(minf(hw + 12.0, label_w - 8.0), 8.0), mk, 7.0)
 	var text := ""
 	var col := C_TEXT
 	var x := pos.x
@@ -385,16 +402,31 @@ func _update_texts() -> void:
 	var parts: Array = []
 	for y in puzzle.free:
 		var ch := DnaBoard.row_choices(puzzle, y)
+		if not parents.is_empty():
+			# keresztezésnél a szülők génjei elöl, utánuk a mutációk
+			ch.sort_custom(func(a: int, b: int) -> bool: return _parent_rank(y, a) < _parent_rank(y, b) or (_parent_rank(y, a) == _parent_rank(y, b) and a < b))
 		var names: Array = []
 		for k in ch:
-			names.append(Genes.allele_name(y, k))
-		var shown := names.slice(0, 4)
+			names.append(Genes.allele_name(y, k) + _parent_tag(y, k))
+		var most := 4 if parents.is_empty() else 3
+		var shown := names.slice(0, most)
 		var txt := ", ".join(shown.slice(0, shown.size() - 1)) + " vagy " + str(shown[shown.size() - 1]) if shown.size() > 1 else str(shown[0])
-		if names.size() > 4:
-			txt = ", ".join(shown) + " (és még %d)" % (names.size() - 4)
+		if names.size() > most:
+			txt = ", ".join(shown) + " (és még %d)" % (names.size() - most)
 		parts.append("%s: %s" % [Genes.GENE_NAMES[y], txt])
 	_choices.text = ("Az arany sorokban te döntesz. " + " · ".join(parts)) if not parts.is_empty() else ""
 	_reset_b.text = "Újra"
+
+
+## Keresztezésnél a választható változat mellé: (1) / (2) = az 1. / 2. szülőé, (M) = mutáció.
+func _parent_tag(y: int, k: int) -> String:
+	if parents.is_empty():
+		return ""
+	return " (1)" if k == int(parents[0][y]) else " (2)" if k == int(parents[1][y]) else " (M)"
+
+
+func _parent_rank(y: int, k: int) -> int:
+	return 0 if k == int(parents[0][y]) or k == int(parents[1][y]) else 1
 
 
 func _on_hint() -> void:

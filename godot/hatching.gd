@@ -7,7 +7,7 @@ extends Node
 ## Koppintás: az aktuális kikelés a végére ugrik.
 ##
 ## A főjelenet (main.gd) tagjait használja, ezért a host típus nélküli: trees, queue, retreating, saved_view, bench_on,
-## garden_mode, board, bag, fx, marks, planet, planet_dnas, tag, game, _focus(), _planet_texts(), _tree_title().
+## garden_mode, board, bag, crossing, fx, marks, planet, planet_dnas, tag, game, _focus(), _planet_texts(), _tree_title().
 
 ## Egy kikelés hossza (mp): repülés, szétnyílás (T_OPEN), növekedés (T_GROW–T_GROWN), felirat (T_TEXT).
 const DUR := 7.0
@@ -63,7 +63,7 @@ func _process(delta: float) -> void:
 
 func _can_start() -> bool:
 	return host.garden_mode == "planet" and host.saved_view and (host.queue as Array).is_empty() and not host.retreating \
-		and not host.board.visible and not host.bag.visible and not host.fx.busy() and not host.bench_on
+		and not host.board.visible and not host.bag.visible and not host.crossing.is_open() and not host.fx.busy() and not host.bench_on
 
 
 func _index(id: int) -> int:

@@ -15,11 +15,13 @@ extends RefCounted
 ##   bag          Array    magos táska, lásd new_seed()
 ##   daily        Dict     a nap magja: napsorszám → félkész rács vagy kész jelző és a választott DNS (lásd lent)
 ##   flags        Dict     apró jelzők (pl. látott bemutatók), bármi, ami nem érdemel saját mezőt
+##   cross        Dict     keresztezés (M5): félkész tábla {"a", "b", "grid"}, vagy kész, választásra váró csírák
+##                         {"done": true, "a", "b", "parents", "names", "solved", "sprouts": [...]}; üres = nincs
 ##
 ## A napok egész számok: a helyi dátum napsorszáma 1970. 01. 01. óta. Mindenhol today()-t használj,
 ## ne a rendszerórát, hogy a teszt-eltolás mindenre hasson.
 
-const VERSION := 2
+const VERSION := 3
 const SAVE_PATH := "user://mag_mentes.json"
 const BACKUP_SUFFIX := ".bak"
 ## Ennyi fa fér egy bolygóra (teljesítménykeret); utána új bolygó születik.
@@ -65,7 +67,9 @@ static func day_label(day: int) -> String:
 ## Kapcsolók a parancssorból (`-- --state=fájl --player=KOD --nap=+1 --uj`) és weben az URL-ből (`?nap=+1`, `?uj`, `?jatekos=KOD`).
 ##   state: a mentés helye a user:// helyett (teszteléshez), player: a játékoskód új játéknál,
 ##   day: teszt-eltolás napokban (null = nincs megadva; a mentésbe is bekerül, `?nap=0` állítja vissza),
-##   wipe: a mentés törlése indításkor (új játék), open: "tabla"/"taska" = indításkor nyitva (`?tabla`, `?taska`).
+##   wipe: a mentés törlése indításkor (új játék), open: "tabla"/"taska" = indításkor nyitva (`?tabla`, `?taska`),
+##   "kereszt" = két teszt-mag a kert fáiról és a keresztezett tábla nyitva (`?kereszt`; `?kereszt=kesz`: a tábla
+##   rögtön kész, a három csíra látszik).
 static func launch_options() -> Dictionary:
 	var o := {"state": "", "player": "", "wipe": false, "day": null, "open": ""}
 	var pairs: Array = []
@@ -89,6 +93,8 @@ static func launch_options() -> Dictionary:
 			"tabla", "taska":
 				# indításkor nyitva: a mai DNS-tábla vagy a magos táska (teszteléshez)
 				o.open = k
+			"kereszt":
+				o.open = "kereszt=kesz" if v == "kesz" else "kereszt"
 			"nap":
 				# a „+” az URL-ben szóközként is megérkezhet
 				o.day = v.replace("%2B", "").replace("+", "").strip_edges().to_int()
@@ -129,6 +135,7 @@ func new_game(player_code := "") -> void:
 		"bag": [],
 		"daily": {},
 		"flags": {},
+		"cross": {},
 	}
 	var p := new_planet()
 	var r := RandomNumberGenerator.new()
@@ -201,6 +208,7 @@ func migrate(d: Dictionary) -> Dictionary:
 		"bag": [],
 		"daily": d.get("daily", {}) if d.get("daily") is Dictionary else {},
 		"flags": d.get("flags", {}) if d.get("flags") is Dictionary else {},
+		"cross": _fill_cross(d.get("cross", {})),
 	}
 	for p in d.get("planets", []):
 		out.planets.append(_fill_planet(p))
@@ -313,6 +321,8 @@ func _fill_tree(t: Dictionary) -> Dictionary:
 		# alakítási lista (metszés, kötözés): [{"op": "metszes"/"kotozes", "branch": int, "day": int, ...}]
 		"shaping": (t.get("shaping", []) as Array).duplicate(true) if t.get("shaping") is Array else [],
 		"name": str(t.get("name", "")),
+		# lappangó virágszín (M5, rejtett gén; -1 = a virágszínéhez tartozó alapérték, lásd Breeding.LATENT)
+		"hidden": clampi(int(t.get("hidden", -1)), -1, 13),
 	}
 
 
@@ -375,6 +385,8 @@ func _fill_seed(s: Dictionary) -> Dictionary:
 		# gyűjtött magnál: az anyafa azonosítója és a mag neve („<fajnév> magja”); máskor -1 és üres
 		"tree": int(s.get("tree", -1)),
 		"name": str(s.get("name", "")),
+		# lappangó virágszín (M5, rejtett gén; -1 = a virágszínéhez tartozó alapérték, lásd Breeding.LATENT)
+		"hidden": clampi(int(s.get("hidden", -1)), -1, 13),
 	}
 
 
@@ -398,8 +410,10 @@ func sow_seed(seed: Dictionary) -> Dictionary:
 	var p := active_planet()
 	if is_full(p):
 		return {}
-	var t := new_tree(p, (seed.dna as Array).duplicate(), str(seed.origin))
+	# a keresztezett magnak saját kódja van (a csíráé): pontosan az a fa nő ki, amit a választáskor láttál
+	var t := new_tree(p, (seed.dna as Array).duplicate(), str(seed.origin), str(seed.code))
 	t.parents = (seed.parents as Array).duplicate(true)
+	t.hidden = int(seed.hidden)
 	place_tree(p, t)
 	if (p.founders as Array).is_empty():
 		p.founders = [(seed.dna as Array).duplicate()]
@@ -417,12 +431,135 @@ func water_tree(t: Dictionary) -> void:
 ## Maggyűjtés virágzó fáról: a mag a táskába kerül (a fa DNS-ével, eredet: „gyujtes”, szülő: a fa), a fa ma már nem
 ## hoz többet. at: a virág helye a növény saját koordinátáiban (az a virág aznap elhalványul). Üres, ha ma nem hozhat.
 func gather_seed(t: Dictionary, at: Vector3) -> Dictionary:
-	if not Care.can_gather(t, today()):
+	if not Care.can_gather(t, today(), garden_of(t)):
 		return {}
 	t.gathered = today()
 	t.gathered_at = at
+	return _seed_of(t)
+
+
+func _seed_of(t: Dictionary) -> Dictionary:
 	var dna: Array = (t.dna as Array).duplicate()
-	return new_seed(dna, "gyujtes", {"parents": [dna.duplicate()], "tree": int(t.id), "name": "%s magja" % Genes.latin_name(dna)})
+	return new_seed(dna, "gyujtes", {"parents": [dna.duplicate()], "tree": int(t.id), "name": "%s magja" % Genes.latin_name(dna),
+		"hidden": Breeding.latent(t)})
+
+
+## A fa bolygójának kikelt fái (a maghozás tempójához, Care.can_gather). Üres, ha a fa nincs a mentésben.
+func garden_of(t: Dictionary) -> Array:
+	for p in data.planets:
+		if (p.trees as Array).has(t):
+			return hatched(p)
+	return []
+
+
+## Teszt („+2 mag” gomb, --shot ...,cross…): n gyűjtött mag a táskába a bolygó kikelt fáiról, egymás után más-más
+## fáról (a virágzástól függetlenül; a fák állapota nem változik).
+func debug_seeds(n: int) -> Array:
+	var ts := hatched(active_planet())
+	var out: Array = []
+	if ts.is_empty():
+		return out
+	var start := (data.bag as Array).size()
+	for i in n:
+		out.append(_seed_of(ts[(start + i) % ts.size()]))
+	return out
+
+
+# ---------------------------------------------------------------- Keresztezés (M5; a szabályok: breeding.gd)
+
+func _fill_cross(c: Variant) -> Dictionary:
+	if not (c is Dictionary) or (c as Dictionary).is_empty():
+		return {}
+	var d: Dictionary = c
+	if not bool(d.get("done", false)):
+		var g: Array = []
+		if d.get("grid") is Array and (d.grid as Array).size() == 36:
+			for v in d.grid:
+				g.append(clampi(int(v), -1, 1))
+		return {"a": int(d.get("a", -1)), "b": int(d.get("b", -1)), "grid": g}
+	var sp: Array = []
+	for x in d.get("sprouts", []):
+		var o: Dictionary = x
+		sp.append({"dna": _dna(o.get("dna")), "hidden": clampi(int(o.get("hidden", -1)), -1, 13), "shows_hidden": bool(o.get("shows_hidden", false)),
+			"code": str(o.get("code", "")), "marks": (o.get("marks", []) as Array).map(func(m: Variant) -> String: return str(m)), "name": str(o.get("name", ""))})
+	if sp.size() != Breeding.SPROUTS:
+		return {}
+	return {"done": true, "day": int(d.get("day", today())), "a": int(d.get("a", -1)), "b": int(d.get("b", -1)), "parents": _dna_list(d.get("parents", [])),
+		"names": (d.get("names", ["", ""]) as Array).map(func(m: Variant) -> String: return str(m)), "solved": _dna(d.get("solved")), "sprouts": sp}
+
+
+## Választásra váró csírák (a tábla kész, a két mag már elfogyott), vagy üres.
+func pending_sprouts() -> Dictionary:
+	return data.cross if bool((data.cross as Dictionary).get("done", false)) else {}
+
+
+## A félkész keresztezett tábla (6×6), ha épp ezt a párt kezdte el; különben üres.
+func cross_progress(a_id: int, b_id: int) -> Array:
+	var c: Dictionary = data.cross
+	if bool(c.get("done", false)) or int(c.get("a", -1)) != a_id or int(c.get("b", -1)) != b_id or (c.get("grid", []) as Array).size() != 36:
+		return []
+	var g: Array = []
+	for y in 6:
+		g.append((c.grid as Array).slice(y * 6, y * 6 + 6))
+	return g
+
+
+func set_cross_progress(a_id: int, b_id: int, grid: Array) -> void:
+	if not pending_sprouts().is_empty():
+		return
+	var flat: Array = []
+	for r in grid:
+		for v in r:
+			flat.append(int(v))
+	data.cross = {"a": a_id, "b": b_id, "grid": flat}
+
+
+## Kész a keresztezett tábla: a két mag elfogy, a három csíra a mentésbe kerül (választásig ott vár, újratöltés után is).
+func finish_cross(a_id: int, b_id: int, solved: Array) -> Dictionary:
+	var a := find_seed(a_id)
+	var b := find_seed(b_id)
+	if a.is_empty() or b.is_empty():
+		return {}
+	var sp := Breeding.sprouts(a, b, solved, "%s-K%d-%d" % [data.player, a_id, b_id])
+	data.cross = {"done": true, "day": today(), "a": a_id, "b": b_id, "parents": [(a.dna as Array).duplicate(), (b.dna as Array).duplicate()],
+		"names": [seed_name(a), seed_name(b)], "solved": solved.duplicate(), "sprouts": sp}
+	remove_seed(a_id)
+	remove_seed(b_id)
+	return data.cross
+
+
+## A k-adik csíra lesz a mag (a táskába: eredet „keresztezes”, a két szülő DNS-e, a csíra kódja és lappangó színe);
+## a másik kettő csillag lesz az aktív bolygó egén (eredet „csira” = a keresztezés el nem választott csírája).
+func choose_sprout(k: int) -> Dictionary:
+	var c := pending_sprouts()
+	if c.is_empty():
+		return {}
+	var sp: Array = c.sprouts
+	var ch: Dictionary = sp[k]
+	var s := new_seed((ch.dna as Array).duplicate(), "keresztezes", {"parents": (c.parents as Array).duplicate(true), "code": ch.code, "hidden": int(ch.hidden)})
+	for i in sp.size():
+		if i == k:
+			continue
+		var o: Dictionary = sp[i]
+		add_star(active_planet(), {"dna": (o.dna as Array).duplicate(), "code": o.code, "origin": "csira", "parents": (c.parents as Array).duplicate(true),
+			"hidden": int(o.hidden), "name": str(o.name)})
+	data.cross = {}
+	return s
+
+
+## Új csillag a bolygó egén (fa-rekord hely nélkül, plusz "released" = ma); a csillagképet az M6 rajzolja.
+func add_star(p: Dictionary, rec: Dictionary) -> Dictionary:
+	var base := {"id": _take_id(), "planted": today(), "hatch": today()}
+	base.merge(rec, true)
+	var st := _fill_tree(base)
+	st.released = today()
+	p.stars.append(st)
+	return st
+
+
+## A mag neve a felülethez (gyűjtöttnél „<fajnév> magja”, máskor a fajnév).
+static func seed_name(s: Dictionary) -> String:
+	return str(s.name) if str(s.get("name", "")) != "" else Genes.latin_name(s.dna)
 
 
 # ---------------------------------------------------------------- A nap magja

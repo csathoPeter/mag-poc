@@ -24,7 +24,14 @@ Nyugodt, ingyenes telefonos játék (iOS, Android, web), amelyben DNS-ből kinö
 
 - Két szülő génjeit a táblára tesszük; mivel ritkán férnek össze szabályosan, a játék a legközelebbi szabályos DNS-t keresi. **Az eltérés maga a mutáció** (a szabályokból következik, nem külön véletlen).
 - A sorok mellett jelölés: 1 / 2 = melyik szülőtől jött, M = mutáció.
-- Tervezett: 4–5 jól látható tulajdonság öröklése, rejtett gének (két kék szülőtől néha fehér utód), egy keresztezésből három csíra, ebből egyet nevel tovább a játékos (szelekció).
+- Rejtett gének (két kék szülőtől néha fehér utód), egy keresztezésből három csíra, ebből egyet nevel tovább a játékos (szelekció).
+
+**Godotban (M5, `godot/breeding.gd` szabályok, `crossing.gd` folyamat, `sprout_pick.gd` csíraválasztás):**
+- **Belépés (két koppintás):** a táskában a gyűjtött (vagy keresztezett) magon „Keresztezem” → a táska párválasztó módba vált (fent: „Kivel keresztezed?”), a többi magon „Ezzel”, a választotton „Mégse”. A pár bármelyik másik mag lehet, a nap magja is. **Egy keresztezés két magot használ fel** (a tábla elkészültekor), így a korlátot a gyűjtött magok száma adja, nem számláló. Ha a tábla félbemarad, a táblája mentődik (ugyanaz a pár újra megnyitva ott folytatódik), a magok megmaradnak.
+- **Tábla:** soronként (génenként) az egyik szülő változata – ahol eltérnek, a pár kulcsából sorsolva (a két mag azonosítója és DNS-e, saját xorshift, így újratöltve is ugyanaz). Ez ritkán szabályos, ezért a legközelebbi szabályos DNS a cél (`DnaBoard.nearest`); az eltérés a mutáció (300 véletlen páron átlag ~4 mező). **Játékosi döntés:** mint a nap magjánál, két szabad (arany) sor marad, de itt azok a sorpárok előnyben, ahol a választékban a szülők génjei is ott vannak (a párok 95%-ában van ilyen): „Termet: zömök terebélyes (1), törpe szomorú (2), terebélyes (M) …” – a játékos dönti el, melyik szülőtől jöjjön az a gén, vagy a mutációt választja. A kész sor mellett színes jelvény: 1 (menta), 2 (barack), M (levendula).
+- **Három csíra:** az 1. pontosan a játékos táblája; a 2. és a 3. testvér: egy-egy olyan gén, ahol a szülők eltérnek, a másik szülőtől jön (a legközelebbi szabályos DNS ehhez, ezért gyakran egy másik gén is mutálódik); azonos szülőknél (két mag ugyanarról a fáról) egy-egy apró mutáció. Mindhárom látszik: közös kis 3D-előnézetben kinőnek a földkupacukból és lassan forognak (egyszerűsített részletesség, ~3×15k háromszög, egy SubViewport, csak amíg a panel nyitva van), alattuk kártyánként a fajnév, a hat gén 1 / 2 / M jellel, ha előbújt, „Előbújt a rejtett szín: hófehér!”, és a DNS kis rácsa (a mutált sor levendula kerettel). A csíra kódja (`<játékos>-K<a>-<b>-<k>`) a mag `code`-ja lesz, és elvetéskor a fáé: **pontosan az a fa nő ki, amit választottál.**
+- **Választás („Ezt nevelem”):** a másik két csíra összemegy, fénnyé válik, és csóvával, himbálózva felszáll a kép tetejére, ahol csillogó csillag lesz belőle; közben a választott kártya kis rácsából indul a kettős spirál (`SeedFx.play_helix`), a mag a táskába repül (`origin` = `keresztezes`, `parents` = [a két szülő DNS-e], `code`, `hidden`). A nem választottak a bolygó `stars` listájába kerülnek (`origin` = `csira`, azaz a keresztezés el nem választott csírája, saját kóddal és rejtett színnel; a csillagkép az M6 dolga). „Később”: a csírák a mentésben várnak, a táskában legfelül „Három csíra vár” → „Választok” (addig új keresztezés nem indul).
+- **Rejtett virágszín (egyszerű, determinisztikus):** minden mag és fa hordoz egy lappangó virágszínt (`hidden`; ha nincs megadva, a virágszínéhez tartozó pár: a kékek – azúr, türkiz, éjkék –, a rózsa, az orgona és a menta fehéret rejt; a meleg színek barackot; a fehér és az ibolya éjkéket; a barack korallt; a cseresznye rózsát; a magenta cseresznyét). Csíránként mindkét szülő fele-fele eséllyel a látható vagy a lappangó színét adja tovább. **Ha mindkettő a lappangót adja, és ez a kettőnél ugyanaz, a testvér-csírán előbújik** (a virágszín-sor kötelezően az lesz, a tábla ehhez keresi a legközelebbi szabályosat). Az 1. csíra (a játékos táblája) sosem változik. Mérés: a keresztezések ~16%-ában bújik elő valami; két kék szülőtől a keresztezések ~37%-ában van fehér csíra. Az utód lappangó színe az, amit a szülők továbbadtak, de nem látszik rajta – így a fehér tovább öröklődhet. A gyűjtött mag a fa lappangó színét viszi.
 
 ## A nagy pillanat
 
@@ -58,7 +65,7 @@ A herbárium és a tenyésztési célok csak halk háttérelemek, nem kényszer�
 1. **Kikelés (~30 mp).** A kert reggeli fényben nyílik. Ami tegnap a földbe került, kibújt: a kamera odarepül, kis felfedő animáció.
 2. **Gondozás (~30 mp).** Lekonyult növény megérintése = öntözés, felél. Virágzó fáról érintéssel magot szedsz. Metszel, kötözöl, ha kedved van.
 3. **A nap magja (1–2 perc).** Közös DNS-tábla, a szabad géneknél te döntesz → spirál → elvetés. A végén megosztható.
-4. **Ha van kedved: keresztezés** a gyűjtött magokkal. Ezek is másnap kelnek ki.
+4. **Ha van kedved: keresztezés** a gyűjtött magokkal (két mag → tábla → három csíra, egyet választasz, a másik kettő csillag lesz). Ezek is másnap kelnek ki.
 5. **Nézelődés:** repülés a kertben.
 
 ### A nap magja
@@ -73,7 +80,8 @@ A herbárium és a tenyésztési célok csak halk háttérelemek, nem kényszer�
 ### Tempó
 
 - A nap magja: naponta 1.
-- Keresztezés: annyiszor, **ahány magot gyűjtöttél** a virágzó fákról (napi kb. 1–3). A virágzás napokig tart, a korlátot a természet adja, nem számláló vagy pénz.
+- Keresztezés: a **gyűjtött magok** adják a korlátot (napi kb. 1–3 mag a virágzó fákról; egy keresztezés két magot használ fel, a nap magja is lehet a pár). A virágzás napokig tart, a korlátot a természet adja, nem számláló vagy pénz.
+- **Maghozás (M5, `care.gd`):** a virágzó fák aránya ~39%, így sok fánál túl sok mag jönne. Ezért naponta a kert virágzó fái közül csak az első K hoz magot (a „magot érlelő” fák, a fa kódjából és a napból számolt sorrendben, minden nap mások). K ≈ 0,4 + 0,6·√n (n = a bolygó kikelt fái), legfeljebb 3, a tört részt a nap dönti el. Mérve (90 nap): 3 fa: 1,1/nap; 5 fa: 1,3; 10 fa: 2,2; 20 és 30 fa: 3. A szomjas fa is lehet „érlelő”, de csak öntözés után ad magot. A többi virágzó fán a táblán: „ma nem érlelt magot”.
 - **Minden elvetett mag másnap kel ki.** Ez az egyetlen várakozás a játékban, és jutalom, nem büntetés.
 
 ### Gondozás
@@ -86,7 +94,7 @@ A herbárium és a tenyésztési célok csak halk háttérelemek, nem kényszer�
   - **Szomjazás:** ha egy fát 3 napja nem öntöztek (az utolsó öntözés, vagy ha még soha, a kikelés óta), lekonyul: a korona lehajlik, az ágvégek és a levelek lógnak, a csúcs kissé biccent, a lomb fakóbb, sárgás-olajos (a 4. naptól még kicsit jobban). A szomjas fa virágai félig becsukódnak, és nem hoz magot (nem fejlődik tovább). Nincs halál. Mellette félmagasságban apró, lassan lüktető vízcsepp-fény (kívülről halvány pont).
   - **Öntözés:** leszállva a szomjas fára egy koppintás. Csillogó cseppek hullanak a lombra (~2 mp), vízszínű fénygyűrű a tövénél, fényhullám fut fel a fán, a fa rugalmasan, egyszer kicsit túllendülve felegyenesedik (~2 mp), a színe visszatér. `watered` = ma, mentés. A lebegő táblán: „Megöntözted. Lassan felegyenesedik.” Nincs vízszámláló.
   - **Virágzási ciklus (9 nap):** bimbó 2 nap (kisebb, zárt, zöldes tövű virágok) → virágzás 3 vagy 4 nap (a fa kódjából) → elnyílás 1 nap (szétterülő, fakó, barnás szirmok, a virágok fele már lehullott) → pihenés (nincs virág, a virág-MultiMesh ki se rajzolódik). A kezdő fáknál a ciklus eltolása a hely sorszámából jön (hely × 3 + hely / 3, mod 9), így egymás után virágoznak: már a 3 kezdő fa közül is minden nap virágzik egy, de nem mind. Frissen kikelt fa első bimbója 2–4 nappal a kikelés után jön (2 + hely mod 3), utána 9 naponta; mivel a magok különböző napokon kelnek ki, ezek is elszórtan virágoznak. Napváltáskor minden lassan átúszik.
-  - **Maggyűjtés:** virágzó, nem szomjas fán, ha ma még nem szedtél róla, egy virágon arany csillanás. Leszállva egy virágra (vagy a csillanásra) koppintva a mag kis fényként kibújik, felemelkedik és ívben a Táska gombja felé repül (a 2D rétegben, hogy a gombok fölött és a világos égen is látsszon); a gomb felvillan. A leszedett virág összecsukódik és elsápad (a helye a fa rekordjában, újratöltés után is). Naponta fánként egy mag: a csillanás eltűnik, a táblán „magot hozott ma”. A mag: a fa DNS-e, eredet `gyujtes`, név „<fajnév> magja”, szülő = a fa DNS-e, `tree` = a fa azonosítója. Napi kb. 1–2 mag a kezdő kertben; sok fánál több (a virágzás aránya ~40%), ezt a keresztezés tempója szerint még hangolni kell.
+  - **Maggyűjtés:** virágzó, nem szomjas fán, ha ma még nem szedtél róla, egy virágon arany csillanás. Leszállva egy virágra (vagy a csillanásra) koppintva a mag kis fényként kibújik, felemelkedik és ívben a Táska gombja felé repül (a 2D rétegben, hogy a gombok fölött és a világos égen is látsszon); a gomb felvillan. A leszedett virág összecsukódik és elsápad (a helye a fa rekordjában, újratöltés után is). Naponta fánként egy mag: a csillanás eltűnik, a táblán „magot hozott ma”. A mag: a fa DNS-e, eredet `gyujtes`, név „<fajnév> magja”, szülő = a fa DNS-e, `tree` = a fa azonosítója, `hidden` = a fa lappangó virágszíne. A kertben összesen naponta kb. 1–3 mag (lásd Tempó, M5).
   - **A lebegő tábla (a fára koppintva):** a név alatt az állapot: „szomjas”, „fiatal / pihen · N nap múlva bimbózik”, „bimbós · holnap kinyílik”, „virágzik (még N napig) · koppints egy virágra: mag” / „magot hozott ma”, „elnyílt”. Éjjel a „virágai világítanak” fák csak virágzáskor világítanak.
   - **Olcsó:** shader-uniformok (`droop`, `thirst` a fán/levélen/virágon; `bloom_size/open/fade/drop`, `pick` a virágon), csak változáskor írva; a jelek egy MultiMesh (≤64 fénypont), a cseppek egy másik (44, csak öntözéskor). A váz és a determinizmus nem változik.
   - A próba-bolygón (nem mentett) a fák mindig virágoznak és nem szomjaznak, a mérés így változatlan.
@@ -128,7 +136,7 @@ Döntés: 2026. 11. 10. A „kert” kis bolygók sora. A játékos nemcsak fák
 
 - **Elengedett fából csillag lesz.** Ha egy fát elengedsz (pl. helyet csinálsz neki, vagy nem kell), felszáll az égre. Nincs selejtezés és nincs halál.
 - A bolygó elengedett fái a bolygó egén **csillagképet** rajzolnak. Ez a bolygó emléke és egyben a herbárium: koppintásra látod a fát, és **bármikor visszahozhatod**, újra elvetheted.
-- A keresztezés nem választott csírái ugyanígy csillaggá válnak (nincs külön magtár).
+- A keresztezés nem választott csírái ugyanígy csillaggá válnak (nincs külön magtár). (M5: adatszinten kész – a bolygó `stars` listájában `origin` = `csira`, felszálló fény-effekttel; a csillagkép M6.)
 - **Mások bolygói:** a távoli csillagok más játékosok vagy barátok bolygói. Ráközelítve megnézheted őket és aznapi magjukat. Ehhez szerver kell, így ez később jön; az első verzióban barát bolygója kóddal is megnyitható.
 
 ## Art design
@@ -200,9 +208,11 @@ Döntés: 2026. 11. 10. Az egész játék egyetlen JSON-állapot (`godot/state.g
 - **Játékos:** első indításkor véletlen, 6 jelű kód (félreérthető betűk nélkül). A bolygókód = játékoskód + sorszám (pl. `K7MQ2P-1`), a növénykód = bolygókód + a hely sorszáma.
 - **Bolygó:** kód, alapítók (az alapításkori növények DNS-e, rögzítve: ebből jön a darabos jelleg és a domborzat magassága, így újratöltéskor és az alapító elengedése után is ugyanaz a bolygó), fák, csillagok (elengedett fák, a nappal együtt).
 - **Fa:** DNS, kód, irány a bolygón (mentve, nem újraszámolva), forgatás, méret, eredet, szülők, ültetés napja, kikelés napja, látta-e már a kikelést, utolsó öntözés, utolsó maggyűjtés napja és a leszedett virág helye, alakítási lista, név.
-- **Magos táska:** mag = DNS + eredet (napi, gyűjtött, keresztezett, csillagról) + nap + szülők DNS-e; gyűjtött magnál az anyafa azonosítója (`tree`) és a mag neve (`name`, „<fajnév> magja”). A táskában szakaszonként (a nap magjai, gyűjtött magok – külön színnel és kis arany magszemmel).
+- **Magos táska:** mag = DNS + eredet (napi, gyűjtött, keresztezett, csillagról) + nap + szülők DNS-e + lappangó virágszín (`hidden`); gyűjtött magnál az anyafa azonosítója (`tree`) és a mag neve (`name`, „<fajnév> magja”); keresztezett magnál a csíra kódja (`code`, ezzel nő ki). A táskában szakaszonként (a nap magjai, gyűjtött magok, keresztezett magok – külön színnel).
+- **Keresztezés (`cross`):** félkész tábla (`a`, `b` = a két mag, `grid`), vagy kész: választásra váró csírák (`done`, a két szülő DNS-e és neve, a kész tábla, a három csíra DNS-ével, kódjával, rejtett színével, 1/2/M jelével). A két mag a tábla elkészültekor fogy el, így a csírák újratöltés után is megvannak.
 - **A nap magja (`daily`):** napsorszám → félkész rács (36 érték), vagy kész jelző + a választott DNS. A 7 napnál régebbi félkész rácsok törlődnek.
 - **Verzió 2 (M4):** a fán `gathered` (nap) és `gathered_at` (a virág helye), a magon `tree` és `name`; a régi mentésben hiányzó mezők alapértéket kapnak.
+- **Verzió 3 (M5):** a fán, magon és csillagon `hidden` (lappangó virágszín, -1 = a virágszínéhez tartozó alapérték), a játékállapotban `cross`; csillag `origin` = `csira`.
 - **Napok:** a helyi dátum napsorszáma; minden napfüggő dolog a `GameState.today()`-t használja, amit a teszt-eltolás (`?nap=+1`, „nap +N” gomb) is módosít, így a „másnap” telefonon is kipróbálható.
 - **Verziószám** a későbbi migrációhoz; a hiányzó mezőket betöltéskor alapértékkel pótoljuk.
 - A `--shot` és a `--bench` nem olvas és nem ír mentést (a `--shot=...,state` csak olvas, vagy a `--state=fájl`-ba ír); a „próba” bolygó sem kerül a mentésbe.
@@ -243,7 +253,8 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [x] Helyi mentés (`godot/state.gd`): játékoskód, bolygók és fáik a helyükkel, csillagok, magos táska, napok teszt-eltolással; első indításkor 3 kezdő fa a játékoskódból
 - [x] Több saját növény a kertben, másnapi kikelés (M3: kamera odarepül, csíra kinő, felirat, `revealed` mentve)
 - [x] Öntözés, lekonyulás, virágzási ciklus (bimbó, virágzás, elnyílás), maggyűjtés virágzó fáról (M4)
-- [ ] Herbárium, keresztezés UI
+- [x] Keresztezés (M5): táska → keresztezett tábla (szülők génjei, legközelebbi szabályos DNS, 1/2/M, szabad sorok a szülők génjeivel) → három csíra 3D-előnézettel → egy mag (spirál), kettő csillag; rejtett virágszín; maghozás tempója (napi 1–3)
+- [ ] Herbárium
 - [ ] Mérés olcsó Androidon
 - [ ] iOS-build Mac nélkül (GitHub Actions macOS + TestFlight, Apple Developer-tagság kell)
 - [ ] IAP próba (borravaló)

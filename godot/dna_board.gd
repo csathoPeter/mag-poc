@@ -238,7 +238,9 @@ static func hamming(a: int, b: int) -> int:
 ## A kívánt sorokhoz (génváltozatokhoz) legközelebbi szabályos DNS: a legkevesebb eltérő mező, döntetlennél véletlenül.
 ## wanted: hat sorszám (0–13), vagy -1 ott, ahol mindegy. A keresztezésnél (M5) a két szülő génjeiből összerakott kívánság
 ## ritkán szabályos; az eltérés maga a mutáció. Visszaad: {"dna": [...], "dist": mezők száma, "ties": döntetlenek száma}.
-static func nearest(wanted: Array, rng: Rng) -> Dictionary:
+## fixed: sorok, amelyeknek pontosan a kívánt változatot kell adniuk (M5: a testvér-csíráknál a másik szülő sora,
+## az előbújó rejtett virágszín); ezeken az eltérés „drága”, így a többi sor igazodik hozzájuk.
+static func nearest(wanted: Array, rng: Rng, fixed: Array = []) -> Dictionary:
 	var bs := boards()
 	var count := bs.size() / N
 	# soronkénti távolság-táblázat a gyorsaságért
@@ -248,6 +250,8 @@ static func nearest(wanted: Array, rng: Rng) -> Dictionary:
 		row.resize(14)
 		for k in 14:
 			row[k] = 0 if int(wanted[y]) < 0 else hamming(int(wanted[y]), k)
+			if fixed.has(y) and int(wanted[y]) >= 0 and k != int(wanted[y]):
+				row[k] += 100
 		dist_tab.append(row)
 	var best := 999
 	var ties := PackedInt32Array()
@@ -354,7 +358,9 @@ static func deduce(cells: Array) -> Array:
 ## kitöltés is van (egy sorban eltérő tábla nem létezik, mert az oszlopösszegek nem engednék). Ott a játékos dönt.
 ## A többi sorból mezőket veszünk ki, amíg a tábla a szabad sorokon kívül logikával (deduce) végig megoldható.
 ## Visszaad: {"target": dna, "clue": rács (-1 = üres), "free": [sorok], "options": [szabályos DNS-ek, amelyek a feladványhoz illenek]}
-static func make_puzzle(dna: Array, rng: Rng, empty_cells := PUZZLE_EMPTY) -> Dictionary:
+## prefer (M5, keresztezés): a két szülő DNS-e; ilyenkor azok a szabad sorpárok előnyben, ahol a választható változatok
+## között minél több a szülők génje (pl. „korall (1) vagy éjkék (2)”), így a játékos a szülők között is dönthet.
+static func make_puzzle(dna: Array, rng: Rng, empty_cells := PUZZLE_EMPTY, prefer: Array = []) -> Dictionary:
 	var target := grid_from_dna(dna)
 	# pároknál: a két sor minden más változata, amellyel a tábla szabályos marad
 	var keys: Array = []
@@ -379,6 +385,22 @@ static func make_puzzle(dna: Array, rng: Rng, empty_cells := PUZZLE_EMPTY) -> Di
 	var clue := copy_grid(target)
 	var free: Array = []
 	var options: Array = [dna.duplicate()]
+	if not keys.is_empty() and prefer.size() == 2:
+		var best := 0
+		var top: Array = []
+		for key in keys:
+			var seen := {}
+			for alt in groups[key]:
+				for y in [key.x, key.y]:
+					var k := int(alt[y])
+					if k != int(dna[y]) and (k == int(prefer[0][y]) or k == int(prefer[1][y])):
+						seen[Vector2i(y, k)] = true
+			if seen.size() > best:
+				best = seen.size()
+				top = [key]
+			elif seen.size() == best:
+				top.append(key)
+		keys = top
 	if not keys.is_empty():
 		var key: Vector2i = keys[rng.below(keys.size())]
 		free = [key.x, key.y]

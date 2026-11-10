@@ -201,6 +201,8 @@ var fx := SeedFx.new()
 var marks := SeedMarks.new()
 var hatching := Hatching.new()
 var tending := Tending.new()
+## Keresztezés (M5): táska → keresztezett tábla → három csíra → spirál; a szabályok a breeding.gd-ben.
+var crossing := Crossing.new()
 ## A spirál végén ezt a magot emeli ki a táska, ezzel az üzenettel.
 var helix_seed := -1
 var helix_msg := ""
@@ -219,6 +221,12 @@ func _ready() -> void:
 			print("BOARDTEST\n", DnaBoard.self_test(GameState.real_day(), days))
 			get_tree().quit()
 			return
+		# --crosstest[=párok]: a keresztezés önellenőrzése (csírák, rejtett szín, maghozás tempója)
+		if a.begins_with("--crosstest"):
+			var pairs := int(a.get_slice("=", 1)) if a.contains("=") else 300
+			print("CROSSTEST\n", Breeding.self_test(pairs))
+			get_tree().quit()
+			return
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	add_child(plants_root)
 	planet = Planet.new()
@@ -233,6 +241,8 @@ func _ready() -> void:
 	tending.host = self
 	add_child(tending)
 	tending.seed_arrived.connect(_on_seed_arrived)
+	crossing.host = self
+	add_child(crossing)
 	fx.helix_done.connect(_on_helix_done)
 	fx.sow_landed.connect(func() -> void: _refresh_marks(sow_id))
 	space_mat.shader = SPACE_SKY
@@ -458,6 +468,8 @@ func _build_ui() -> void:
 	btn.wipe = _small_button(dbg2, "törlés", _wipe_tap)
 	# régi, azonnali ültetés véletlen DNS-sel (próbához); a valódi út: a nap magja → táska → Elvetem
 	btn.plant = _small_button(dbg2, "ültess", plant_new)
+	# teszt: két gyűjtött mag a kert fáiról (a keresztezés kipróbálásához, napok várakozása nélkül)
+	btn.seeds = _small_button(dbg2, "+2 mag", _debug_seeds)
 	game_l.add_theme_font_size_override("font_size", 11)
 	game_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .6))
 	game_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -481,6 +493,9 @@ func _build_ui() -> void:
 	bag.sow.connect(_sow)
 	bag.solve.connect(open_daily_day)
 	bag.closed.connect(_overlay_closed)
+	crossing.attach_ui(layer)
+	bag.cross.connect(crossing.start)
+	bag.sprouts.connect(crossing.open_pick)
 
 
 func _joy_center() -> Vector2:
@@ -761,8 +776,8 @@ func _latin(g: Dictionary) -> String:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# nyitott tábla vagy táska alatt a világ nem reagál az érintésre
-	if board.visible or bag.visible:
+	# nyitott tábla, táska vagy csíraválasztás alatt a világ nem reagál az érintésre
+	if board.visible or bag.visible or crossing.is_open():
 		return
 	# a nagy pillanat és a kikelés alatt a koppintás gyorsít / átugrik
 	if fx.busy() or hatching.active():
@@ -935,6 +950,8 @@ func _process(delta: float) -> void:
 				open_daily_day(GameState.today())
 				_on_board_done(board.puzzle.target, false)
 				bag.modulate.a = 1.0
+			elif (shot_args[5] as String).begins_with("cross") or (shot_args[5] as String).begins_with("sprouts") or (shot_args[5] as String).begins_with("stars"):
+				_shot_cross(shot_args[5])
 			elif shot_args[5] in ["thirsty", "bloom", "bud", "wilt"] or (shot_args[5] as String).begins_with("water") or (shot_args[5] as String).begins_with("gather"):
 				_shot_care(shot_args[5])
 			elif (shot_args[5] as String).begins_with("zoom"):
@@ -959,6 +976,18 @@ func _process(delta: float) -> void:
 					s_yaw += dy
 				else:
 					orbit_q = (orbit_q * Quaternion(Vector3.UP, dy)).normalized()
+		if shot_frames == 3 and shot_args.size() > 5 and (shot_args[5] as String).begins_with("stars"):
+			crossing.pick.choose(0)
+		if shot_args.size() > 5 and shot_args[5] == "crossplay":
+			# valódi koppintások a felületen át: Keresztezem → Ezzel → a tábla kitöltése → Ezt nevelem (a 2. csíra)
+			if shot_frames == 6:
+				_shot_click(bag, "Keresztezem", 0)
+			elif shot_frames == 10:
+				_shot_click(bag, "Ezzel", 0)
+			elif shot_frames == 14:
+				_shot_play_board()
+			elif shot_frames == 30:
+				_shot_click(crossing.pick, "Ezt nevelem", 1)
 		if shot_frames == 3 and shot_args.size() > 5 and shot_args[5] == "boardplay":
 			_shot_play_board()
 		if shot_frames == 3 and shot_args.size() > 5 and (shot_args[5] as String).begins_with("helix"):
@@ -972,7 +1001,7 @@ func _process(delta: float) -> void:
 			var t2 := InputEventScreenDrag.new()
 			t2.index = 0; t2.position = c + Vector2(0, -55); t2.relative = Vector2(0, -55)
 			Input.parse_input_event(t2)
-		if shot_frames == (40 if shot_args.size() > 5 else 8):
+		if shot_frames == (90 if shot_args.size() > 5 and shot_args[5] == "crossplay" else 40 if shot_args.size() > 5 else 8):
 			var highs := 0
 			for t in trees:
 				if t.high_on:
@@ -1584,6 +1613,8 @@ func _load_game(opts: Dictionary) -> void:
 		open_daily.call_deferred()
 	elif opts.open == "taska":
 		open_bag.call_deferred()
+	elif (opts.open as String).begins_with("kereszt"):
+		_debug_cross.call_deferred(opts.open == "kereszt=kesz")
 
 
 ## Teszt: egy nappal előre (a kikelés, öntözés, a nap magja így telefonon is kipróbálható). Visszaállítás: ?nap=0.
@@ -1658,9 +1689,13 @@ func _state_digest() -> String:
 	for t in p.trees:
 		var d: Vector3 = t.dir
 		parts.append("%s %s (%.4f %.4f %.4f) nap %d, öntözve %d, mag %d, %s" % [t.code, "-".join((t.dna as Array).map(func(x: int) -> String: return str(x))), d.x, d.y, d.z,
-			int(t.hatch), int(t.watered), int(t.gathered), Care.status_text(t, GameState.today())])
+			int(t.hatch), int(t.watered), int(t.gathered), Care.status_text(t, GameState.today(), game.garden_of(t))])
 	for sd in game.data.bag:
-		parts.append("táska: %s %s %s" % [sd.origin, sd.name if str(sd.name) != "" else Genes.latin_name(sd.dna), sd.parents])
+		parts.append("táska: %s %s %s rejtett %d kód %s" % [sd.origin, GameState.seed_name(sd), sd.parents, int(sd.hidden), sd.code])
+	for st in p.stars:
+		parts.append("csillag: %s %s %s rejtett %d kód %s" % [st.origin, Genes.latin_name(st.dna), st.dna, int(st.hidden), st.code])
+	if not game.pending_sprouts().is_empty():
+		parts.append("választásra vár: %s" % [(game.pending_sprouts().sprouts as Array).map(func(x: Dictionary) -> String: return str(x.name))])
 	return "játékos %s · bolygó %s · %d fa · ma %d · hash %08x\n  %s" % [game.data.player, p.code, (p.trees as Array).size(), GameState.today(),
 		hash(JSON.stringify(GameState._plain(game.data), "", true, true)), "\n  ".join(parts)]
 
@@ -1687,6 +1722,7 @@ func open_daily_day(day: int) -> void:
 	if bench_on:
 		return
 	bag.visible = false
+	crossing.board_open = false
 	board_day = day
 	var saved: Array = [] if game.data.is_empty() else game.daily_progress(day)
 	var today := GameState.today()
@@ -1709,7 +1745,7 @@ func _sync_ui_visible() -> void:
 	var moment := fx.busy() or hatching.active()
 	if moment:
 		ui_col.visible = false
-	elif ui_moment and not board.visible and not bag.visible:
+	elif ui_moment and not board.visible and not bag.visible and not crossing.is_open():
 		ui_col.visible = true
 		ui_col.modulate.a = 0.0
 		create_tween().tween_property(ui_col, "modulate:a", 1.0, .6)
@@ -1718,13 +1754,17 @@ func _sync_ui_visible() -> void:
 
 func _overlay_closed() -> void:
 	board_day = -1
-	if not board.visible and not bag.visible:
+	crossing.board_open = false
+	if not board.visible and not bag.visible and not crossing.is_open():
 		ui_col.visible = true
 	_sync_daily()
 
 
 ## Minden koppintás után mentjük a félkész táblát (a böngésző bármikor bezárhatja a lapot).
 func _on_board_changed(grid: Array) -> void:
+	if crossing.board_open and not game.data.is_empty():
+		crossing.board_changed(grid)
+		return
 	if game.data.is_empty() or board_day < 0:
 		return
 	game.set_daily_progress(board_day, grid)
@@ -1736,6 +1776,9 @@ func _on_board_changed(grid: Array) -> void:
 ## animate = false: azonnal (képernyőképhez, méréshez).
 func _on_board_done(dna: Array, animate := true) -> void:
 	animate = animate and not bench_on
+	if crossing.board_open:
+		crossing.board_done(dna, animate)
+		return
 	if animate:
 		var cells: Array = []
 		var vals: Array = []
@@ -1842,7 +1885,7 @@ func _shot_care(mode: String) -> void:
 			if Care.thirsty(rec, GameState.today()):
 				# a képhez meglocsolva (különben a szomjas fa nem hoz magot, és a virágai is fakók)
 				game.water_tree(rec)
-			if mode.begins_with("gather") and not Care.can_gather(rec, GameState.today()):
+			if mode.begins_with("gather") and not Care.can_gather(rec, GameState.today(), game.garden_of(rec)):
 				continue
 			tending.refresh(true)
 			_focus(i)
@@ -1850,10 +1893,27 @@ func _shot_care(mode: String) -> void:
 			if mode.begins_with("gather"):
 				tending.freeze_at = float(mode.trim_prefix("gather")) / 100.0 * Tending.GATHER_LEN
 				tending.gather(trees[i], trees[i].care.glint)
-			print("CARE %s: %d. fa, nap %+d, %s" % [mode, i, GameState.day_offset, Care.status_text(rec, GameState.today())])
+			print("CARE %s: %d. fa, nap %+d, %s" % [mode, i, GameState.day_offset, Care.status_text(rec, GameState.today(), game.garden_of(rec))])
 			return
 		GameState.day_offset += 1
 	print("CARE %s: nincs ilyen fa" % mode)
+
+
+## Teszt: koppintás (egér le-fel) a root alatti n-edik látható, ilyen feliratú gomb közepére.
+func _shot_click(root: Node, text: String, n: int) -> void:
+	var found: Array = root.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text == text and b.is_visible_in_tree())
+	if found.size() <= n:
+		print("CLICK: nincs ilyen gomb: %s (%d)" % [text, n])
+		return
+	var c := (found[n] as Button).get_global_rect().get_center()
+	for down in [true, false]:
+		var e := InputEventMouseButton.new()
+		e.button_index = MOUSE_BUTTON_LEFT
+		e.pressed = down
+		e.position = c
+		e.global_position = c
+		Input.parse_input_event(e)
+	print("CLICK: %s (%d) @ %s" % [text, n, c])
 
 
 ## Teszt (--shot ...,boardplay): a tábla kitöltése valódi koppintás-eseményekkel, a felület bemenetén át.
@@ -1875,6 +1935,85 @@ func _shot_play_board() -> void:
 	print("BOARDPLAY választott DNS: ", opts[opts.size() - 1], " (", Genes.latin_name(opts[opts.size() - 1]), "), cél: ", board.puzzle.target)
 
 
+## Teszt („+2 mag”): két gyűjtött mag a kert fáiról a táskába (a keresztezéshez; lásd GameState.debug_seeds).
+func _debug_seeds() -> void:
+	if game.data.is_empty() or not saved_view or bench_on:
+		return
+	game.debug_seeds(2)
+	game.save()
+	_on_seed_arrived(-1)
+	traits_l.text = "Két gyűjtött mag a táskában (teszt). Táska → Keresztezem → Ezzel."
+
+
+## Teszt (`?kereszt`, `?kereszt=kesz`): két teszt-mag és a keresztezett tábla (kesz: rögtön a három csíra).
+## Ha már vár választásra keresztezés, azt nyitja meg.
+func _debug_cross(done: bool) -> void:
+	if game.data.is_empty() or bench_on:
+		return
+	if not game.pending_sprouts().is_empty():
+		crossing.open_pick()
+		return
+	var seeds := game.debug_seeds(2)
+	game.save()
+	if seeds.size() < 2:
+		return
+	crossing.start(int(seeds[0].id), int(seeds[1].id))
+	if done:
+		crossing.board_done(board.puzzle.target, false)
+
+
+## Teszt (--shot ...,state,óra,MÓD): keresztezés két teszt-maggal (a kert első fáiról). crossbag: a táska
+## párválasztó módban; cross / crossNN: a keresztezett tábla NN%-ban kitöltve (alapból a lezárt sorok mind kész,
+## látszik az 1 / 2 / M jel, a szabad sorok üresek); sprouts / sproutsNN: a három csíra (a kinövés NN%-ánál);
+## starsNN: a 0. csíra választva, a felszálló csillagok és a spirál a választás utáni idő NN%-ánál (lásd SproutPick).
+func _shot_cross(mode: String) -> void:
+	if mode == "crossplay":
+		game.debug_seeds(2)
+		open_bag()
+		bag.modulate.a = 1.0
+		return
+	if not game.pending_sprouts().is_empty() and not mode.begins_with("cross"):
+		# a mentésben (--state) már választásra váró csírák
+		crossing.open_pick()
+		crossing.pick.modulate.a = 1.0
+		crossing.pick.freeze_grow = SproutPick.GROW_LEN + 2.0 * SproutPick.GROW_STAGGER + .2
+		if mode.begins_with("stars"):
+			var sp := mode.trim_prefix("stars")
+			crossing.pick.freeze_pick = (float(sp) if sp != "" else 50.0) / 100.0 * (SproutPick.STAR_LEN + .6)
+		return
+	var seeds := game.debug_seeds(2)
+	if seeds.size() < 2:
+		print("CROSS: nincs fa a magokhoz")
+		return
+	var a := int(seeds[0].id)
+	var b := int(seeds[1].id)
+	if mode == "crossbag":
+		open_bag()
+		bag._pick(a)
+		bag.modulate.a = 1.0
+		return
+	crossing.start(a, b)
+	board.modulate.a = 1.0
+	if mode.begins_with("cross"):
+		var spec := mode.trim_prefix("cross")
+		board.fill_for_shot(float(spec) / 100.0 if spec != "" else 1.0, false)
+		print("CROSS tábla: kívánt %s → cél %s (%d mező mutáció), szabad sorok %s" % [board.puzzle.wanted, board.puzzle.target, int(board.puzzle.mutations), board.puzzle.free])
+		return
+	crossing.board_done(board.puzzle.target, false)
+	crossing.pick.modulate.a = 1.0
+	var full := SproutPick.GROW_LEN + 2.0 * SproutPick.GROW_STAGGER + .2
+	for sp in game.pending_sprouts().sprouts:
+		print("CROSS csíra: %s %s %s rejtett %d%s" % [sp.name, sp.dna, sp.marks, int(sp.hidden), " (előbújt)" if bool(sp.shows_hidden) else ""])
+	if mode.begins_with("sprouts"):
+		var spec := mode.trim_prefix("sprouts")
+		crossing.pick.freeze_grow = (float(spec) / 100.0 if spec != "" else 1.0) * full
+	else:
+		crossing.pick.freeze_grow = full
+		# a választás a 3. képkockában (amikor a kártyák már a helyükön vannak: onnan indul a spirál)
+		var spec := mode.trim_prefix("stars")
+		crossing.pick.freeze_pick = (float(spec) if spec != "" else 50.0) / 100.0 * (SproutPick.STAR_LEN + .6)
+
+
 ## A gombok felirata: hány mag és megfejtetlen nap vár a táskában.
 func _sync_daily() -> void:
 	if daily_btn == null:
@@ -1882,7 +2021,7 @@ func _sync_daily() -> void:
 	if game.data.is_empty():
 		bag_btn.text = "Táska"
 		return
-	var n: int = (game.data.bag as Array).size() + game.daily_open_days().size()
+	var n: int = (game.data.bag as Array).size() + game.daily_open_days().size() + (0 if game.pending_sprouts().is_empty() else 1)
 	bag_btn.text = "Táska (%d)" % n if n > 0 else "Táska"
 	daily_btn.text = "A nap magja" + (" (kész)" if game.daily_done(GameState.today()) else "")
 
@@ -1896,6 +2035,7 @@ func start_bench() -> void:
 	bench_on = true
 	board.close()
 	bag.visible = false
+	crossing.pick.close()
 	ui_col.visible = true
 	bench_rows.clear()
 	bench_steps = LOAD_STEPS

@@ -147,7 +147,7 @@ func _flags(t: Dictionary) -> void:
 	var rec: Dictionary = t.care.rec
 	var today := GameState.today()
 	t.care.thirsty = not rec.is_empty() and Care.thirsty(rec, today)
-	t.care.seed = not rec.is_empty() and t.care.glint != null and Care.can_gather(rec, today)
+	t.care.seed = not rec.is_empty() and t.care.glint != null and Care.can_gather(rec, today, _garden(rec))
 
 
 ## A fa összes részletességi szintjének anyagába beírja a jelenlegi értékeket.
@@ -205,7 +205,7 @@ func tap_focused(i: int, pos: Vector2) -> bool:
 	if Care.thirsty(rec, GameState.today()):
 		water(t)
 		return true
-	if Care.can_gather(rec, GameState.today()):
+	if Care.can_gather(rec, GameState.today(), _garden(rec)):
 		var local: Variant = _flower_at(t, pos)
 		if local != null:
 			gather(t, local)
@@ -292,7 +292,12 @@ func care_line(t: Dictionary) -> String:
 		return _note
 	if not t.has("care") or (t.care.rec as Dictionary).is_empty():
 		return ""
-	return Care.status_text(t.care.rec, GameState.today())
+	return Care.status_text(t.care.rec, GameState.today(), _garden(t.care.rec))
+
+
+## A fa bolygójának kikelt fái (a maghozás tempójához).
+func _garden(rec: Dictionary) -> Array:
+	return (host.game as GameState).garden_of(rec)
 
 
 # ---------------------------------------------------------------- Idő
