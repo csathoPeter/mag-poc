@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Képernyőképek fej nélkül, szoftveres Vulkannal (lassú, csak a kép ellenőrzésére jó, a fps itt nem mérvadó).
 # Használat: tools/render_shots.sh kimenet.png SPEC [SPEC...]
-#   SPEC = dna,kód,növekedés[,fly[,go]]   pl. 2-5-1-3-0-5,kert01,1   vagy   2-5-1-3-0-5,kert01,1,fly,go
+#   SPEC = dna,kód,növekedés[,kapcsolók…]   pl. 2-5-1-3-0-5,kert01,1   vagy   2-5-1-3-0-5,kert01,1,fly,go
 #   "fly" a repülős kertet tölti be, "go" ráadásul előretolja az analóg kart.
+#   "board" megnyitja a DNS-táblát, "cross" keresztezéses táblát nyit, "solve" kirakja,
+#   "helix1.3" a kettős spirált 1,3 másodpercnél mutatja (a növekedés ilyenkor legyen 0).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 G="$HOME/godot-bin/godot"

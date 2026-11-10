@@ -12,12 +12,15 @@ Péter telefonos játéka: DNS-ből kinövő, egyedi 3D növények egy nyugodt, 
 godot/                  A játék (Godot 4.7.1, GDScript)
   project.godot         Mobil renderer natívan, gl_compatibility weben
   main.gd               Jelenet, UI, kamera (egy fa / repülős kert), analóg kar, növekedés, mérőszámok
+  dna_board.gd          DNS-tábla logikája: 14 szabályos sor, 11 222 tábla, feladvány-generátor, levezetés, legközelebbi tábla
+  board_ui.gd           A tábla kirakása (koppintás: üres → A=T → G≡C), szabad sorok, 1/2/M jelölés keresztezésnél, tipp
+  helix.gd              Kettős spirál: a kész tábla spirállá csavarodik, maggá húzódik, a földbe hull
   plant_gen.gd          Növénygenerátor: ágak gyűrűkből, levelek és virágok MultiMesh-ben, részletességi szintek
   genes.gd              DNS → genom: 6 gén × 14 változat, termetek, égboltok
   shaders/              Fa, levél, virág, fű, talaj, ég, tiltshift
+  fonts/symbols.ttf     Csak a „≡” jel (DejaVu), mert weben nincs rendszerfont, ami pótolná
   export_presets.cfg    "Web" preset (egyszálas)
-prototype-threejs/      Korábbi Three.js-prototípus egy fájlban. Itt van kész a DNS-tábla, a feladvány-generátor,
-                        a keresztezés és a kettős spirál animáció – ezeket kell Godotba átvinni.
+prototype-threejs/      Korábbi Three.js-prototípus egy fájlban (DNS-tábla, keresztezés, spirál – ezek már át vannak víve Godotba).
 tools/setup_godot.sh    Godot + szoftveres Vulkan telepítése (felhős gépen). `--web` a webes export sablont is letölti (1,3 GB-os csomagból).
 tools/render_shots.sh   Fej nélküli képernyőképek ellenőrzéshez
 .github/workflows/      Push a main ágra → webes export → gh-pages
@@ -38,7 +41,8 @@ cd godot && ~/godot-bin/godot --headless --import 2>&1 | grep -iE "script error|
 tools/render_shots.sh /tmp/a.png 2-5-1-3-0-5,kert01,1 2-5-1-3-0-5,kert01,1,fly,go
 ```
 
-- A `--shot=kimenet.png,dna,kód,növekedés[,fly[,go]]` argumentumot a `main.gd` kezeli: betölti az állapotot, ha `go`, előretolja a kart, kiírja a `STATS` sort, ment egy képet és kilép.
+- A `--shot=kimenet.png,dna,kód,növekedés[,kapcsolók…]` argumentumot a `main.gd` kezeli: betölti az állapotot, kiírja a `STATS` sort, ment egy képet és kilép. Kapcsolók: `fly` repülős kert, `go` előretolja a kart, `board` megnyitja a DNS-táblát, `cross` keresztezéses tábla (egy beépített második szülővel), `solve` kirakja a táblát (ebből nő az új növény), `helix1.3` a spirált az adott másodpercben mutatja (különben átugorja).
+- Példa: `tools/render_shots.sh /tmp/b.png 2-5-1-3-0-5,kert01,1,board 2-5-1-3-0-5,kert01,0,cross,solve,helix1.3`
 - A szoftveres renderelés 1–6 fps-t ad: ez **nem** teljesítménymérés, csak a kép és a hibák ellenőrzése. A valódi teljesítményt Péter méri iPhone 15-ön (a sarokban fps, CPU/GPU ms, háromszögszám, fák száma).
 - Minden változtatás után nézd meg legalább egy képernyőképen, mielőtt pusholsz. A Compatibility (webes) renderer másképp néz ki: ha a látványt hangolod, azt is nézd meg, pl. a webes exportot fej nélküli Chrome-mal.
 
@@ -56,7 +60,7 @@ tools/render_shots.sh /tmp/a.png 2-5-1-3-0-5,kert01,1 2-5-1-3-0-5,kert01,1,fly,g
 
 ## Következő lépések (prioritás szerint)
 
-1. DNS-tábla, feladvány-generátor, keresztezés és kettős spirál átvitele Godotba a `prototype-threejs/index.html`-ből.
+1. ~~DNS-tábla, feladvány-generátor, keresztezés és kettős spirál átvitele Godotba~~ (kész). Hátra van belőle: rejtett gének, egy keresztezésből három csíra.
 2. Helyi mentés: a kert fái és DNS-ük megmaradjanak újratöltés után.
 3. Saját növények a kertben, a mag másnap kel ki, öntözés.
 4. Közelről a levelek szögletesek: finomabb levélforma vagy textúra a részletes szinten.

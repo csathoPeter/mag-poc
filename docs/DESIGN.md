@@ -26,7 +26,7 @@ Nyugodt, ingyenes telefonos játék (iOS, Android, web), amelyben DNS-ből kinö
 
 ## A nagy pillanat
 
-A kész tábla sorai kettős spirállá csavarodnak, maggá húzódnak, a földbe hullanak, és kinő a növény. (A Three.js-es prototípusban kész, Godotba még át kell vinni.)
+A kész tábla sorai kettős spirállá csavarodnak, maggá húzódnak, a földbe hullanak, és kinő a növény. (Godotban kész: `godot/helix.gd`.)
 
 ## A kert
 
@@ -66,7 +66,7 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [x] Engine: Godot 4.7, mobil renderer natívan, Compatibility weben
 - [x] Fő mechanika: DNS-tábla
 - [x] Kert nézet: szembőli, tiltshift, analóg kar
-- [ ] DNS-tábla és spirál átvitele Godotba
+- [x] DNS-tábla, keresztezés és spirál átvitele Godotba
 - [ ] Mentés (helyi), több saját növény a kertben, másnapi kikelés
 - [ ] Öntözés, herbárium, keresztezés UI
 - [ ] Mérés olcsó Androidon

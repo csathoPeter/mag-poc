@@ -45,6 +45,13 @@ var pinch_last := 0.0
 
 var pending: Variant = null
 var current: Dictionary = {}
+var previous: Dictionary = {}
+
+var board := BoardUI.new()
+var helix := Helix.new()
+var hold_grow := false
+var cross_btn: Button
+var mode_btn: Button
 
 var name_l := Label.new()
 var traits_l := Label.new()
@@ -56,11 +63,16 @@ var shot_frames := 0
 
 
 func _ready() -> void:
+	# A "≡" (G≡C) nincs benne a Godot alapfontjában, weben pedig nincs rendszerfont, ami pótolná.
+	var font := ThemeDB.fallback_font
+	font.fallbacks = font.fallbacks + [preload("res://fonts/symbols.ttf")]
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	add_child(plants_root)
 	_build_world()
 	_build_grass()
 	_build_ui()
+	add_child(helix)
+	helix.landed.connect(func() -> void: hold_grow = false)
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shot="):
 			shot_args = a.substr(7).split(",")
@@ -69,8 +81,15 @@ func _ready() -> void:
 		for s in (shot_args[1] as String).split("-"):
 			dna.append(int(s))
 		show_single(dna, shot_args[2])
-		if shot_args.size() > 4:
+		if shot_args.has("fly"):
 			start_garden()
+		if shot_args.has("cross"):
+			previous = Genes.from_dna([7, 2, 11, 0, 3, 9], "szulo2")
+			open_board(true)
+		elif shot_args.has("board"):
+			open_board(false)
+		if shot_args.has("solve"):
+			board.solve()
 	else:
 		show_single([2, 5, 1, 3, 0, 5], "kert01")
 		start_garden()
@@ -204,16 +223,14 @@ func _build_ui() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	col.add_child(row)
-	_button(row, "Új kert", func() -> void:
-		var d := Genes.random_dna()
-		var c := "%06x" % (randi() & 0xffffff)
-		retreat(func() -> void:
-			show_single(d, c)
-			start_garden()))
-	_button(row, "Egy fa közelről", func() -> void:
-		var d := Genes.random_dna()
-		var c := "%06x" % (randi() & 0xffffff)
-		retreat(func() -> void: show_single(d, c)))
+	_button(row, "Új mag", func() -> void: open_board(false)).add_theme_stylebox_override("normal", _seed_box())
+	cross_btn = _button(row, "Keresztezés", func() -> void: open_board(true))
+	cross_btn.disabled = true
+	mode_btn = _button(row, "Kert", func() -> void:
+		if garden_mode == "fly":
+			retreat(func() -> void: show_single(current.dna, current.code, current.get("parents", [])))
+		else:
+			retreat(start_garden))
 	joy.set_anchors_preset(Control.PRESET_FULL_RECT)
 	joy.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	joy.draw.connect(func() -> void:
@@ -222,6 +239,61 @@ func _build_ui() -> void:
 		joy.draw_arc(c, JOY_R, 0.0, TAU, 56, Color(1, 1, 1, .55), 2.0, true)
 		joy.draw_circle(c + joy_knob, 27.0, Color(1, 1, 1, .62)))
 	layer.add_child(joy)
+	board.visible = false
+	layer.add_child(board)
+	board.cancelled.connect(func() -> void: board.visible = false)
+	board.finished.connect(_on_board_finished)
+
+
+func _seed_box() -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(BoardUI.SEED, .28)
+	sb.border_color = BoardUI.SEED
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(3)
+	sb.content_margin_left = 6
+	sb.content_margin_right = 6
+	return sb
+
+
+## Új mag: DNS-tábla. Keresztezésnél az előző és a mostani növény a két szülő.
+func open_board(cross: bool) -> void:
+	if retreating or helix.running:
+		return
+	if cross and previous.is_empty():
+		return
+	board.open([previous.dna, current.dna] if cross else [])
+
+
+## A kész táblából új növény lesz: a tábla kettős spirállá csavarodik, maggá húzódik, a földbe hull, és kinő.
+## rect: a sarokmezők középpontjai közti téglalap, képernyő-koordinátában.
+func _on_board_finished(dna: Array, grid: Array, rect: Rect2) -> void:
+	var parents: Array = []
+	if board.parents.size() == 2:
+		parents = [previous.code, current.code]
+	if not current.is_empty():
+		previous = current
+	board.visible = false
+	hold_grow = true
+	show_single(dna, Genes.new_code(), parents)
+	cross_btn.disabled = false
+	# A tábla helyét a kamera síkjába vetítjük, hogy a spirál pontosan onnan induljon.
+	var depth := (target - cam.global_position).dot(-cam.global_basis.z)
+	var c := cam.project_position(rect.get_center(), depth)
+	var step := rect.size.x / (DnaBoard.N - 1)
+	var cell := cam.project_position(rect.get_center() + Vector2(step, 0), depth).distance_to(c)
+	helix.start(grid, c, cell, cam.global_basis, target, Vector3(0, .03, 0))
+	if shot_args.size() > 0:
+		# Képernyőképnél: "helix1.3" a spirált az adott pillanatban mutatja, különben átugorjuk.
+		var at := helix.DURATION
+		for a in shot_args:
+			if (a as String).begins_with("helix"):
+				at = float((a as String).substr(5))
+		if at >= helix.DURATION:
+			helix.advance(at)
+		else:
+			helix.running = false
+			helix.pose_at(at)
 
 
 func _joy_center() -> Vector2:
@@ -235,7 +307,7 @@ func _joy_move(p: Vector2) -> void:
 	joy.queue_redraw()
 
 
-func _button(parent: Container, text: String, cb: Callable) -> void:
+func _button(parent: Container, text: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.custom_minimum_size = Vector2(0, 40)
@@ -244,6 +316,7 @@ func _button(parent: Container, text: String, cb: Callable) -> void:
 	b.add_theme_font_size_override("font_size", 14)
 	b.pressed.connect(cb)
 	parent.add_child(b)
+	return b
 
 
 func retreat(after: Callable) -> void:
@@ -330,14 +403,17 @@ func apply_sky(g: Dictionary) -> Vector3:
 	return dir
 
 
-func show_single(dna: Array, code: String) -> void:
+func show_single(dna: Array, code: String, parents: Array = []) -> void:
 	var t0 := Time.get_ticks_usec()
 	clear_plants()
+	queue.clear()
 	garden_mode = ""
 	tilt_quad.visible = false
 	joy.visible = false
 	cam.fov = 38.0
 	var g := Genes.from_dna(dna, code)
+	if parents.size() == 2:
+		g.parents = parents
 	var rec := spawn(g, Vector3.ZERO, 0.0, 1.0, 1.0)
 	var dir := apply_sky(g)
 	env.fog_depth_begin = 20.0
@@ -355,9 +431,12 @@ func show_single(dna: Array, code: String) -> void:
 	max_dist = dist * 1.5
 	yaw = atan2(dir.x, dir.z) + PI + .75
 	pitch = .21
+	_orbit_cam()
 	current = g
 	name_l.text = _latin(g)
 	traits_l.text = Genes.describe(g)
+	if mode_btn:
+		mode_btn.text = "Kert"
 	build_ms_total = (Time.get_ticks_usec() - t0) / 1000.0
 
 
@@ -412,6 +491,7 @@ func start_garden() -> void:
 	pitch = -.02
 	roll = 0.0
 	name_l.text = "Kert"
+	mode_btn.text = "Közelről"
 	traits_l.text = "Húzd a kart a repüléshez, máshol húzva körülnézel."
 
 
@@ -451,6 +531,11 @@ func _fly(delta: float) -> void:
 	cam.rotate_object_local(Vector3.FORWARD, roll)
 
 
+func _orbit_cam() -> void:
+	var offset := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * dist
+	cam.look_at_from_position(target + offset, target, Vector3.UP)
+
+
 func _latin(g: Dictionary) -> String:
 	var r := RandomNumberGenerator.new()
 	r.seed = g.gen_seed + 77
@@ -458,7 +543,8 @@ func _latin(g: Dictionary) -> String:
 	var b := ["and", "ith", "ol", "an", "er", "ys", "am", "ion", "ul", "en"]
 	var c := ["ia", "ella", "ora", "ina", "ara", "ea", "anthe"]
 	var d := ["aurea", "rosea", "pendula", "arborea", "viridis", "ventosa", "erecta", "violacea"]
-	return "%s%s%s %s" % [a[r.randi() % a.size()], b[r.randi() % b.size()], c[r.randi() % c.size()], d[r.randi() % d.size()]]
+	var genus := "%s%s%s" % [a[r.randi() % a.size()], b[r.randi() % b.size()], c[r.randi() % c.size()]]
+	return genus + " " + ("hybrida" if g.has("parents") else d[r.randi() % d.size()])
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -519,6 +605,9 @@ func _process(delta: float) -> void:
 	var rate := 0.0
 	if shot_args.is_empty():
 		rate = -1.8 if retreating else 1.0 / (4.5 if garden_mode != "" else 11.0)
+	if hold_grow:
+		rate = 0.0
+	helix.advance(delta if shot_args.is_empty() else 0.0)
 	var all_zero := true
 	for p in plants:
 		var before: float = p.t
@@ -543,10 +632,9 @@ func _process(delta: float) -> void:
 			lod_timer = 0.0
 			_update_lod()
 	else:
-		if touches.is_empty() and shot_args.is_empty():
+		if touches.is_empty() and shot_args.is_empty() and not hold_grow and not board.visible:
 			yaw += delta * .035
-		var offset := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * dist
-		cam.look_at_from_position(target + offset, target, Vector3.UP)
+		_orbit_cam()
 
 	stat_timer += delta
 	if stat_timer >= .5:
@@ -559,7 +647,7 @@ func _process(delta: float) -> void:
 
 	if shot_args.size() > 0 and queue.is_empty():
 		shot_frames += 1
-		if shot_frames == 1 and shot_args.size() > 5:
+		if shot_frames == 1 and shot_args.has("go"):
 			var c := _joy_center()
 			var t1 := InputEventScreenTouch.new()
 			t1.index = 0; t1.position = c; t1.pressed = true
@@ -567,7 +655,7 @@ func _process(delta: float) -> void:
 			var t2 := InputEventScreenDrag.new()
 			t2.index = 0; t2.position = c + Vector2(0, -55); t2.relative = Vector2(0, -55)
 			Input.parse_input_event(t2)
-		if shot_frames == (40 if shot_args.size() > 5 else 8):
+		if shot_frames == (40 if shot_args.has("go") else 8):
 			var highs := 0
 			for t in trees:
 				if t.high_on:

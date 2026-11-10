@@ -37,6 +37,28 @@ static func hsl(h: float, s: float, l: float) -> Color:
 	return Color(rgb.x + m, rgb.y + m, rgb.z + m)
 
 
+## A gén egy változatának neve, ahogy a DNS-táblán látszik.
+static func allele_name(gene: int, k: int) -> String:
+	match gene:
+		0: return FLOWER[k][0]
+		1:
+			var petals := 4 + k % 6
+			return "%d%s%s" % [petals, ", telt" if k >= 6 and k < 12 else "", ", harangos" if k % 4 >= 2 else ""]
+		2: return LEAF[k][0]
+		3: return TERMET[k][1]
+		4: return BARK[k][0]
+	return FOLIAGE[k][0]
+
+
+## Rövid, jól olvasható kód egy új magnak (megosztáshoz is).
+static func new_code() -> String:
+	const ABC := "abcdefghjkmnpqrstuvwxyz23456789"
+	var s := ""
+	for i in 6:
+		s += ABC[randi() % ABC.length()]
+	return s
+
+
 static func random_dna() -> Array:
 	var dna := []
 	for i in 6:
@@ -80,4 +102,7 @@ static func from_dna(dna: Array, code: String) -> Dictionary:
 
 static func describe(g: Dictionary) -> String:
 	var dna: Array = g.dna
-	return "%s termet · %s levél · %s virág · %s lomb · %s" % [g.form, LEAF[dna[2]][0], FLOWER[dna[0]][0], FOLIAGE[dna[5]][0], SKIES[g.sky].name]
+	var line := "%s termet · %s levél · %s virág · %s lomb · %s" % [g.form, LEAF[dna[2]][0], FLOWER[dna[0]][0], FOLIAGE[dna[5]][0], SKIES[g.sky].name]
+	if g.has("parents"):
+		line += "\nszülők: %s × %s" % g.parents
+	return line
