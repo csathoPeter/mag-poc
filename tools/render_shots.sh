@@ -3,6 +3,8 @@
 # Használat: tools/render_shots.sh kimenet.png SPEC [SPEC...]
 #   SPEC = dna,kód,növekedés[,fly[,go]]   pl. 2-5-1-3-0-5,kert01,1   vagy   2-5-1-3-0-5,kert01,1,fly,go
 #   "fly" a repülős kertet tölti be, "go" ráadásul előretolja az analóg kart.
+#   Bolygó: planet,kód,fák száma[,óra[,focusN|plant]]   pl. planet,bolygo01,14,23,focus2
+#   (óra: napszak 0–24; focusN: leszáll az N-edik fához; plant: ültet egy újat és odarepül)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 G="$HOME/godot-bin/godot"

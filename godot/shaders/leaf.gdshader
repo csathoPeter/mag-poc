@@ -5,6 +5,7 @@ uniform vec3 base : source_color = vec3(0.2, 0.5, 0.2);
 uniform vec3 tip : source_color = vec3(0.4, 0.7, 0.3);
 varying float tint_v;
 varying float ao_v;
+varying float u_v;
 
 void vertex() {
 	vec3 o = MODEL_MATRIX[3].xyz;
@@ -14,6 +15,7 @@ void vertex() {
 	VERTEX = o + p + sway(o, TIME);
 	tint_v = INSTANCE_CUSTOM.y;
 	ao_v = INSTANCE_CUSTOM.z;
+	u_v = (INSTANCE_CUSTOM.x - 0.05) / 0.64;
 }
 
 void fragment() {
@@ -26,4 +28,5 @@ void fragment() {
 	BACKLIGHT = ALBEDO * vec3(1.0, 1.0, 0.75) * 0.9;
 	AO = ao_v;
 	AO_LIGHT_AFFECT = 0.45;
+	EMISSION = glow_col * (glow_amt * (part_on(1.0) * (rib * 2.2 + vein * 3.5 + 0.25) + 0.06) + touch_wave(u_v) * 0.9);
 }

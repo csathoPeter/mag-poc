@@ -101,7 +101,7 @@ Döntés: 2026. 11. 10. A „kert” kis bolygók sora. A játékos nemcsak fák
 | Lomb | A fű színe |
 
 - **Alapító:** a bolygó első növénye adja a karaktert. A darabos tulajdonságok (holdak száma, felszíntakaró fajtája, domborzat típusa) tőle jönnek, és nem változnak.
-- **Átlagolás:** a folytonos értékeket (színárnyalatok, domborzat magassága, holdak mérete) minden további növény finoman elhúzza. Az alapító súlya nagyobb (pl. 1/3), a többin a többiek osztoznak. Az árnyalatok átlaga körkörös (szín-kerék).
+- **Átlagolás:** a folytonos értékeket (színárnyalatok, holdak mérete) minden további növény finoman elhúzza. A domborzat magassága az alapításkor dől el (az akkori növényekből), később nem változik, hogy a fák ne süllyedjenek el. Az alapító súlya nagyobb (pl. 1/3), a többin a többiek osztoznak. Az árnyalatok átlaga körkörös (szín-kerék).
 - **Saját mag:** minden bolygónak van kódja (pl. a játékos kódja + a bolygó sorszáma). Ebből jön a domborzat zaja, a kráterek és a holdak helye, így **két bolygó sosem egyforma**, még azonos növényekkel sem.
 - Determinisztikus: a bolygó kinézete = f(bolygókód, a rajta élő növények DNS-e). Ültetéskor és elengedéskor lassan, látványosan változik.
 
@@ -189,7 +189,9 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [x] Napi kör: kíváncsiság + a nap magja + gondozás (metszés, kötözés)
 - [x] Kert = növekvő kis bolygók, bolygó-DNS a növényekből, elengedett fa = csillag
 - [x] Art design: pasztell nappal, világító éjjel, diegetikus felület, DNS-ből generált hang
-- [ ] Bolygó-generátor (gömb, domborzat, légkör, holdak) és kamera (forgatás, ráközelítés)
+- [x] Bolygó-prototípus: domborzat, légkör, holdak, gyűrű, felszíntakaró a bolygó-DNS-ből; forgatás, csípés, koppintásra leszállás; napszak (valódi idő vagy gomb); rejtett éjszakai fény a tábla átlóiból; érintésre fényhullám; lebegő névtábla
+- [ ] Új bolygó születése, ha megtelt; bolygóváltás
+- [ ] Mérés iPhone 15-ön (bolygó-nézet, leszállás 4 részletes fával)
 - [ ] Csillagképek, visszahozás az égről
 - [ ] A nap magja: dátumból generált tábla, magos táska (7 nap)
 - [ ] Alakítási lista a generátorban (metszés, kötözés)

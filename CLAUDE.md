@@ -11,10 +11,11 @@ Péter telefonos játéka: DNS-ből kinövő, egyedi 3D növények egy nyugodt, 
 ```
 godot/                  A játék (Godot 4.7.1, GDScript)
   project.godot         Mobil renderer natívan, gl_compatibility weben
-  main.gd               Jelenet, UI, kamera (egy fa / repülős kert), analóg kar, növekedés, mérőszámok
+  main.gd               Jelenet, UI, kamera (bolygó: forgatás/leszállás; régi: egy fa, repülős kert), napszak, növekedés, mérőszámok
+  planet.gd             Kis bolygó: domborzat, légkör, holdak, gyűrű, fű, fénypontok; bolygó-DNS a növényekből
   plant_gen.gd          Növénygenerátor: ágak gyűrűkből, levelek és virágok MultiMesh-ben, részletességi szintek
-  genes.gd              DNS → genom: 6 gén × 14 változat, termetek, égboltok
-  shaders/              Fa, levél, virág, fű, talaj, ég, tiltshift
+  genes.gd              DNS → genom: 6 gén × 14 változat, termetek, égboltok; DNS-tábla sorai, rejtett éjszakai fény
+  shaders/              Fa, levél, virág (szél a fa keretében, éjszakai fény, érintéshullám), fű, bolygó, légkör, űr-ég, gyűrű, fénypontok, tiltshift
   export_presets.cfg    "Web" preset (egyszálas)
 prototype-threejs/      Korábbi Three.js-prototípus egy fájlban. Itt van kész a DNS-tábla, a feladvány-generátor,
                         a keresztezés és a kettős spirál animáció – ezeket kell Godotba átvinni.
@@ -35,10 +36,11 @@ tools/render_shots.sh   Fej nélküli képernyőképek ellenőrzéshez
 ```bash
 tools/setup_godot.sh                     # egyszer, ha nincs Godot
 cd godot && ~/godot-bin/godot --headless --import 2>&1 | grep -iE "script error|parse error|shader error"
-tools/render_shots.sh /tmp/a.png 2-5-1-3-0-5,kert01,1 2-5-1-3-0-5,kert01,1,fly,go
+tools/render_shots.sh /tmp/a.png planet,bolygo01,14,12 planet,bolygo01,14,23,focus2 2-5-1-3-0-5,kert01,1
 ```
 
 - A `--shot=kimenet.png,dna,kód,növekedés[,fly[,go]]` argumentumot a `main.gd` kezeli: betölti az állapotot, ha `go`, előretolja a kart, kiírja a `STATS` sort, ment egy képet és kilép.
+- Bolygó: `--shot=kimenet.png,planet,kód,fák száma[,óra[,focusN|plant]]`. Az óra a napszakot rögzíti (pl. 12 nappal, 19 alkony, 23 éjjel).
 - A szoftveres renderelés 1–6 fps-t ad: ez **nem** teljesítménymérés, csak a kép és a hibák ellenőrzése. A valódi teljesítményt Péter méri iPhone 15-ön (a sarokban fps, CPU/GPU ms, háromszögszám, fák száma).
 - Minden változtatás után nézd meg legalább egy képernyőképen, mielőtt pusholsz. A Compatibility (webes) renderer másképp néz ki: ha a látványt hangolod, azt is nézd meg, pl. a webes exportot fej nélküli Chrome-mal.
 

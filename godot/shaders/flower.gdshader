@@ -7,6 +7,7 @@ uniform vec3 throat : source_color = vec3(0.9, 0.7, 0.3);
 uniform vec3 stamen : source_color = vec3(0.9, 0.65, 0.2);
 varying float kind_v;
 varying float tint_v;
+varying float u_v;
 
 void vertex() {
 	vec3 o = MODEL_MATRIX[3].xyz;
@@ -19,6 +20,7 @@ void vertex() {
 	VERTEX = o + p * g + sway(o, TIME);
 	kind_v = COLOR.r;
 	tint_v = INSTANCE_CUSTOM.y;
+	u_v = (INSTANCE_CUSTOM.x - 0.74) / 0.14;
 }
 
 void fragment() {
@@ -32,4 +34,5 @@ void fragment() {
 		SPECULAR = 0.3;
 		BACKLIGHT = ALBEDO * 1.1;
 	}
+	EMISSION = glow_col * (glow_amt * (part_on(0.0) * (smoothstep(0.1, 0.9, UV.x) * 3.2 + 0.9) + 0.12) + touch_wave(u_v) * 1.2);
 }

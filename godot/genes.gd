@@ -81,3 +81,40 @@ static func from_dna(dna: Array, code: String) -> Dictionary:
 static func describe(g: Dictionary) -> String:
 	var dna: Array = g.dna
 	return "%s termet · %s levél · %s virág · %s lomb · %s" % [g.form, LEAF[dna[2]][0], FLOWER[dna[0]][0], FOLIAGE[dna[5]][0], SKIES[g.sky].name]
+
+
+static var _rows: Array = []
+
+
+## A 14 szabályos sor (0 = A=T, 1 = G≡C), ugyanabban a sorrendben, mint a prototípusban: a génváltozat sorszáma = a sor sorszáma.
+static func rows() -> Array:
+	if _rows.is_empty():
+		for m in 64:
+			var r: Array = []
+			var sum := 0
+			for i in 6:
+				var v := (m >> (5 - i)) & 1
+				r.append(v)
+				sum += v
+			var triple := false
+			for i in 4:
+				if r[i] == r[i + 1] and r[i] == r[i + 2]:
+					triple = true
+			if sum == 3 and not triple:
+				_rows.append(r)
+	return _rows
+
+
+## Rejtett éjszakai fény a tábla két átlójából: az erősség a G≡C-k számából, hogy melyik rész világít, az átlók eltéréseiből.
+## Csak éjjel derül ki, és öröklődik, mert a sorokból (génekből) jön.
+static func glow(dna: Array) -> Dictionary:
+	var rs := rows()
+	var gc := 0
+	var key := 0
+	for i in 6:
+		var row: Array = rs[dna[i]]
+		gc += int(row[i]) + int(row[5 - i])
+		key += i * (int(row[i]) ^ int(row[5 - i]))
+	var parts := ["virágai", "levélerei", "kérge"]
+	var part := key % 3
+	return {"strength": clampf((gc - 3) / 6.0, 0.0, 1.0), "part": part, "part_name": parts[part]}

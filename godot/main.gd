@@ -1,5 +1,6 @@
 extends Node3D
-## Godot PoC: ugyanaz a DNS-ből épülő növény, valódi árnyékkal, ragyogással és mérőszámokkal.
+## Godot PoC: DNS-ből épülő növények egy kis bolygón (bolygó-DNS, napszak, éjszakai fény), valódi árnyékkal és mérőszámokkal.
+## A korábbi módok (egy fa közelről, repülős kert) a --shot paraméterrel továbbra is elérhetők.
 
 const WOOD := preload("res://shaders/wood.gdshader")
 const LEAF := preload("res://shaders/leaf.gdshader")
@@ -8,6 +9,7 @@ const GRASS := preload("res://shaders/grass.gdshader")
 const GROUND := preload("res://shaders/ground.gdshader")
 const SKY := preload("res://shaders/sky.gdshader")
 const TILT := preload("res://shaders/tiltshift.gdshader")
+const SPACE_SKY := preload("res://shaders/space_sky.gdshader")
 
 var plants_root := Node3D.new()
 var trees: Array = []
@@ -32,6 +34,7 @@ var env := Environment.new()
 var sky_mat := ShaderMaterial.new()
 var ground_mat := ShaderMaterial.new()
 var grass_mat := ShaderMaterial.new()
+var flat_ground: Array = []
 
 var yaw := 0.0
 var pitch := 0.2
@@ -53,18 +56,62 @@ var gen_ms := 0.0
 var stat_timer := 0.0
 var shot_args: Array = []
 var shot_frames := 0
+var grow_start := 0.0
+
+# Bolygó
+var planet: Planet
+var planet_dnas: Array = []
+var space_mat := ShaderMaterial.new()
+var view := "orbit"
+var focus := -1
+var orbit_q := Quaternion.IDENTITY
+var orbit_dist := 20.0
+var spin := Vector2.ZERO
+var eye := Vector3(0, 0, 60)
+var look := Vector3.ZERO
+var up_v := Vector3.UP
+var s_yaw := 0.0
+var s_pitch := .28
+var s_dist := 6.0
+var trans_t := 9.0
+var sun_dir := Vector3(.4, .6, .7)
+var last_r := 0.0
+var taps := {}
+var tag := Label3D.new()
+var tag_alpha := 0.0
+
+# Napszak: a telefon órája szerint, vagy a gombbal kiválasztva
+const TOD_PRESETS := [-1.0, 6.4, 12.0, 19.0, 23.0]
+const TOD_NAMES := ["valódi idő", "hajnal", "nappal", "alkony", "éjjel"]
+var tod_i := 0
+var tod := -1.0
+var shot_hour := -1.0
+var night := -1.0
+var dusk := -1.0
+var tod_btn: Button
 
 
 func _ready() -> void:
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	add_child(plants_root)
+	planet = Planet.new()
+	planet.visible = false
+	add_child(planet)
+	space_mat.shader = SPACE_SKY
 	_build_world()
 	_build_grass()
 	_build_ui()
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shot="):
 			shot_args = a.substr(7).split(",")
-	if shot_args.size() > 0:
+	_build_tag()
+	if shot_args.size() > 0 and shot_args[1] == "planet":
+		grow_start = 1.0
+		if shot_args.size() > 4:
+			shot_hour = float(shot_args[4])
+		start_planet(shot_args[2], int(shot_args[3]))
+	elif shot_args.size() > 0:
+		grow_start = float(shot_args[3])
 		var dna: Array = []
 		for s in (shot_args[1] as String).split("-"):
 			dna.append(int(s))
@@ -72,8 +119,7 @@ func _ready() -> void:
 		if shot_args.size() > 4:
 			start_garden()
 	else:
-		show_single([2, 5, 1, 3, 0, 5], "kert01")
-		start_garden()
+		start_planet("bolygo01", 14)
 
 
 func _build_world() -> void:
@@ -122,6 +168,7 @@ func _build_world() -> void:
 	g.mesh = plane
 	g.material_override = ground_mat
 	add_child(g)
+	flat_ground.append(g)
 
 	var q := QuadMesh.new()
 	q.size = Vector2(2, 2)
@@ -177,6 +224,7 @@ func _build_grass() -> void:
 	inst.material_override = grass_mat
 	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(inst)
+	flat_ground.append(inst)
 
 
 func _build_ui() -> void:
@@ -204,16 +252,15 @@ func _build_ui() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	col.add_child(row)
-	_button(row, "Új kert", func() -> void:
-		var d := Genes.random_dna()
+	_button(row, "Új bolygó", func() -> void:
 		var c := "%06x" % (randi() & 0xffffff)
-		retreat(func() -> void:
-			show_single(d, c)
-			start_garden()))
-	_button(row, "Egy fa közelről", func() -> void:
-		var d := Genes.random_dna()
-		var c := "%06x" % (randi() & 0xffffff)
-		retreat(func() -> void: show_single(d, c)))
+		var n := randi_range(5, 20)
+		retreat(func() -> void: start_planet(c, n)))
+	_button(row, "Ültess", plant_new)
+	tod_btn = _button(row, "Napszak", func() -> void:
+		tod_i = (tod_i + 1) % TOD_PRESETS.size()
+		tod_btn.text = TOD_NAMES[tod_i])
+	tod_btn.text = TOD_NAMES[tod_i]
 	joy.set_anchors_preset(Control.PRESET_FULL_RECT)
 	joy.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	joy.draw.connect(func() -> void:
@@ -235,7 +282,7 @@ func _joy_move(p: Vector2) -> void:
 	joy.queue_redraw()
 
 
-func _button(parent: Container, text: String, cb: Callable) -> void:
+func _button(parent: Container, text: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.custom_minimum_size = Vector2(0, 40)
@@ -244,6 +291,7 @@ func _button(parent: Container, text: String, cb: Callable) -> void:
 	b.add_theme_font_size_override("font_size", 14)
 	b.pressed.connect(cb)
 	parent.add_child(b)
+	return b
 
 
 func retreat(after: Callable) -> void:
@@ -304,15 +352,25 @@ func spawn(g: Dictionary, at: Vector3, rot: float, size_mul: float, det: float) 
 	node.scale = Vector3.ONE * s
 	node.position = at
 	node.rotation.y = rot
-	var start := float(shot_args[3]) if shot_args.size() > 3 else 0.0
+	var start := grow_start
 	for m in mats:
 		m.set_shader_parameter("max_path", pg.max_path)
 		m.set_shader_parameter("plant_h", 5.0)
 		m.set_shader_parameter("grow", 1.0 - pow(1.0 - start, 1.7))
 	plants_root.add_child(node)
 	var rec := {"node": node, "mats": mats, "t": start, "top": top, "s": s, "pg": pg}
+	_set_tree_xf(rec)
 	plants.append(rec)
 	return rec
+
+
+## A fa saját kerete a shadereknek: a szél és a növekedés a fa "felfelé" irányához igazodik (a bolygón ferdén állnak).
+func _set_tree_xf(rec: Dictionary) -> void:
+	var xf: Transform3D = (rec.node as Node3D).transform
+	for m in rec.mats:
+		m.set_shader_parameter("tree_xf", xf)
+		m.set_shader_parameter("tree_inv", xf.affine_inverse())
+		m.set_shader_parameter("tree_scale", rec.s)
 
 
 func apply_sky(g: Dictionary) -> Vector3:
@@ -333,6 +391,7 @@ func apply_sky(g: Dictionary) -> Vector3:
 func show_single(dna: Array, code: String) -> void:
 	var t0 := Time.get_ticks_usec()
 	clear_plants()
+	_leave_planet()
 	garden_mode = ""
 	tilt_quad.visible = false
 	joy.visible = false
@@ -365,6 +424,7 @@ func show_single(dna: Array, code: String) -> void:
 func start_garden() -> void:
 	var hero: Dictionary = current
 	clear_plants()
+	_leave_planet()
 	garden_mode = "fly"
 	build_ms_total = 0.0
 	var r := RandomNumberGenerator.new()
@@ -462,6 +522,9 @@ func _latin(g: Dictionary) -> String:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if garden_mode == "planet":
+		_planet_input(event)
+		return
 	if garden_mode == "fly":
 		if event is InputEventScreenTouch:
 			if event.pressed:
@@ -510,10 +573,13 @@ func _process(delta: float) -> void:
 		var t0 := Time.get_ticks_usec()
 		var item: Dictionary = queue.pop_front()
 		var gg := Genes.from_dna(item.dna, item.code)
-		var low := spawn(gg, item.at, item.rot, item.size, .22)
-		var high := spawn(gg, item.at, item.rot, item.size, 1.0)
-		(high.node as Node3D).visible = false
-		trees.append({"pos": item.at, "low": low, "high": high, "high_on": false})
+		if item.has("dir"):
+			_spawn_on_planet(item, gg)
+		else:
+			var low := spawn(gg, item.at, item.rot, item.size, .22)
+			var high := spawn(gg, item.at, item.rot, item.size, 1.0)
+			(high.node as Node3D).visible = false
+			trees.append({"pos": item.at, "low": low, "high": high, "high_on": false})
 		build_ms_total += (Time.get_ticks_usec() - t0) / 1000.0
 
 	var rate := 0.0
@@ -536,7 +602,9 @@ func _process(delta: float) -> void:
 			pending = null
 			f.call()
 
-	if garden_mode == "fly":
+	if garden_mode == "planet":
+		_planet_process(delta)
+	elif garden_mode == "fly":
 		_fly(delta)
 		lod_timer += delta
 		if lod_timer >= .15:
@@ -559,6 +627,11 @@ func _process(delta: float) -> void:
 
 	if shot_args.size() > 0 and queue.is_empty():
 		shot_frames += 1
+		if shot_frames == 1 and garden_mode == "planet" and shot_args.size() > 5:
+			if shot_args[5] == "plant":
+				plant_new()
+			else:
+				_focus(int((shot_args[5] as String).trim_prefix("focus")) if (shot_args[5] as String).length() > 5 else 0)
 		if shot_frames == 1 and shot_args.size() > 5:
 			var c := _joy_center()
 			var t1 := InputEventScreenTouch.new()
@@ -575,3 +648,397 @@ func _process(delta: float) -> void:
 			print("STATS ", stats_l.text, " | ", name_l.text, " | cam ", cam_pos, " stick ", stick, " highs ", highs)
 			get_viewport().get_texture().get_image().save_png(shot_args[0])
 			get_tree().quit()
+
+
+# ---------------------------------------------------------------- Bolygó
+
+func _leave_planet() -> void:
+	planet.visible = false
+	for n in flat_ground:
+		(n as Node3D).visible = true
+	env.sky.sky_material = sky_mat
+	env.fog_enabled = true
+	env.ambient_light_energy = 1.35
+	tag.visible = false
+
+
+func _build_tag() -> void:
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.font_size = 40
+	tag.outline_size = 12
+	tag.pixel_size = .0024
+	tag.width = 760.0
+	tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tag.shaded = false
+	tag.modulate = Color(1, 1, 1, 0)
+	tag.outline_modulate = Color(.12, .08, .22, 0)
+	tag.visible = false
+	add_child(tag)
+
+
+## Új bolygó a kódból: a növények DNS-e determinisztikus, az első az alapító.
+func start_planet(code: String, count: int) -> void:
+	clear_plants()
+	queue.clear()
+	garden_mode = "planet"
+	view = "orbit"
+	focus = -1
+	build_ms_total = 0.0
+	var r := RandomNumberGenerator.new()
+	r.seed = hash(code)
+	planet_dnas = []
+	for i in count:
+		var dna: Array = []
+		for k in 6:
+			dna.append(r.randi() % 14)
+		planet_dnas.append(dna)
+	planet.visible = true
+	for n in flat_ground:
+		(n as Node3D).visible = false
+	planet.setup(code, planet_dnas)
+	last_r = planet.radius
+	var dirs: Array = []
+	for i in count:
+		var dir := planet.pick_spot(i, dirs)
+		dirs.append(dir)
+		queue.append({"dna": planet_dnas[i], "code": "%s-%d" % [code, i], "dir": dir, "rot": r.randf() * TAU, "size": r.randf_range(.5, .72)})
+	env.sky.sky_material = space_mat
+	env.fog_enabled = false
+	sun.directional_shadow_max_distance = 60.0
+	tilt_quad.visible = false
+	joy.visible = false
+	tag.visible = true
+	cam.fov = 40.0
+	orbit_dist = _fit_dist(planet.radius_target)
+	if shot_args.is_empty():
+		eye = Basis(orbit_q) * Vector3(0, 0, orbit_dist * 1.8)
+	trans_t = 0.0
+	night = -1.0
+	_planet_texts()
+
+
+## Távolság, ahonnan az egész bolygó a fákkal együtt kifér (álló telefonon a szélesség a szűkebb).
+func _fit_dist(r: float) -> float:
+	var vp := get_viewport().get_visible_rect().size
+	var t := tan(deg_to_rad(cam.fov) * .5) * minf(1.0, vp.x / vp.y)
+	return (r + 3.0) / t * 1.05
+
+
+func _planet_texts() -> void:
+	name_l.text = planet.planet_name()
+	traits_l.text = planet.describe() + "\nHúzd: forgatás · csípd: közelítés · koppints egy fára"
+
+
+## Új fa a bolygón: a bolygó-DNS változik, a bolygó lassan nő, a kamera odarepül a csírához.
+func plant_new() -> void:
+	if garden_mode != "planet" or queue.size() > 0 or retreating:
+		return
+	if trees.size() >= 30:
+		traits_l.text = "A bolygó megtelt. Később itt születik mellette egy új kis bolygó."
+		return
+	var dna := Genes.random_dna()
+	planet_dnas.append(dna)
+	planet.add_plant(dna)
+	var dirs: Array = []
+	for t in trees:
+		dirs.append(t.dir)
+	var i := trees.size()
+	queue.append({"dna": dna, "code": "%s-%d" % [planet.code, i], "dir": planet.pick_spot(i, dirs), "rot": randf() * TAU, "size": randf_range(.5, .72), "focus": true})
+	_planet_texts()
+
+
+func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
+	var low := spawn(gg, Vector3.ZERO, 0.0, item.size, .22)
+	var high := spawn(gg, Vector3.ZERO, 0.0, item.size, 1.0)
+	(high.node as Node3D).visible = false
+	var pg: PlantGen = high.pg
+	var w := maxf(pg.bb_max.x - pg.bb_min.x, pg.bb_max.z - pg.bb_min.z) * float(high.s) * .5
+	var t := {"dir": item.dir, "rot": item.rot, "low": low, "high": high, "high_on": false, "front": true,
+		"g": gg, "glow": Genes.glow(item.dna), "wave": -1.0, "h": 5.0 * float(item.size), "w": w}
+	trees.append(t)
+	_place_tree(t)
+	var col := Genes.hsl(gg.petal_h, .85, .62)
+	for rec in [low, high]:
+		for m in rec.mats:
+			m.set_shader_parameter("glow_col", col)
+			m.set_shader_parameter("glow_part", float(t.glow.part))
+			m.set_shader_parameter("glow_amt", float(t.glow.strength) * maxf(night, 0.0))
+	if item.get("focus", false):
+		_focus(trees.size() - 1)
+
+
+func _tree_frame(i: int) -> Basis:
+	return Basis(Quaternion(Vector3.UP, trees[i].dir as Vector3))
+
+
+func _place_tree(t: Dictionary) -> void:
+	var d: Vector3 = t.dir
+	var b := Basis(Quaternion(Vector3.UP, d)) * Basis(Vector3.UP, t.rot)
+	var pos := planet.surface_point(d) - d * .06
+	for rec in [t.low, t.high]:
+		(rec.node as Node3D).transform = Transform3D(b.scaled(Vector3.ONE * float(rec.s)), pos)
+		_set_tree_xf(rec)
+
+
+func _tree_mid(t: Dictionary) -> Vector3:
+	return planet.surface_point(t.dir) + (t.dir as Vector3) * float(t.h) * .45
+
+
+func _focus(i: int) -> void:
+	focus = i
+	view = "surface"
+	trans_t = 0.0
+	var t: Dictionary = trees[i]
+	var vp := get_viewport().get_visible_rect().size
+	var tv := tan(deg_to_rad(cam.fov) * .5)
+	s_dist = maxf(float(t.h) * .8 / tv, float(t.w) * .85 / (tv * minf(1.0, vp.x / vp.y))) + 1.0
+	tag.pixel_size = .0024 * s_dist / 7.0
+	s_pitch = .26
+	var rel := _tree_frame(i).inverse() * (eye - planet.surface_point(t.dir))
+	s_yaw = atan2(rel.x, rel.z)
+	t.wave = 0.0
+	var up_hint := Basis(orbit_q).y
+	if absf(up_hint.dot(t.dir)) > .98:
+		up_hint = Basis(orbit_q).x
+	orbit_q = Basis.looking_at(-(t.dir as Vector3), up_hint).get_rotation_quaternion()
+	tilt_quad.visible = true
+	_tag_text()
+
+
+func _unfocus() -> void:
+	view = "orbit"
+	focus = -1
+	trans_t = 0.0
+	tilt_quad.visible = false
+	orbit_dist = clampf(orbit_dist, _fit_dist(planet.radius) * .45, _fit_dist(planet.radius) * 1.4)
+
+
+func _tag_text() -> void:
+	if focus < 0:
+		return
+	var t: Dictionary = trees[focus]
+	var g: Dictionary = t.g
+	var dna: Array = g.dna
+	var gl: Dictionary = t.glow
+	var light := "éjszakai fénye: titok, nézd meg este"
+	if night > .5:
+		if float(gl.strength) < .05:
+			light = "éjjel sötét marad"
+		else:
+			light = "éjjel a %s %s" % [gl.part_name, "világít" if gl.part == 2 else "világítanak"]
+	tag.text = "%s\n%s termet · %s levél · %s virág\n%s" % [_latin(g), g.form, Genes.LEAF[dna[2]][0], Genes.FLOWER[dna[0]][0], light]
+
+
+func _zoom(f: float) -> void:
+	if view == "orbit":
+		orbit_dist = clampf(orbit_dist * f, _fit_dist(planet.radius) * .45, _fit_dist(planet.radius) * 1.4)
+	else:
+		s_dist *= f
+		if s_dist > 14.0:
+			_unfocus()
+		s_dist = clampf(s_dist, 2.0, 14.0)
+
+
+func _tap(pos: Vector2) -> void:
+	var vp := get_viewport().get_visible_rect().size
+	var px := vp.y * .5 / tan(deg_to_rad(cam.fov) * .5)
+	var best := -1
+	var best_score := 1.3
+	for i in trees.size():
+		var t: Dictionary = trees[i]
+		if not t.front:
+			continue
+		var c := _tree_mid(t)
+		if cam.is_position_behind(c):
+			continue
+		var reach := clampf(float(t.h) * .5 / maxf(cam.global_position.distance_to(c), .1) * px, 28.0, 200.0)
+		var score := cam.unproject_position(c).distance_to(pos) / reach
+		if score < best_score:
+			best_score = score
+			best = i
+	if best >= 0:
+		if view == "surface" and best == focus:
+			trees[best].wave = 0.0
+		else:
+			_focus(best)
+	elif view == "surface":
+		_unfocus()
+
+
+func _planet_input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			touches[event.index] = event.position
+			taps[event.index] = {"pos": event.position, "t": Time.get_ticks_msec(), "moved": false}
+			spin = Vector2.ZERO
+		else:
+			touches.erase(event.index)
+			var tp: Variant = taps.get(event.index)
+			taps.erase(event.index)
+			if tp != null and not tp.moved and Time.get_ticks_msec() - int(tp.t) < 400 and touches.is_empty():
+				_tap(event.position)
+		pinch_last = 0.0
+	elif event is InputEventScreenDrag:
+		touches[event.index] = event.position
+		if taps.has(event.index) and (event.position - (taps[event.index].pos as Vector2)).length() > 12.0:
+			taps[event.index].moved = true
+		if touches.size() == 1:
+			var rel: Vector2 = event.relative
+			if view == "orbit":
+				var a := rel * -.0055
+				orbit_q = (orbit_q * Quaternion(Vector3.UP, a.x) * Quaternion(Vector3.RIGHT, a.y)).normalized()
+				spin = spin.lerp(a * 60.0, .5)
+			else:
+				s_yaw -= rel.x * .008
+				s_pitch = clampf(s_pitch + rel.y * .006, .04, 1.2)
+		elif touches.size() == 2:
+			for k in taps:
+				taps[k].moved = true
+			var pts: Array = touches.values()
+			var d: float = (pts[0] as Vector2).distance_to(pts[1])
+			if pinch_last > 0.0:
+				_zoom(pinch_last / d)
+			pinch_last = d
+	elif event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_zoom(.92)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_zoom(1.08)
+
+
+func _planet_process(delta: float) -> void:
+	var snap := not shot_args.is_empty()
+	trans_t += delta
+	# a bolygó növekedésekor a fák a felszínen maradnak
+	if absf(planet.radius - last_r) > .0001:
+		last_r = planet.radius
+		for t in trees:
+			_place_tree(t)
+	_update_tod(delta, snap)
+	_planet_cam(delta, snap)
+	for t in trees:
+		if float(t.wave) >= 0.0:
+			t.wave = float(t.wave) + delta
+			if t.wave > 3.2:
+				t.wave = -1.0
+			for rec in [t.low, t.high]:
+				for m in rec.mats:
+					m.set_shader_parameter("wave", t.wave)
+	lod_timer += delta
+	if lod_timer >= .15 or snap:
+		lod_timer = 0.0
+		_planet_lod()
+	# lebegő névtábla a kiválasztott fa fölött
+	var want := 1.0 if view == "surface" and focus >= 0 and trans_t > .5 else 0.0
+	tag_alpha = want if snap else lerpf(tag_alpha, want, 1.0 - exp(-delta * (3.0 if want > 0.0 else 8.0)))
+	if focus >= 0:
+		var t: Dictionary = trees[focus]
+		var base := planet.surface_point(t.dir)
+		tag.position = base + (t.dir as Vector3) * .3 + (eye - base).normalized() * (float(t.w) * .9 + .5)
+	var tc := Color(1, .97, .92).lerp(Color(.8, .95, 1.0), maxf(night, 0.0))
+	tag.modulate = Color(tc.r, tc.g, tc.b, tag_alpha)
+	tag.outline_modulate = Color(.12, .08, .22, tag_alpha * .55)
+
+
+func _planet_cam(delta: float, snap: bool) -> void:
+	var want_eye: Vector3
+	var want_look: Vector3
+	var want_up: Vector3
+	if view == "orbit" or focus < 0:
+		if touches.is_empty():
+			if spin.length() < .02:
+				spin = spin.lerp(Vector2(.03, 0), 1.0 - exp(-delta * .5))
+			orbit_q = (orbit_q * Quaternion(Vector3.UP, spin.x * delta) * Quaternion(Vector3.RIGHT, spin.y * delta)).normalized()
+			spin *= exp(-delta * 2.2)
+		var b := Basis(orbit_q)
+		want_eye = b * Vector3(0, 0, orbit_dist)
+		want_look = Vector3.ZERO
+		want_up = b.y
+	else:
+		var t: Dictionary = trees[focus]
+		var n: Vector3 = t.dir
+		var target := planet.surface_point(n) + n * float(t.h) * .52
+		var off := _tree_frame(focus) * (Vector3(sin(s_yaw) * cos(s_pitch), sin(s_pitch), cos(s_yaw) * cos(s_pitch)) * s_dist)
+		want_eye = target + off
+		var ground := planet.surface_point(want_eye.normalized()).length() + .5
+		if want_eye.length() < ground:
+			want_eye = want_eye.normalized() * ground
+		want_look = target
+		want_up = n
+		if touches.is_empty() and shot_args.is_empty():
+			s_yaw += delta * .03
+	# átmenetkor lassú, puha mozgás; utána gyorsan követi az ujjat
+	var rate := 2.2 if trans_t < 2.5 else 12.0
+	var k := 1.0 if snap else 1.0 - exp(-delta * rate)
+	var ed := eye.normalized().slerp(want_eye.normalized(), k)
+	eye = ed * lerpf(eye.length(), want_eye.length(), k)
+	look = look.lerp(want_look, k)
+	up_v = up_v.slerp(want_up.normalized(), k).normalized()
+	cam.look_at_from_position(eye, look, up_v)
+	sun.directional_shadow_max_distance = 26.0 if view == "surface" else eye.length() + planet.radius + 4.0
+	(tilt_quad.material_override as ShaderMaterial).set_shader_parameter("focus", eye.distance_to(look))
+	# a nap a kamerához (kint) vagy a fához (lent) igazodik, így a látható oldal mindig meg van világítva
+	var el := lerpf(lerpf(.75, .32, dusk), .6, night)
+	var z := lerpf(lerpf(.55, -.45, dusk), .3, night)
+	var local := Vector3(-.55, el, z).normalized()
+	var frame: Basis = cam.global_transform.basis if view == "orbit" or focus < 0 else _tree_frame(focus).rotated(trees[focus].dir, s_yaw)
+	var wsun := (frame * local).normalized()
+	sun_dir = wsun if snap else sun_dir.slerp(wsun, 1.0 - exp(-delta * 3.0)).normalized()
+	sun.look_at_from_position(sun_dir * 60.0, Vector3.ZERO, Vector3.UP if absf(sun_dir.y) < .98 else Vector3.RIGHT)
+
+
+func _planet_lod() -> void:
+	var en := eye.normalized()
+	var thr := planet.radius / maxf(eye.length(), .001) - .35
+	var order: Array = []
+	for i in trees.size():
+		var t: Dictionary = trees[i]
+		t.front = (t.dir as Vector3).dot(en) > thr
+		t.d = _tree_mid(t).distance_to(eye)
+		order.append(t)
+	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.d) < float(b.d))
+	for k in order.size():
+		var t: Dictionary = order[k]
+		var hi: bool = view == "surface" and k < 4 and t.front and float(t.d) < 16.0
+		t.high_on = hi
+		(t.high.node as Node3D).visible = hi
+		(t.low.node as Node3D).visible = t.front and not hi
+
+
+func _tod_target() -> float:
+	var p: float = TOD_PRESETS[tod_i]
+	if p >= 0.0:
+		return p
+	if shot_hour >= 0.0:
+		return shot_hour
+	var t := Time.get_time_dict_from_system()
+	return float(t.hour) + float(t.minute) / 60.0
+
+
+## Napszak: éjszaka és alkony erőssége az órából; ebből jön az ég, a fény és a növények éjszakai világítása.
+func _update_tod(delta: float, snap: bool) -> void:
+	var want := _tod_target()
+	if tod < 0.0 or snap:
+		tod = want
+	else:
+		tod = fposmod(tod + wrapf(want - tod, -12.0, 12.0) * (1.0 - exp(-delta * 1.2)), 24.0)
+	var n := clampf(1.0 - smoothstep(4.8, 6.6, tod) + smoothstep(19.4, 21.0, tod), 0.0, 1.0)
+	var du := maxf(1.0 - smoothstep(0.0, 1.6, absf(tod - 6.3)), 1.0 - smoothstep(0.0, 1.7, absf(tod - 19.2)))
+	if absf(n - night) < .002 and absf(du - dusk) < .002:
+		return
+	var crossed := (n > .5) != (night > .5)
+	night = n
+	dusk = du
+	space_mat.set_shader_parameter("night", night)
+	space_mat.set_shader_parameter("dusk", dusk)
+	planet.set_night(night)
+	for t in trees:
+		for rec in [t.low, t.high]:
+			for m in rec.mats:
+				m.set_shader_parameter("glow_amt", float(t.glow.strength) * night)
+	var c := Color(1.0, .95, .88).lerp(Color(1.0, .72, .64), dusk).lerp(Color(.55, .66, 1.0), night)
+	sun.light_color = c
+	sun.light_energy = lerpf(lerpf(1.7, 1.3, dusk), 1.0, night)
+	env.ambient_light_energy = lerpf(1.2, 1.6, night)
+	if crossed:
+		_tag_text()

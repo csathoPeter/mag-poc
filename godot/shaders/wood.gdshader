@@ -22,4 +22,6 @@ void fragment() {
 	SPECULAR = 0.2;
 	AO = 0.72 + 0.28 * ridge;
 	AO_LIGHT_AFFECT = 0.5;
+	float lines = smoothstep(0.8, 1.0, fine) * ridge;
+	EMISSION = glow_col * (glow_amt * part_on(2.0) * (lines * 4.0 + 0.15) + touch_wave(path_v / max_path) * 1.3);
 }
