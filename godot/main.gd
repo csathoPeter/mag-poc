@@ -90,6 +90,14 @@ var night := -1.0
 var dusk := -1.0
 var tod_btn: Button
 
+# Mérőkapcsolók (telefonon végigkattintva kiderül, mi viszi el az időt)
+const SCALES := [1.0, .75, .6, .5]
+const SKY_MODES := ["ég tex", "ég sima", "ég régi"]
+var scale_i := 0
+var sky_i := 0
+var tilt_ok := true
+var hi_trees := 4
+
 
 func _ready() -> void:
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
@@ -98,6 +106,7 @@ func _ready() -> void:
 	planet.visible = false
 	add_child(planet)
 	space_mat.shader = SPACE_SKY
+	space_mat.set_shader_parameter("nebula", _nebula_texture())
 	_build_world()
 	_build_grass()
 	_build_ui()
@@ -240,6 +249,7 @@ func _build_ui() -> void:
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(col)
 	stats_l.add_theme_font_size_override("font_size", 12)
+	stats_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	stats_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .6))
 	col.add_child(stats_l)
 	name_l.add_theme_font_size_override("font_size", 30)
@@ -261,6 +271,34 @@ func _build_ui() -> void:
 		tod_i = (tod_i + 1) % TOD_PRESETS.size()
 		tod_btn.text = TOD_NAMES[tod_i])
 	tod_btn.text = TOD_NAMES[tod_i]
+	var dbg := HBoxContainer.new()
+	dbg.add_theme_constant_override("separation", 3)
+	col.add_child(dbg)
+	# a lambdák a helyi változót létrehozáskor másolják, ezért a gombokat egy szótárból érik el
+	var btn := {}
+	btn.sc = _small_button(dbg, "100%", func() -> void:
+		scale_i = (scale_i + 1) % SCALES.size()
+		get_viewport().scaling_3d_scale = SCALES[scale_i]
+		btn.sc.text = "%d%%" % roundi(SCALES[scale_i] * 100.0))
+	btn.gr = _small_button(dbg, "fű be", func() -> void:
+		planet.set_grass(not planet.grass_on)
+		btn.gr.text = "fű be" if planet.grass_on else "fű ki")
+	btn.ht = _small_button(dbg, "fa 4", func() -> void:
+		hi_trees = 1 if hi_trees == 4 else 4
+		btn.ht.text = "fa %d" % hi_trees
+		_planet_lod())
+	btn.sk = _small_button(dbg, SKY_MODES[0], func() -> void:
+		sky_i = (sky_i + 1) % SKY_MODES.size()
+		space_mat.set_shader_parameter("mode", sky_i)
+		btn.sk.text = SKY_MODES[sky_i])
+	btn.tl = _small_button(dbg, "tilt be", func() -> void:
+		tilt_ok = not tilt_ok
+		tilt_quad.visible = tilt_ok and garden_mode == "planet" and view == "surface"
+		btn.tl.text = "tilt be" if tilt_ok else "tilt ki")
+	btn.aa = _small_button(dbg, "AA 2x", func() -> void:
+		var vp := get_viewport()
+		vp.msaa_3d = Viewport.MSAA_DISABLED if vp.msaa_3d != Viewport.MSAA_DISABLED else Viewport.MSAA_2X
+		btn.aa.text = "AA ki" if vp.msaa_3d == Viewport.MSAA_DISABLED else "AA 2x")
 	joy.set_anchors_preset(Control.PRESET_FULL_RECT)
 	joy.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	joy.draw.connect(func() -> void:
@@ -280,6 +318,27 @@ func _joy_move(p: Vector2) -> void:
 	joy_knob = (p - _joy_center()).limit_length(JOY_R)
 	stick = joy_knob / JOY_R
 	joy.queue_redraw()
+
+
+func _small_button(parent: Container, text: String, cb: Callable) -> Button:
+	var b := _button(parent, text, cb)
+	b.custom_minimum_size = Vector2(0, 32)
+	b.add_theme_font_size_override("font_size", 10)
+	return b
+
+
+## Az űr ködéhez előre kiszámolt, varrat nélküli 3D zaj: az ég shadere pixelenként két mintát vesz belőle, nem számol zajt.
+func _nebula_texture() -> ImageTexture3D:
+	var nz := FastNoiseLite.new()
+	nz.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	nz.frequency = .06
+	nz.fractal_octaves = 4
+	nz.seed = 7
+	var n := 48
+	var imgs := nz.get_seamless_image_3d(n, n, n)
+	var tex := ImageTexture3D.new()
+	tex.create(imgs[0].get_format(), n, n, n, false, imgs)
+	return tex
 
 
 func _button(parent: Container, text: String, cb: Callable) -> Button:
@@ -623,7 +682,9 @@ func _process(delta: float) -> void:
 		var gpu := RenderingServer.viewport_get_measured_render_time_gpu(rid)
 		var cpu := RenderingServer.viewport_get_measured_render_time_cpu(rid)
 		var tris := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
-		stats_l.text = "%d fps · GPU %.1f · CPU %.1f ms · %dk · %d fa · gen %d ms" % [Engine.get_frames_per_second(), gpu, cpu, tris / 1000, (trees.size() if garden_mode != "" else plants.size()), build_ms_total]
+		var ws := get_window().size
+		var k: float = get_viewport().scaling_3d_scale
+		stats_l.text = "%d fps · GPU %.1f · CPU %.1f ms · %dk · %d fa · %d×%d 3D %d×%d" % [Engine.get_frames_per_second(), gpu, cpu, tris / 1000, (trees.size() if garden_mode != "" else plants.size()), ws.x, ws.y, roundi(ws.x * k), roundi(ws.y * k)]
 
 	if shot_args.size() > 0 and queue.is_empty():
 		shot_frames += 1
@@ -791,7 +852,8 @@ func _focus(i: int) -> void:
 	var t: Dictionary = trees[i]
 	var vp := get_viewport().get_visible_rect().size
 	var tv := tan(deg_to_rad(cam.fov) * .5)
-	s_dist = maxf(float(t.h) * .8 / tv, float(t.w) * .85 / (tv * minf(1.0, vp.x / vp.y))) + 1.0
+	# a lomb a levelek miatt szélesebb, mint az ágak befoglaló doboza
+	s_dist = maxf(float(t.h) * .8 / tv, float(t.w) * 1.2 / (tv * minf(1.0, vp.x / vp.y))) + 1.5
 	tag.pixel_size = .0024 * s_dist / 7.0
 	s_pitch = .26
 	var rel := _tree_frame(i).inverse() * (eye - planet.surface_point(t.dir))
@@ -801,7 +863,7 @@ func _focus(i: int) -> void:
 	if absf(up_hint.dot(t.dir)) > .98:
 		up_hint = Basis(orbit_q).x
 	orbit_q = Basis.looking_at(-(t.dir as Vector3), up_hint).get_rotation_quaternion()
-	tilt_quad.visible = true
+	tilt_quad.visible = tilt_ok
 	planet.build_patch(t.dir)
 	planet.show_patch(true)
 	_tag_text()
@@ -1002,7 +1064,7 @@ func _planet_lod() -> void:
 	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.d) < float(b.d))
 	for k in order.size():
 		var t: Dictionary = order[k]
-		var hi: bool = view == "surface" and k < 4 and t.front and float(t.d) < 16.0
+		var hi: bool = view == "surface" and k < hi_trees and t.front and float(t.d) < 16.0
 		t.high_on = hi
 		(t.high.node as Node3D).visible = hi
 		(t.low.node as Node3D).visible = t.front and not hi

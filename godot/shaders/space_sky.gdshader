@@ -10,6 +10,9 @@ uniform vec3 dusk_a : source_color = vec3(1.0, 0.64, 0.7);
 uniform vec3 dusk_b : source_color = vec3(0.42, 0.33, 0.68);
 uniform vec3 night_a : source_color = vec3(0.09, 0.1, 0.27);
 uniform vec3 night_b : source_color = vec3(0.015, 0.02, 0.07);
+// 0: előre kiszámolt 3D zajtextúra (olcsó), 1: köd nélkül (mérés), 2: a régi, pixelenként számolt zaj (mérés)
+uniform int mode = 0;
+uniform sampler3D nebula : filter_linear, repeat_enable;
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -48,8 +51,15 @@ float stars(vec3 d, float scale, float thr) {
 void sky() {
 	vec3 d = normalize(EYEDIR);
 	float l = dot(d, LIGHT0_DIRECTION) * 0.5 + 0.5;
-	float n1 = fbm(d * 2.2);
-	float n2 = fbm(d * 4.5 + n1 * 1.5);
+	float n1 = 0.5;
+	float n2 = 0.5;
+	if (mode == 0) {
+		n1 = texture(nebula, d * 0.5 + 0.5).r;
+		n2 = texture(nebula, d * 1.05 + n1 * 0.35 + 0.3).r;
+	} else if (mode == 2) {
+		n1 = fbm(d * 2.2);
+		n2 = fbm(d * 4.5 + n1 * 1.5);
+	}
 	vec3 day = mix(mix(day_b, day_c, smoothstep(0.35, 0.65, n1)), day_a, smoothstep(0.45, 1.0, l));
 	day = mix(day, day * 1.05 + 0.05, smoothstep(0.5, 0.75, n2));
 	vec3 du = mix(dusk_b, dusk_a, pow(l, 1.4));

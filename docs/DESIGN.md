@@ -162,6 +162,8 @@ Ihletők: az Avatar filmekből az élő, magától világító, érintésre felr
 
 - **A színeket a shaderekben „festjük”** (színátmenetek, perem-izzás, köd), nem drága utómunkával, így a webes Compatibility renderer és az olcsó Android is ugyanazt mutatja.
 - A ragyogás olcsón készül: önvilágító szín + additív halo-sprite-ok. Valódi glow (bloom) csak ha iPhone-on mérve belefér.
+- **Felbontás:** a webes build a telefon teljes pixelsűrűségén renderel (iPhone 15: 1179×2556, kb. 3 millió pixel). Az álomszerű, tiltshiftes képen a csökkentett belső 3D-felbontás alig látszik; a mérés után döntünk az alapértékről.
+- **Fű:** csomókban (4 szál/példány), a fa körüli folt 8 szeletre vágva, hogy a kamera mögötti rész ne rajzolódjon ki; a talaj fűszínű, szálas mintájú, így a hézag nem kopasz; a széllökések fényhullámként futnak végig. Natív buildben később compute shaderrel, kamera előtti, távolsággal ritkuló generálás (Ghost of Tsushima-módszer).
 - A tiltshift a felszíni nézetben marad; a bolygó-nézetben enyhe mélységélesség.
 - **Fű:** szálanként renderelve, a [2Retr0/GodotGrass](https://github.com/2Retr0/GodotGrass) (MIT) és a Ghost of Tsushima GDC-előadás ötletei alapján: íves, szélben söprő szálak, a nézetből oldalra esők kiszélesítve, lekerekített normál, átsütő fény. Csak MultiMesh + spatial shader, compute nélkül, így weben is fut. Kívülről ritka, egyszerű réteg borítja a bolygót; leszálláskor a fa körül sűrű folt (belül részletes, kifelé ritkuló szálak). Éjjel a szálak egy része a csúcsán világít.
 
