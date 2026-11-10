@@ -97,11 +97,35 @@ var scale_i := 0
 var sky_i := 0
 var tilt_ok := true
 var hi_trees := 4
+## A részletes fák távolsághatára (a fa közepétől a kameráig) és a visszaváltás többlete.
+const LOD_DIST := 22.0
+const LOD_HYST := 3.0
+var lod_force := false
 var dbg_btn := {}
 
 # Automatikus mérés: végigpróbálja a beállításokat kint és leszállva, a végén táblázat + küldés GitHubra
 const BENCH_SETTLE := 1.2
 const BENCH_MEASURE := 3.5
+## Terheléses mérés: meddig bírja a telefon 60 fps-sel (fű sűrűsége, részletes fák, fák száma).
+const LOAD_STEPS := [
+	["lent", "fű ×1", {}],
+	["lent", "fű ×1,5", {"gmul": 1.5}],
+	["lent", "fű ×2", {"gmul": 2.0}],
+	["lent", "fű ×3", {"gmul": 3.0}],
+	["lent", "fű ×4", {"gmul": 4.0}],
+	["lent", "fű ×6", {"gmul": 6.0}],
+	["lent", "fű ×6, 75%", {"gmul": 6.0, "scale": .75}],
+	["lent", "8 részletes fa", {"hi": 8, "force": true}],
+	["lent", "minden látható részletes", {"hi": 99, "force": true}],
+	["kint", "14 fa", {}],
+	["kint", "14 fa, fű ×3", {"gmul": 3.0}],
+	["kint", "30 fa", {"trees": 30}],
+	["lent", "30 fa", {"trees": 30}],
+	["kint", "45 fa", {"trees": 45}],
+	["lent", "45 fa", {"trees": 45}],
+	["lent", "30 fa, fű ×3, 8 részl.", {"trees": 30, "gmul": 3.0, "hi": 8, "force": true}],
+]
+## Beállítás-mérés (?meres&beall): egyenként kikapcsolja a drága részeket.
 const BENCH_STEPS := [
 	["kint", "alap", {}],
 	["kint", "75%", {"scale": .75}],
@@ -126,6 +150,7 @@ const BENCH_STEPS := [
 ]
 var bench_on := false
 var bench_steps: Array = []
+var bench_wait := false
 var bench_i := -1
 var bench_t := 0.0
 var bench_last := 0
@@ -1068,7 +1093,7 @@ func _planet_cam(delta: float, snap: bool) -> void:
 	var want_up: Vector3
 	if view == "orbit" or focus < 0:
 		if touches.is_empty():
-			if spin.length() < .02:
+			if spin.length() < .02 and not bench_on:
 				spin = spin.lerp(Vector2(.03, 0), 1.0 - exp(-delta * .5))
 			orbit_q = (orbit_q * Quaternion(Vector3.UP, spin.x * delta) * Quaternion(Vector3.RIGHT, spin.y * delta)).normalized()
 			spin *= exp(-delta * 2.2)
@@ -1087,7 +1112,7 @@ func _planet_cam(delta: float, snap: bool) -> void:
 			want_eye = want_eye.normalized() * ground
 		want_look = target
 		want_up = n
-		if touches.is_empty() and shot_args.is_empty():
+		if touches.is_empty() and shot_args.is_empty() and not bench_on:
 			s_yaw += delta * .03
 	# átmenetkor lassú, puha mozgás; utána gyorsan követi az ujjat
 	var rate := 2.2 if trans_t < 2.5 else 12.0
@@ -1109,6 +1134,8 @@ func _planet_cam(delta: float, snap: bool) -> void:
 	sun.look_at_from_position(sun_dir * 60.0, Vector3.ZERO, Vector3.UP if absf(sun_dir.y) < .98 else Vector3.RIGHT)
 
 
+## Részletességi szint: a kiválasztott fa mindig részletes; a többi közül a legközelebbiek (legfeljebb hi_trees),
+## ha elég közel vannak. A visszaváltás távolabb történik, mint a felváltás, így a határon nem villog.
 func _planet_lod() -> void:
 	var en := eye.normalized()
 	var thr := planet.radius / maxf(eye.length(), .001) - .35
@@ -1117,14 +1144,21 @@ func _planet_lod() -> void:
 		var t: Dictionary = trees[i]
 		t.front = (t.dir as Vector3).dot(en) > thr
 		t.d = _tree_mid(t).distance_to(eye)
+		t.focused = view == "surface" and i == focus
 		order.append(t)
-	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.d) < float(b.d))
-	for k in order.size():
-		var t: Dictionary = order[k]
-		var hi: bool = view == "surface" and k < hi_trees and t.front and float(t.d) < 16.0
+	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if a.focused != b.focused:
+			return a.focused
+		return float(a.d) < float(b.d))
+	var used := 0
+	for t in order:
+		var limit := LOD_DIST + (LOD_HYST if t.high_on else 0.0)
+		var hi: bool = t.focused or (t.front and used < hi_trees and (float(t.d) < limit or lod_force))
+		if hi:
+			used += 1
 		t.high_on = hi
 		(t.high.node as Node3D).visible = hi
-		(t.low.node as Node3D).visible = t.front and not hi
+		(t.low.node as Node3D).visible = (t.front or t.focused) and not hi
 
 
 func _tod_target() -> float:
@@ -1174,19 +1208,24 @@ func start_bench() -> void:
 		return
 	bench_on = true
 	bench_rows.clear()
-	bench_steps = BENCH_STEPS
-	# rövid próba a fejlesztéshez (?meres&gyors): csak az alapállapot kint és lent
-	if OS.has_feature("web") and str(JavaScriptBridge.eval("location.search", true)).contains("gyors"):
-		bench_steps = [BENCH_STEPS[0], BENCH_STEPS[8]]
+	bench_steps = LOAD_STEPS
+	var q := str(JavaScriptBridge.eval("location.search", true)) if OS.has_feature("web") else ""
+	if q.contains("beall"):
+		bench_steps = BENCH_STEPS
+	# rövid próba a fejlesztéshez (?meres&gyors): fű ×2 lent, aztán 30 fa kint (bolygó-újraépítéssel)
+	if q.contains("gyors") or (bench_cli and OS.get_cmdline_user_args().has("--gyors")):
+		bench_steps = [LOAD_STEPS[2], LOAD_STEPS[11]]
 	bench_tod = tod_i
 	tod_i = 2
 	tod_btn.text = TOD_NAMES[tod_i]
+	planet.grass_mult = 1.0
 	grow_start = 1.0
 	start_planet("bolygo01", 14)
 	grow_start = 0.0
 	bench_i = -1
 	bench_t = 0.0
 	bench_last = 0
+	bench_wait = false
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval("var o=document.getElementById('mag-bench'); if(o) o.remove();", true)
 
@@ -1195,6 +1234,8 @@ func _bench_cfg(cfg: Dictionary) -> void:
 	get_viewport().scaling_3d_scale = cfg.get("scale", 1.0)
 	planet.set_grass(cfg.get("grass", true))
 	hi_trees = cfg.get("hi", 4)
+	lod_force = cfg.get("force", false)
+	planet.set_grass_mult(cfg.get("gmul", 1.0))
 	sun.shadow_enabled = cfg.get("shadow", true)
 	env.glow_enabled = cfg.get("glow", true)
 	sky_i = cfg.get("sky", 0)
@@ -1215,8 +1256,23 @@ func _bench_next() -> void:
 		_bench_done()
 		return
 	var step: Array = bench_steps[bench_i]
+	var cfg: Dictionary = step[2]
+	var want_trees: int = cfg.get("trees", 14)
+	if want_trees != trees.size() or planet.code != "bolygo01":
+		# más faszám: a bolygó újraépül (a fű sűrűsége előre beállítva, hogy ne épüljön kétszer)
+		planet.grass_mult = cfg.get("gmul", 1.0)
+		grow_start = 1.0
+		start_planet("bolygo01", want_trees)
+		grow_start = 0.0
+		bench_wait = true
+		return
+	_bench_enter(step)
+
+
+func _bench_enter(step: Array) -> void:
 	var want_view: String = "surface" if step[0] == "lent" else "orbit"
-	if want_view != view:
+	var gm_before := planet.grass_mult
+	if want_view != view or (want_view == "surface" and focus != 0):
 		if want_view == "surface":
 			_focus(0)
 		else:
@@ -1224,6 +1280,8 @@ func _bench_next() -> void:
 		# nézetváltáskor tovább várunk: a kamera odarepül, a fűfolt felépül
 		bench_t = -2.5
 	_bench_cfg(step[2])
+	if not is_equal_approx(gm_before, planet.grass_mult):
+		bench_t = minf(bench_t, -1.5)
 
 
 ## A képkockaidőt valódi órával mérjük: a motor a delta-t 133 ms-nál levágja, lassú gépen az torzítana.
@@ -1238,8 +1296,16 @@ func _bench_process(_delta: float) -> void:
 			if bench_t > 2.0:
 				_bench_next()
 		return
-	bench_t += delta
 	var step: Array = bench_steps[bench_i]
+	if bench_wait:
+		name_l.text = "Mérés %d/%d" % [bench_i + 1, bench_steps.size()]
+		traits_l.text = "a bolygó újraépül (%d fa)…" % (step[2] as Dictionary).get("trees", 14)
+		if queue.is_empty():
+			bench_wait = false
+			_bench_enter(step)
+			bench_t = -2.5
+		return
+	bench_t += delta
 	name_l.text = "Mérés %d/%d" % [bench_i + 1, bench_steps.size()]
 	traits_l.text = "%s · %s – kérlek, ne nyúlj a képernyőhöz (kb. %d mp)" % [step[0], step[1], roundi((bench_steps.size() - bench_i) * (BENCH_SETTLE + BENCH_MEASURE))]
 	if bench_t < BENCH_SETTLE:
@@ -1271,6 +1337,9 @@ func _bench_info() -> String:
 
 func _bench_done() -> void:
 	bench_on = false
+	if trees.size() != 14:
+		planet.grass_mult = 1.0
+		start_planet("bolygo01", 14)
 	_bench_cfg({})
 	tod_i = bench_tod
 	tod_btn.text = TOD_NAMES[tod_i]
@@ -1280,7 +1349,7 @@ func _bench_done() -> void:
 	var txt := "Mag mérés\n%s\n\n" % info
 	var md := "Automatikus mérés a játékból.\n\n%s\n\n| nézet | beállítás | fps | átlag ms | 95%% ms | CPU ms | háromszög |\n|---|---|---|---|---|---|---|\n" % info.replace("\n", "  \n")
 	for r in bench_rows:
-		txt += "%-4s %-15s %5.1f fps  %5.1f ms  95%%: %5.1f  CPU %4.1f  %dk\n" % [r.view, r.name, r.fps, r.avg, r.p95, r.cpu, r.tris / 1000]
+		txt += "%-4s %-24s %5.1f fps  %5.1f ms  95%%: %5.1f  CPU %4.1f  %dk\n" % [r.view, r.name, r.fps, r.avg, r.p95, r.cpu, r.tris / 1000]
 		md += "| %s | %s | %.1f | %.1f | %.1f | %.1f | %dk |\n" % [r.view, r.name, r.fps, r.avg, r.p95, r.cpu, r.tris / 1000]
 	print("BENCH\n", txt)
 	traits_l.text = "Mérés kész."

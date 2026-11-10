@@ -63,6 +63,9 @@ var grass := MultiMeshInstance3D.new()
 var patch_nodes: Array = []
 var patch_on := false
 var grass_on := true
+## A fű sűrűségének szorzója (a terheléses méréshez): a bolygót borító réteg és a fa körüli folt is ennyiszer sűrűbb.
+var grass_mult := 1.0
+var patch_center := Vector3.ZERO
 var blade_hi: Mesh
 var blade_lo: Mesh
 var clump_noise := FastNoiseLite.new()
@@ -132,6 +135,7 @@ func setup(planet_code: String, plant_dnas: Array) -> void:
 	noise.fractal_type = FastNoiseLite.FRACTAL_RIDGED if terrain.ridged else FastNoiseLite.FRACTAL_FBM
 	patch.seed = hash(code + "folt")
 	clump_noise.seed = hash(code + "csomo")
+	patch_center = Vector3.ZERO
 	blade_hi = _clump_mesh([0.0, .33, .66], [.05, .043, .029], float(cover.w), hash(code + "szal"))
 	blade_lo = _clump_mesh([0.0], [.05], float(cover.w), hash(code + "szal"))
 	show_patch(false)
@@ -386,7 +390,7 @@ func _grass_mm(mesh: Mesh, buf: PackedFloat32Array, count: int, aabb: AABB) -> M
 func _build_grass() -> void:
 	var r := RandomNumberGenerator.new()
 	r.seed = hash(code + "fu")
-	var count: int = cover.count
+	var count := int(float(cover.count) * grass_mult)
 	var buf := PackedFloat32Array()
 	buf.resize(count * 16)
 	for i in count:
@@ -400,11 +404,12 @@ func _build_grass() -> void:
 ## Szeletenként külön csomópont saját befoglaló dobozzal, így a kamera mögötti szeletek nem rajzolódnak ki.
 ## Determinisztikus a bolygó kódjából és a középpontból.
 func build_patch(center: Vector3) -> void:
+	patch_center = center
 	var r := RandomNumberGenerator.new()
 	r.seed = hash(code + "folt" + str(center.snapped(Vector3.ONE * .001)))
 	var t1 := center.cross(Vector3.UP if absf(center.y) < .99 else Vector3.RIGHT).normalized()
 	var t2 := center.cross(t1)
-	var k := float(cover.dens)
+	var k := float(cover.dens) * grass_mult
 	var rr := radius_target
 	var margin := float(cover.h) * 1.6 / rr
 	var rings := [[0.0, PATCH_NEAR, NEAR_DENS, blade_hi], [PATCH_NEAR, PATCH_FAR, FAR_DENS, blade_lo]]
@@ -427,6 +432,15 @@ func build_patch(center: Vector3) -> void:
 				hi = hi.max(p)
 			var node: MultiMeshInstance3D = patch_nodes[ri * SECTORS + sec]
 			node.multimesh = _grass_mm(ring[3], buf, per, AABB(lo - Vector3.ONE * margin, hi - lo + Vector3.ONE * margin * 2.0))
+
+
+func set_grass_mult(m: float) -> void:
+	if is_equal_approx(m, grass_mult):
+		return
+	grass_mult = m
+	_build_grass()
+	if patch_center != Vector3.ZERO:
+		build_patch(patch_center)
 
 
 ## Leszálláskor a folt látszik, a bolygót borító ritka réteg nem (így nem duplázódik a fű).
