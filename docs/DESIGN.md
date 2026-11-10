@@ -112,6 +112,58 @@ Döntés: 2026. 11. 10. A „kert” kis bolygók sora. A játékos nemcsak fák
 - A keresztezés nem választott csírái ugyanígy csillaggá válnak (nincs külön magtár).
 - **Mások bolygói:** a távoli csillagok más játékosok vagy barátok bolygói. Ráközelítve megnézheted őket és aznapi magjukat. Ehhez szerver kell, így ez később jön; az első verzióban barát bolygója kóddal is megnyitható.
 
+## Art design
+
+Döntés: 2026. 11. 10. **Álomszerű pasztell nappal, világító (biolumineszcens) éjszaka.**
+Ihletők: az Avatar filmekből az élő, magától világító, érintésre felragyogó természet *elve*, a Timely ébresztőóra-appból az áramló színátmenetek, a puha mozgás és a finom hangok. A konkrét formákat, lényeket nem vesszük át.
+
+### Érzések → eszközök
+
+| Érzés | Eszköz |
+|---|---|
+| Nyugalom | Lassú, puha, rugalmas mozgás; pasztell; semmi nem villog vagy ugrik |
+| Kíváncsiság | Rejtett éjszakai fény, másnapi kikelés, változó bolygó |
+| Csoda | Lebegő bolygó, ködös ég, csillagképek, biolumineszcencia |
+| Gondoskodás | Érintésre reagáló növény (fényhullám, hang, rezdülés) |
+
+### Napszak (a telefon órája szerint)
+
+- **Hajnal/nappal:** álomszerű pasztell. Barack, levendula és menta színátmenetek, lágy köd, a bolygó pereme enyhén izzik a légkörtől.
+- **Alkony:** mély rózsaszín és lila. A növények fénye ekkor kezd előbújni.
+- **Éjszaka:** sötétkék és ibolya ég csillagokkal és csillagképekkel, a növények biolumineszcensen világítanak.
+- Az átmenetek folyamatosak, a bolygó légköre (bolygó-DNS) színezi őket.
+
+### Éjszakai fény (rejtett tulajdonság)
+
+- A fény **mintázata és erőssége** a DNS-tábla egy rejtett tulajdonságából jön (pl. az átlók bázispárjaiból), a **színe** a virágszínből. Nem minden fa világít egyformán: van, amelyik csak a virágain, van, amelyiken levélerek vagy a kéreg mintái izzanak.
+- Csak éjjel derül ki, és öröklődik, így tenyészthető (pl. „a legfényesebb fa”).
+- **Érintésre** fényhullám fut végig az ágakon, nappal finom csillámként.
+
+### Mozgás
+
+- Minden átúszik, rugalmas, csillapított mozgással: a kamera, a feliratok és a szél is. Nincs ugrás vagy hirtelen vágás.
+- A növények lassan lélegeznek a szélben, a levelek és virágok külön-külön rezdülnek.
+- Lebegő porszemek és spórák (nappal pollen, éjjel szentjánosbogár-szerű fénypontok).
+
+### Felület: a világ része (diegetikus)
+
+- **Szinte nincs képernyőelem.** A fa neve és adatai a fa mellett egy kis táblán állnak, vagy fénylő betűkként lebegnek a fák között. Csak közelről látszanak, aztán elhalványulnak.
+- A DNS-tábla is a világban jelenik meg: a mag fölött lebegő, fénylő rács.
+- A magos táska, a bolygóváltás és a csillagképek is tárgyként vagy helyként jelennek meg, nem menüként.
+- Betű: vékony, kerek, jól olvasható; a lebegő felirat finoman világít.
+
+### Hang (generált, a DNS-ből)
+
+- Minden növénynek saját hangja van a DNS-éből (hangmagasság, hangszín). Érintésre megszólal.
+- A bolygó fái együtt halk ambient akkordot adnak, így **minden bolygó máshogy szól**. Az akkord ültetéssel és elengedéssel lassan változik.
+- Puha, csilingelő effektek (öntözés, kikelés, csillaggá válás), éjjel tücsökszerű háttér.
+
+### Technikai irány
+
+- **A színeket a shaderekben „festjük”** (színátmenetek, perem-izzás, köd), nem drága utómunkával, így a webes Compatibility renderer és az olcsó Android is ugyanazt mutatja.
+- A ragyogás olcsón készül: önvilágító szín + additív halo-sprite-ok. Valódi glow (bloom) csak ha iPhone-on mérve belefér.
+- A tiltshift a felszíni nézetben marad; a bolygó-nézetben enyhe mélységélesség.
+
 ## Bevétel
 
 Ingyenes, reklám nélkül. Támogatás: borravaló fogyó IAP-ként (App Store 3.1.1 megengedi), kozmetikai támogatói csomag (pad, szökőkút, kerti dísz). Weben külső támogatási link. Várható bevétel alacsony, ez nem üzleti terv.
@@ -136,6 +188,7 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [x] Kert nézet: szembőli, tiltshift, analóg kar
 - [x] Napi kör: kíváncsiság + a nap magja + gondozás (metszés, kötözés)
 - [x] Kert = növekvő kis bolygók, bolygó-DNS a növényekből, elengedett fa = csillag
+- [x] Art design: pasztell nappal, világító éjjel, diegetikus felület, DNS-ből generált hang
 - [ ] Bolygó-generátor (gömb, domborzat, légkör, holdak) és kamera (forgatás, ráközelítés)
 - [ ] Csillagképek, visszahozás az égről
 - [ ] A nap magja: dátumból generált tábla, magos táska (7 nap)
