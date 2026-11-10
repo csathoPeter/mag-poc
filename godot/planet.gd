@@ -29,14 +29,25 @@ const COVER := [
 	{"name": "páfrányos", "h": .55, "w": 1.7, "count": 1800, "dens": .35},
 	{"name": "kavicsos", "h": .08, "w": 1.8, "count": 900, "dens": .18},
 ]
-## A kamera előtti sűrű fűfolt: belül részletes csomók, kifelé ritkább, egyszerűbb csomók (csomó/egység², 4 szál/csomó).
-## A folt szeletekre van vágva, így a kamera mögötti szeleteket a motor kihagyja.
-const PATCH_NEAR := 4.5
-const PATCH_FAR := 13.0
+## Fű: a felszín kocka-gömb csempékre van osztva (laponként TILES_N × TILES_N). Egy szál helye, iránya és mérete a
+## shaderben születik a csempe és a szál sorszámából (hash), a magasság a felszín rácsából, így a fű a bolygóhoz
+## rögzített, determinisztikus, és sosem generálódik újra. A sűrűség a szálak sorrendjéből adódik: ritkább fűnél csak
+## a sor eleje látszik, sűrűbbnél a további szálak puhán előnőnek; a meglévőket semmi nem cseréli le.
+## Rajzolni csoportonként kell (GROUP × GROUP csempe egy hívás, a csempék szálai váltakozva), csoportonként két
+## csomóponttal: a kamerához közeli csempék részletes (íves) szálakkal, a többi egyszerűbbel.
+## Sűrűség (csomó/egység², 4 szál/csomó): a kamera és a nézett pont körül NEAR_DENS, távolabb a bolygót borító alap (COVER.count).
+const TILES_N := 6
+const GROUP := 3
 const NEAR_DENS := 140.0
-const FAR_DENS := 34.0
-const SECTORS := 8
 const CLUMP_BLADES := 4
+## A kamera körül CAM_R-en belül teljes a sűrűség, CAM_FAR-ig ritkul.
+const CAM_R := 2.5
+const CAM_FAR := 10.0
+## A nézett pont körüli sűrű folt eddig ritkul (a sugár szorzója).
+const FOCUS_FAR := 2.2
+## Ennél közelebbi csempék részletes (íves) szálakat kapnak.
+const HI_DIST := 6.5
+const FACES := [Vector3.UP, Vector3.DOWN, Vector3.LEFT, Vector3.RIGHT, Vector3.FORWARD, Vector3.BACK]
 ## Holdak száma és gyűrű az alapító szirmaiból.
 const MOONS := [0, 1, 1, 2, 0, 1, 2, 3, 1, 0, 2, 1, 0, 1]
 const RINGED := [false, false, true, false, false, false, false, false, true, false, false, true, false, false]
@@ -59,26 +70,41 @@ var patch := FastNoiseLite.new()
 var body := Node3D.new()
 var surface := MeshInstance3D.new()
 var atmo := MeshInstance3D.new()
-var grass := MultiMeshInstance3D.new()
-var patch_sets: Array = []
-var patch_active := 0
-var patch_job := {}
-var patch_on := false
-## Kívülről (légi nézet) a ritka réteg is látszik a folt mellett, hogy a bolygó pereme se legyen kopasz.
-var global_with_patch := false
+## Csempék: {dir, jmax, f, a, b}; csoportok: {hi, lo (csomópontok), dir, tiles, n_hi, n_lo (csempénkénti darabszám)}.
+## A csomópont pufferében szálanként csak két szám van: a csempe helyi indexe és a szál sorszáma (a mátrix 1. és 2.
+## oszlopának hosszában); a helyet, irányt, méretet a shader számolja.
+var tiles: Array = []
+var groups: Array = []
+## helyi csempe-indexenként előre kitöltött puffer (0..k_cap szál), ebből szeletelünk
+var segs: Array = []
+var k_cap := 0
+var tile_aabb := AABB()
+var tile_rad := .2
+var height_tex: ImageTexture
+var h_min := 0.0
+var h_max := 0.0
 var grass_on := true
-## A fű sűrűségének szorzója (a terheléses méréshez): a bolygót borító réteg és a fa körüli folt is ennyiszer sűrűbb.
+## A fű sűrűségének szorzója (a terheléses méréshez).
 var grass_mult := 1.0
-var patch_center := Vector3.ZERO
+var view_cam := Vector3.ZERO
+var focus_pt := Vector3.ZERO
+var focus_r := 4.5
+var focus_k := 0.0
+## az utolsó csempe-frissítéskori állapot
+var view_r := 0.0
+var upd_cam := Vector3.ZERO
+var upd_pt := Vector3.ZERO
+var upd_r := 0.0
+var upd_k := 0.0
 var blade_hi: Mesh
 var blade_lo: Mesh
-var clump_noise := FastNoiseLite.new()
 var motes := MultiMeshInstance3D.new()
 var ring := MeshInstance3D.new()
 var moons: Array = []
 var surf_mat := ShaderMaterial.new()
 var atmo_mat := ShaderMaterial.new()
 var grass_mat := ShaderMaterial.new()
+var hi_mat := ShaderMaterial.new()
 var ring_mat := ShaderMaterial.new()
 var motes_mat := ShaderMaterial.new()
 var moon_mat := StandardMaterial3D.new()
@@ -98,22 +124,9 @@ func _ready() -> void:
 	atmo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	body.add_child(atmo)
 	grass_mat.shader = GRASS
-	grass.material_override = grass_mat
-	grass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	body.add_child(grass)
-	# két készlet: az egyik látszik, a másikba épül a következő folt (így áthelyezéskor sincs üres pillanat)
-	for set_i in 2:
-		var nodes: Array = []
-		for i in SECTORS * 2:
-			var g := MultiMeshInstance3D.new()
-			g.material_override = grass_mat
-			g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			g.visible = false
-			body.add_child(g)
-			nodes.append(g)
-		patch_sets.append(nodes)
-	clump_noise.noise_type = FastNoiseLite.TYPE_CELLULAR
-	clump_noise.frequency = 9.0
+	hi_mat.shader = GRASS
+	hi_mat.set_shader_parameter("hi_layer", true)
+	_make_tiles()
 	motes_mat.shader = MOTES
 	motes.material_override = motes_mat
 	motes.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -144,15 +157,15 @@ func setup(planet_code: String, plant_dnas: Array, founding: Array = []) -> void
 	noise.frequency = terrain.freq
 	noise.fractal_type = FastNoiseLite.FRACTAL_RIDGED if terrain.ridged else FastNoiseLite.FRACTAL_FBM
 	patch.seed = hash(code + "folt")
-	clump_noise.seed = hash(code + "csomo")
-	patch_center = Vector3.ZERO
-	patch_job = {}
-	for set_i in 2:
-		for n in patch_sets[set_i]:
-			(n as MultiMeshInstance3D).multimesh = null
 	blade_hi = _clump_mesh([0.0, .33, .66], [.05, .043, .029], float(cover.w), hash(code + "szal"))
 	blade_lo = _clump_mesh([0.0], [.05], float(cover.w), hash(code + "szal"))
-	show_patch(false)
+	for g in groups:
+		g.n_hi = []
+		g.n_lo = []
+		(g.hi as MultiMeshInstance3D).multimesh.mesh = blade_hi
+		(g.lo as MultiMeshInstance3D).multimesh.mesh = blade_lo
+	for m in [grass_mat, hi_mat]:
+		(m as ShaderMaterial).set_shader_parameter("seed", hash(code + "fu") & 0xffffff)
 	dnas = base.duplicate()
 	_compute()
 	amp = target.amp
@@ -171,6 +184,7 @@ func setup(planet_code: String, plant_dnas: Array, founding: Array = []) -> void
 func add_plant(dna: Array) -> void:
 	dnas.append(dna)
 	_compute()
+	_tile_bounds()
 
 
 func _compute() -> void:
@@ -231,11 +245,20 @@ func _apply() -> void:
 	atmo_mat.set_shader_parameter("atmo", cur.atmo)
 	atmo_mat.set_shader_parameter("strength", lerpf(1.0, .8, night))
 	var gc: Color = cur.grass
-	grass_mat.set_shader_parameter("base_col", Color(gc.r * .45, gc.g * .5, gc.b * .45))
-	grass_mat.set_shader_parameter("tip_col", gc.lerp(Color(1, .98, .9), .22))
-	grass_mat.set_shader_parameter("sss_col", gc.lerp(Color(1, .9, .7), .6))
-	grass_mat.set_shader_parameter("glow_col", Genes.hsl(cur.atmo_h + .45, .8, .62))
-	grass_mat.set_shader_parameter("night", night)
+	for m in [grass_mat, hi_mat]:
+		var gm := m as ShaderMaterial
+		gm.set_shader_parameter("base_col", Color(gc.r * .45, gc.g * .5, gc.b * .45))
+		gm.set_shader_parameter("tip_col", gc.lerp(Color(1, .98, .9), .22))
+		gm.set_shader_parameter("sss_col", gc.lerp(Color(1, .9, .7), .6))
+		gm.set_shader_parameter("glow_col", Genes.hsl(cur.atmo_h + .45, .8, .62))
+		gm.set_shader_parameter("night", night)
+		gm.set_shader_parameter("planet_pos", global_position)
+		gm.set_shader_parameter("planet_r", radius)
+		gm.set_shader_parameter("blade_h", float(cover.h) * float(cur.blade))
+		gm.set_shader_parameter("near_w", NEAR_DENS * float(cover.dens) * grass_mult)
+		gm.set_shader_parameter("base_w", _base_u() / (radius * radius))
+		gm.set_shader_parameter("cam_r", CAM_R)
+		gm.set_shader_parameter("cam_far", CAM_FAR)
 	ring_mat.set_shader_parameter("col_a", cur.atmo)
 	ring_mat.set_shader_parameter("col_b", cur.moon)
 	ring_mat.set_shader_parameter("night", night)
@@ -254,15 +277,13 @@ func set_night(v: float) -> void:
 func _process(delta: float) -> void:
 	if cur.is_empty():
 		return
-	if not patch_job.is_empty():
-		_patch_step()
 	var k := 1.0 - exp(-delta * 1.2)
 	var moving := absf(radius - radius_target) > .0005
 	if moving:
 		radius = lerpf(radius, radius_target, k)
 	for key in ["atmo", "grass", "rock", "moon"]:
 		cur[key] = (cur[key] as Color).lerp(target[key], k)
-	for key in ["moon_size"]:
+	for key in ["moon_size", "blade"]:
 		cur[key] = lerpf(cur[key], target[key], k)
 	cur.atmo_h = target.atmo_h
 	_apply()
@@ -328,10 +349,13 @@ static func spot_for(planet_code: String, index: int, taken: Array, rad: float) 
 func _build_surface() -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var faces := [Vector3.UP, Vector3.DOWN, Vector3.LEFT, Vector3.RIGHT, Vector3.FORWARD, Vector3.BACK]
+	# a magasságok képként is (laponként (RES+1)², egymás alatt): a fű shadere ebből ülteti a szálakat pont a felszínre
+	var img := Image.create_empty(RES + 1, 6 * (RES + 1), false, Image.FORMAT_RF)
+	h_min = 9.0
+	h_max = -9.0
 	var idx := 0
-	for f in faces:
-		var n: Vector3 = f
+	for f in 6:
+		var n: Vector3 = FACES[f]
 		var u := Vector3(n.y, n.z, n.x)
 		var v := n.cross(u)
 		for j in RES + 1:
@@ -340,6 +364,9 @@ func _build_surface() -> void:
 				var b := tan((float(j) / RES * 2.0 - 1.0) * PI / 4.0)
 				var dir := (n + u * a + v * b).normalized()
 				var h := _height_fixed(dir)
+				img.set_pixel(i, f * (RES + 1) + j, Color(h, 0, 0))
+				h_min = minf(h_min, h)
+				h_max = maxf(h_max, h)
 				st.set_color(Color(clampf(h / amp * .5 + .5, 0.0, 1.0), patch.get_noise_3dv(dir) * .5 + .5, 0, 1))
 				st.set_normal(_normal(dir))
 				st.add_vertex(dir * (1.0 + h))
@@ -351,6 +378,13 @@ func _build_surface() -> void:
 		idx += (RES + 1) * (RES + 1)
 	surface.mesh = st.commit()
 	atmo.scale = Vector3.ONE * 1.2
+	height_tex = ImageTexture.create_from_image(img)
+	for m in [grass_mat, hi_mat]:
+		var sm := m as ShaderMaterial
+		sm.set_shader_parameter("height_tex", height_tex)
+		sm.set_shader_parameter("res", RES)
+		sm.set_shader_parameter("tiles_n", TILES_N)
+		sm.set_shader_parameter("tile_rad", tile_rad)
 
 
 ## Fűcsomó: néhány elkeskenyedő szál egy kis körben, eltérő magassággal és iránnyal.
@@ -391,123 +425,258 @@ func _clump_mesh(ys: Array, ws: Array, width: float, seed: int) -> Mesh:
 	return st.commit()
 
 
-## Egy fűcsomó a pufferbe: egységes méretezés (a szél a csomó terében számol), a tő kicsit a felszín alatt.
-func _put_blade(buf: PackedFloat32Array, i: int, dir: Vector3, r: RandomNumberGenerator) -> Vector3:
-	var clump := clump_noise.get_noise_3dv(dir) * .5 + .5
-	var h := float(cover.h) * float(target.blade) * lerpf(.55, 1.35, clump) * r.randf_range(.75, 1.2) / radius_target
-	var b := Basis(Quaternion(Vector3.UP, dir)) * Basis(Vector3.UP, r.randf() * TAU)
-	b = b.scaled(Vector3.ONE * h)
-	var p := _unit_point(dir) - dir * .003
-	var o := i * 16
-	buf[o] = b.x.x; buf[o + 1] = b.y.x; buf[o + 2] = b.z.x; buf[o + 3] = p.x
-	buf[o + 4] = b.x.y; buf[o + 5] = b.y.y; buf[o + 6] = b.z.y; buf[o + 7] = p.y
-	buf[o + 8] = b.x.z; buf[o + 9] = b.y.z; buf[o + 10] = b.z.z; buf[o + 11] = p.z
-	buf[o + 12] = 1.0; buf[o + 13] = r.randf(); buf[o + 14] = clump; buf[o + 15] = r.randf()
-	return p
+## Csempék és csoportok a kocka-gömbön. A csoport csomópontja a csoport közepén áll, a felszínre merőleges kerettel:
+## a shader ebből tudja, melyik csoportot rajzolja, a motor pedig a közös befoglaló dobozzal kihagyja a képen kívülieket.
+func _make_tiles() -> void:
+	var nn := TILES_N
+	for f in 6:
+		for ti in nn:
+			for tj in nn:
+				var ac := -1.0 + (ti + .5) * 2.0 / nn
+				var bc := -1.0 + (tj + .5) * 2.0 / nn
+				var c := _face_dir(f, ac, bc)
+				var jmax := 0.0
+				var rad := 0.0
+				for p in [[-1, -1], [-1, 1], [1, -1], [1, 1], [0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]]:
+					var a: float = ac + float(p[0]) / nn
+					var b: float = bc + float(p[1]) / nn
+					jmax = maxf(jmax, _jac(a, b))
+					rad = maxf(rad, _face_dir(f, a, b).distance_to(c))
+				tile_rad = maxf(tile_rad, rad)
+				tiles.append({"dir": c, "f": f, "a": ac, "b": bc, "jmax": jmax})
+	var gn := TILES_N / GROUP
+	for f in 6:
+		for gi in gn:
+			for gj in gn:
+				var c := _face_dir(f, -1.0 + (gi + .5) * 2.0 / gn, -1.0 + (gj + .5) * 2.0 / gn)
+				var t1 := c.cross(Vector3.UP if absf(c.y) < .99 else Vector3.RIGHT).normalized()
+				var g := {"dir": c, "f": f, "gi": gi, "gj": gj, "tiles": [], "n_hi": [], "n_lo": []}
+				# a csempék sorrendje ugyanaz, mint a shaderben: helyi index = (ti % GROUP) * GROUP + tj % GROUP
+				for li in GROUP:
+					for lj in GROUP:
+						(g.tiles as Array).append(f * nn * nn + (gi * GROUP + li) * nn + gj * GROUP + lj)
+				for key in ["hi", "lo"]:
+					var node := MultiMeshInstance3D.new()
+					node.transform = Transform3D(Basis(t1, c, t1.cross(c)), c)
+					node.material_override = hi_mat if key == "hi" else grass_mat
+					node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+					node.visible = false
+					var mm := MultiMesh.new()
+					mm.transform_format = MultiMesh.TRANSFORM_3D
+					node.multimesh = mm
+					body.add_child(node)
+					g[key] = node
+				groups.append(g)
 
 
-func _grass_mm(mesh: Mesh, buf: PackedFloat32Array, count: int, aabb: AABB) -> MultiMesh:
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_custom_data = true
-	mm.mesh = mesh
-	mm.instance_count = count
-	mm.buffer = buf
-	mm.custom_aabb = aabb
-	return mm
+func _face_dir(f: int, a: float, b: float) -> Vector3:
+	var n: Vector3 = FACES[f]
+	var u := Vector3(n.y, n.z, n.x)
+	return (n + u * tan(a * PI / 4.0) + n.cross(u) * tan(b * PI / 4.0)).normalized()
+
+
+## A kocka-lap paraméterterének (a, b ∈ [-1, 1]) területtorzítása az egységgömbön.
+func _jac(a: float, b: float) -> float:
+	var x := tan(a * PI / 4.0)
+	var y := tan(b * PI / 4.0)
+	return PI * PI / 16.0 * (1.0 + x * x) * (1.0 + y * y) / pow(1.0 + x * x + y * y, 1.5)
+
+
+## A csoportok közös befoglaló doboza a saját keretükben (domborzat + szálmagasság); a bolygó növekedésekor frissül.
+func _tile_bounds() -> void:
+	var hb := float(cover.h) * float(target.blade) * 2.2 / radius_target
+	var lo := Vector3.ONE * 9.0
+	var hi := Vector3.ONE * -9.0
+	var gn := TILES_N / GROUP
+	for g in groups:
+		var inv: Transform3D = (g.hi as Node3D).transform.affine_inverse()
+		for i in 5:
+			for j in 5:
+				var d := _face_dir(g.f, -1.0 + (g.gi + i / 4.0) * 2.0 / gn, -1.0 + (g.gj + j / 4.0) * 2.0 / gn)
+				for rr in [1.0 + h_min - .01, 1.0 + h_max + hb]:
+					var p: Vector3 = inv * (d * rr)
+					lo = lo.min(p)
+					hi = hi.max(p)
+	tile_aabb = AABB(lo - Vector3.ONE * hb, hi - lo + Vector3.ONE * hb * 2.0)
+	for g in groups:
+		for key in ["hi", "lo"]:
+			(g[key] as MultiMeshInstance3D).multimesh.custom_aabb = tile_aabb
+
+
+## Darabszám √2-es lépcsőkre kerekítve: így a puffer csak ritkán épül újra, amikor a kamera mozog.
+static func _level(count: int) -> int:
+	if count <= 0:
+		return 0
+	var lv := maxi(0, ceili(log(float(count) / 4.0) / log(sqrt(2.0)) - .001))
+	return ceili(4.0 * pow(sqrt(2.0), lv) - .001)
+
+
+## Helyi csempe-indexenként (0..GROUP²-1) egy puffer a szálak sorszámával; ha kevés, nagyobbat építünk.
+func _ensure_segs(k: int) -> void:
+	if k <= k_cap:
+		return
+	k_cap = maxi(k, int(k_cap * 1.5))
+	segs.clear()
+	for lt in GROUP * GROUP:
+		var buf := PackedFloat32Array()
+		buf.resize(k_cap * 12)
+		for i in k_cap:
+			buf[i * 12] = float(lt)
+			buf[i * 12 + 5] = float(i)
+			buf[i * 12 + 10] = 1.0
+		segs.append(buf)
+
+
+## A csomópont puffere: csempénként az első n szál.
+func _fill_node(node: MultiMeshInstance3D, counts: Array) -> void:
+	var total := 0
+	for c in counts:
+		total += int(c)
+	var show := grass_on and total > 0
+	if show:
+		var buf := PackedFloat32Array()
+		for lt in counts.size():
+			if int(counts[lt]) > 0:
+				buf.append_array((segs[lt] as PackedFloat32Array).slice(0, int(counts[lt]) * 12))
+		var mm := node.multimesh
+		mm.instance_count = total
+		mm.buffer = buf
+	if node.visible != show:
+		node.visible = show
+
+
+## Alapsűrűség az egységgömbön (a bolygó méretétől független, így a növekedéskor sem változik, mely szálak látszanak).
+func _base_u() -> float:
+	return float(cover.count) * grass_mult / (4.0 * PI)
 
 
 func _build_grass() -> void:
-	var r := RandomNumberGenerator.new()
-	r.seed = hash(code + "fu")
-	var count := int(float(cover.count) * grass_mult)
-	var buf := PackedFloat32Array()
-	buf.resize(count * 16)
-	for i in count:
-		var z := r.randf_range(-1.0, 1.0)
-		var a := r.randf() * TAU
-		_put_blade(buf, i, Vector3(sqrt(1.0 - z * z) * cos(a), z, sqrt(1.0 - z * z) * sin(a)), r)
-	grass.multimesh = _grass_mm(blade_lo, buf, count, AABB(Vector3.ONE * -1.5, Vector3.ONE * 3.0))
+	for m in [grass_mat, hi_mat]:
+		var sm := m as ShaderMaterial
+		sm.set_shader_parameter("hi_dist", HI_DIST)
+		sm.set_shader_parameter("group", GROUP)
+	_tile_bounds()
+	_update_tiles()
 
 
-## Sűrű fűfolt egy pont körül (a kiválasztott fa és a kamera között): belül részletes csomók, kifelé ritkább, egyszerűbb csomók.
-## Szeletenként külön csomópont saját befoglaló dobozzal, így a kamera mögötti szeletek nem rajzolódnak ki.
-## A rejtett készletbe épül, képkockánként egy szelet (nincs akadás), a végén csere. Minden szelet saját magból
-## készül, így a folt determinisztikus a bolygó kódjából és a középpontból, akárhány lépésben épül.
-func build_patch(center: Vector3, immediate := false) -> void:
-	patch_center = center
-	patch_job = {"center": center, "next": 0, "set": 1 - patch_active}
-	if immediate:
-		while not patch_job.is_empty():
-			_patch_step()
+## A kamera és a nézett pont: a fű sűrűsége ezek körül nő. A csempék ebből tudják, hány szálat rajzoljanak.
+## focus_strength 0 esetén csak a kamera körül sűrű a fű.
+func grass_view(cam_pos: Vector3, point: Vector3, point_r: float, point_k: float) -> void:
+	# ha alig mozdult valami, a csempék darabszáma sem változik (a shader a pontos értékekkel számol)
+	var same := cam_pos.distance_to(upd_cam) < .02 and point.distance_to(upd_pt) < .02 and absf(point_r - upd_r) < .01 \
+		and absf(point_k - upd_k) < .005 and absf(radius - view_r) < .0005
+	view_cam = cam_pos
+	focus_pt = point
+	focus_r = point_r
+	focus_k = point_k
+	for m in [grass_mat, hi_mat]:
+		var sm := m as ShaderMaterial
+		sm.set_shader_parameter("cam_pos", cam_pos)
+		sm.set_shader_parameter("focus_pt", point)
+		sm.set_shader_parameter("focus_r", point_r)
+		sm.set_shader_parameter("focus_k", point_k)
+		sm.set_shader_parameter("focus_far", point_r * FOCUS_FAR)
+	if not same:
+		view_r = radius
+		upd_cam = cam_pos
+		upd_pt = point
+		upd_r = point_r
+		upd_k = point_k
+		_update_tiles()
 
 
-func _patch_step() -> void:
-	var center: Vector3 = patch_job.center
-	var piece: int = patch_job.next
-	var ri := piece / SECTORS
-	var sec := piece % SECTORS
-	var r := RandomNumberGenerator.new()
-	r.seed = hash(code + "folt" + str(center.snapped(Vector3.ONE * .001)) + str(piece))
-	var t1 := center.cross(Vector3.UP if absf(center.y) < .99 else Vector3.RIGHT).normalized()
-	var t2 := center.cross(t1)
-	var k := float(cover.dens) * grass_mult
-	var rr := radius_target
-	var margin := float(cover.h) * 1.6 / rr
-	var rings := [[0.0, PATCH_NEAR, NEAR_DENS, blade_hi], [PATCH_NEAR, PATCH_FAR, FAR_DENS, blade_lo]]
-	var ring: Array = rings[ri]
-	var r0: float = ring[0]
-	var r1: float = ring[1]
-	var per := int(PI * (r1 * r1 - r0 * r0) * float(ring[2]) * k / SECTORS)
-	var buf := PackedFloat32Array()
-	buf.resize(per * 16)
-	var lo := Vector3.ONE * 9.0
-	var hi := Vector3.ONE * -9.0
-	for i in per:
-		var rad := sqrt(r.randf_range(r0 * r0, r1 * r1))
-		var a := (sec + r.randf()) * TAU / SECTORS
-		var dir := (center + (t1 * cos(a) + t2 * sin(a)) * rad / rr).normalized()
-		var p := _put_blade(buf, i, dir, r)
-		lo = lo.min(p)
-		hi = hi.max(p)
-	var node: MultiMeshInstance3D = patch_sets[patch_job.set][piece]
-	node.multimesh = _grass_mm(ring[3], buf, per, AABB(lo - Vector3.ONE * margin, hi - lo + Vector3.ONE * margin * 2.0))
-	patch_job.next = piece + 1
-	if patch_job.next >= SECTORS * 2:
-		patch_active = patch_job.set
-		patch_job = {}
-		_grass_visibility()
+static func _fall(d: float, r0: float, r1: float) -> float:
+	var f := 1.0 if d < r0 else r0 * r0 / (d * d)
+	return f * (1.0 - smoothstep(r1 * .55, r1, d))
+
+
+func _update_tiles() -> void:
+	if tiles.is_empty() or cover.is_empty() or blade_hi == null:
+		return
+	var r := radius
+	var near_w := NEAR_DENS * float(cover.dens) * grass_mult
+	var base_w := _base_u() / (r * r)
+	var pa := 4.0 / float(TILES_N * TILES_N)
+	var ctr := global_position
+	var tr := tile_rad * r
+	# a látóhatáron túli csempék nem látszanak (a bolygó takarja őket): a kamera irányától mért szög alapján
+	var rel := view_cam - ctr
+	var cam_dir := rel.normalized()
+	var horizon := acos(clampf(r * (1.0 + h_min) / maxf(rel.length(), r * 1.001), -1.0, 1.0))
+	var reach := horizon + acos(clampf(1.0 / (1.0 + h_max + .05), -1.0, 1.0)) + asin(clampf(tile_rad, 0.0, 1.0)) * 1.1
+	for g in groups:
+		# csempénként ugyanaz, mint a shaderben (ott dönti el szálanként, melyik csomópont rajzol és mennyi szál nő ki);
+		# itt kis ráhagyással, hogy minden kellő szál biztosan sorra kerüljön
+		var n_hi: Array = []
+		var n_lo: Array = []
+		for ti in g.tiles:
+			var t: Dictionary = tiles[ti]
+			var need := 0
+			var dct := 99.0
+			if (t.dir as Vector3).angle_to(cam_dir) < reach:
+				var c: Vector3 = ctr + (t.dir as Vector3) * r
+				dct = c.distance_to(view_cam) - tr
+				var f := maxf(_fall(maxf(dct, 0.0), CAM_R, CAM_FAR), focus_k * _fall(maxf(c.distance_to(focus_pt) - tr, 0.0), focus_r, focus_r * FOCUS_FAR))
+				need = _level(ceili(lerpf(base_w, near_w, f) * pa * float(t.jmax) * r * r))
+			# a csempe a részletes csomópontba kerül, ha a legközelebbi pontja, az egyszerűbe, ha a legtávolabbi pontja lehet a
+			# határon túl (a shader szálanként dönt)
+			n_hi.append(need if dct < HI_DIST + .3 else 0)
+			n_lo.append(need if dct + 2.0 * tr > HI_DIST - .3 else 0)
+		var top := 0
+		for c in n_hi + n_lo:
+			top = maxi(top, int(c))
+		_ensure_segs(top)
+		if n_hi != g.n_hi:
+			g.n_hi = n_hi
+			_fill_node(g.hi, n_hi)
+		if n_lo != g.n_lo:
+			g.n_lo = n_lo
+			_fill_node(g.lo, n_lo)
+
+
+## Mérőszám: látható csempék, részletes/egyszerű csomók, alapréteg.
+func grass_info(cam: Camera3D = null) -> String:
+	var nt := 0
+	var hi := 0
+	var lo := 0
+	var planes: Array = cam.get_frustum() if cam else []
+	for g in groups:
+		for key in ["hi", "lo"]:
+			var node: MultiMeshInstance3D = g[key]
+			if not node.visible or node.multimesh == null:
+				continue
+			var box: AABB = node.global_transform * node.multimesh.custom_aabb
+			var inside := true
+			for pl in planes:
+				var p := pl as Plane
+				var far := box.position + Vector3(box.size.x if p.normal.x < 0 else 0.0, box.size.y if p.normal.y < 0 else 0.0, box.size.z if p.normal.z < 0 else 0.0)
+				if p.distance_to(far) > 0.0:
+					inside = false
+					break
+			if not inside:
+				continue
+			nt += 1
+			if key == "hi":
+				hi += node.multimesh.instance_count
+			else:
+				lo += node.multimesh.instance_count
+	return "fű: %d rajzolás, %d részletes + %d egyszerű csomó-hely" % [nt, hi, lo]
 
 
 func set_grass_mult(m: float) -> void:
 	if is_equal_approx(m, grass_mult):
 		return
 	grass_mult = m
-	_build_grass()
-	if patch_center != Vector3.ZERO:
-		build_patch(patch_center, true)
-
-
-## Leszálláskor a folt látszik, a bolygót borító ritka réteg nem (így nem duplázódik a fű).
-func show_patch(on: bool, with_global := false) -> void:
-	if on == patch_on and with_global == global_with_patch:
-		return
-	patch_on = on
-	global_with_patch = with_global
-	_grass_visibility()
+	_update_tiles()
 
 
 ## Méréshez: a fű teljesen ki-be kapcsolható.
 func set_grass(on: bool) -> void:
 	grass_on = on
-	_grass_visibility()
-
-
-func _grass_visibility() -> void:
-	for set_i in 2:
-		for n in patch_sets[set_i]:
-			(n as Node3D).visible = patch_on and grass_on and set_i == patch_active
-	grass.visible = grass_on and (not patch_on or global_with_patch)
+	for g in groups:
+		g.n_hi = []
+		g.n_lo = []
+	_update_tiles()
 
 
 func _build_motes() -> void:

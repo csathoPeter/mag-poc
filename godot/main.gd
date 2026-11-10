@@ -71,6 +71,10 @@ const ORBIT_ZOOM := .55
 var orbit_zoom := ORBIT_ZOOM
 var lens_mat: ShaderMaterial
 var dof_mix := 0.0
+## a sűrű fű középpontja, sugara és erőssége (puhán követi a nézett pontot)
+var grass_pt := Vector3.ZERO
+var grass_r := 4.5
+var grass_k := 0.0
 # makró: leszállva egy virágra közelítve
 var macro := false
 var macro_pt := Vector3.ZERO
@@ -170,6 +174,7 @@ var bench_last := 0
 var bench_dt := PackedFloat32Array()
 var bench_cpu := 0.0
 var bench_tris := 0
+var bench_calls := 0
 var bench_rows: Array = []
 var bench_cli := false
 var bench_tod := 0
@@ -835,9 +840,10 @@ func _process(delta: float) -> void:
 		var gpu := RenderingServer.viewport_get_measured_render_time_gpu(rid)
 		var cpu := RenderingServer.viewport_get_measured_render_time_cpu(rid)
 		var tris := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
+		var calls := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
 		var ws := get_window().size
 		var k: float = get_viewport().scaling_3d_scale
-		stats_l.text = "%d fps · GPU %.1f · CPU %.1f ms · %dk · %d fa · %d×%d 3D %d×%d" % [Engine.get_frames_per_second(), gpu, cpu, tris / 1000, (trees.size() if garden_mode != "" else plants.size()), ws.x, ws.y, roundi(ws.x * k), roundi(ws.y * k)]
+		stats_l.text = "%d fps · GPU %.1f · CPU %.1f ms · %dk · %d hívás · %d fa · %d×%d 3D %d×%d" % [Engine.get_frames_per_second(), gpu, cpu, tris / 1000, calls, (trees.size() if garden_mode != "" else plants.size()), ws.x, ws.y, roundi(ws.x * k), roundi(ws.y * k)]
 
 	if bench_on:
 		_bench_process(delta)
@@ -887,6 +893,13 @@ func _process(delta: float) -> void:
 						m_dist = .9
 			else:
 				_focus(int((shot_args[5] as String).trim_prefix("focus")) if (shot_args[5] as String).length() > 5 else 0)
+			# yawX: a kamera X radiánnal arrébb kerül a fa körül (vagy kívülről a bolygó körül), a fű ellenőrzéséhez
+			if shot_args.size() > 6 and (shot_args[6] as String).begins_with("yaw"):
+				var dy := float((shot_args[6] as String).trim_prefix("yaw"))
+				if view == "surface":
+					s_yaw += dy
+				else:
+					orbit_q = (orbit_q * Quaternion(Vector3.UP, dy)).normalized()
 		if shot_frames == 3 and shot_args.size() > 5 and shot_args[5] == "boardplay":
 			_shot_play_board()
 		if shot_frames == 1 and shot_args.size() > 5:
@@ -902,7 +915,7 @@ func _process(delta: float) -> void:
 			for t in trees:
 				if t.high_on:
 					highs += 1
-			print("STATS ", stats_l.text, " | ", name_l.text, " | cam ", cam_pos, " stick ", stick, " highs ", highs)
+			print("STATS ", stats_l.text, " | ", planet.grass_info(cam) if garden_mode == "planet" else "", " | ", name_l.text, " | cam ", cam_pos, " stick ", stick, " highs ", highs)
 			if saved_view:
 				print("STATE ", _state_digest())
 			get_viewport().get_texture().get_image().save_png(shot_args[0])
@@ -1005,6 +1018,7 @@ func _enter_planet(code: String, dnas: Array, founders: Array) -> void:
 	cam.fov = 40.0
 	orbit_zoom = ORBIT_ZOOM
 	macro = false
+	grass_pt = Vector3.ZERO
 	if shot_args.is_empty():
 		eye = Basis(orbit_q) * Vector3(0, 0, _fit_dist(planet.radius_target) * 1.8)
 	trans_t = 0.0
@@ -1129,16 +1143,7 @@ func _focus(i: int) -> void:
 	if absf(up_hint.dot(t.dir)) > .98:
 		up_hint = Basis(orbit_q).x
 	orbit_q = Basis.looking_at(-(t.dir as Vector3), up_hint).get_rotation_quaternion()
-	planet.build_patch(_patch_center(i), not shot_args.is_empty())
-	planet.show_patch(true)
 	_tag_text()
-
-
-## A sűrű fűfolt középpontja: a fa és a kamera között, hogy a sűrű fű a képen legyen, ne a fa mögött.
-func _patch_center(i: int) -> Vector3:
-	var t: Dictionary = trees[i]
-	var off := _tree_frame(i) * Vector3(sin(s_yaw), 0, cos(s_yaw)) * minf(s_dist * .45, 4.0)
-	return (planet.surface_point(t.dir) + off).normalized()
 
 
 func _unfocus() -> void:
@@ -1289,10 +1294,6 @@ func _planet_process(delta: float) -> void:
 			_place_tree(t)
 	_update_tod(delta, snap)
 	_planet_cam(delta, snap)
-	if view == "surface" and focus >= 0 and planet.patch_job.is_empty() and not snap:
-		var want := _patch_center(focus)
-		if want.angle_to(planet.patch_center) * planet.radius > 2.5:
-			planet.build_patch(want)
 	for t in trees:
 		if float(t.wave) >= 0.0:
 			t.wave = float(t.wave) + delta
@@ -1782,6 +1783,7 @@ func _bench_process(_delta: float) -> void:
 	bench_dt.append(delta)
 	bench_cpu += RenderingServer.viewport_get_measured_render_time_cpu(get_viewport().get_viewport_rid())
 	bench_tris = RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
+	bench_calls = RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
 	if bench_t >= BENCH_SETTLE + BENCH_MEASURE:
 		var n := bench_dt.size()
 		var total := 0.0
@@ -1790,7 +1792,7 @@ func _bench_process(_delta: float) -> void:
 		var sorted := bench_dt.duplicate()
 		sorted.sort()
 		bench_rows.append({"view": step[0], "name": step[1], "fps": n / maxf(total, .001), "avg": total / maxi(n, 1) * 1000.0,
-			"p95": sorted[mini(n - 1, int(n * .95))] * 1000.0, "cpu": bench_cpu / maxi(n, 1), "tris": bench_tris})
+			"p95": sorted[mini(n - 1, int(n * .95))] * 1000.0, "cpu": bench_cpu / maxi(n, 1), "tris": bench_tris, "calls": bench_calls})
 		_bench_next()
 
 
@@ -1821,10 +1823,10 @@ func _bench_done() -> void:
 	_planet_texts()
 	var info := _bench_info()
 	var txt := "Mag mérés · alap: %d%% felbontás, %d részletes fa\n%s\n\n" % [roundi(base_scale * 100.0), HI_TREES, info]
-	var md := "Automatikus mérés a játékból. Alap: %d%% belső felbontás, %d részletes fa, fű ×1 = a mostani alapsűrűség.\n\n%s\n\n| nézet | beállítás | fps | átlag ms | 95%% ms | CPU ms | háromszög |\n|---|---|---|---|---|---|---|\n" % [roundi(base_scale * 100.0), HI_TREES, info.replace("\n", "  \n")]
+	var md := "Automatikus mérés a játékból. Alap: %d%% belső felbontás, %d részletes fa, fű ×1 = a mostani alapsűrűség.\n\n%s\n\n| nézet | beállítás | fps | átlag ms | 95%% ms | CPU ms | háromszög | hívás |\n|---|---|---|---|---|---|---|---|\n" % [roundi(base_scale * 100.0), HI_TREES, info.replace("\n", "  \n")]
 	for r in bench_rows:
-		txt += "%-4s %-24s %5.1f fps  %5.1f ms  95%%: %5.1f  CPU %4.1f  %dk\n" % [r.view, r.name, r.fps, r.avg, r.p95, r.cpu, r.tris / 1000]
-		md += "| %s | %s | %.1f | %.1f | %.1f | %.1f | %dk |\n" % [r.view, r.name, r.fps, r.avg, r.p95, r.cpu, r.tris / 1000]
+		txt += "%-4s %-24s %5.1f fps  %5.1f ms  95%%: %5.1f  CPU %4.1f  %dk  %d h\n" % [r.view, r.name, r.fps, r.avg, r.p95, r.cpu, r.tris / 1000, r.calls]
+		md += "| %s | %s | %.1f | %.1f | %.1f | %.1f | %dk | %d |\n" % [r.view, r.name, r.fps, r.avg, r.p95, r.cpu, r.tris / 1000, r.calls]
 	print("BENCH\n", txt)
 	traits_l.text = "Mérés kész."
 	if bench_cli:
@@ -1895,12 +1897,13 @@ func _lens(delta: float, snap: bool) -> void:
 	lens_mat.set_shader_parameter("band_y", .5)
 	lens_mat.set_shader_parameter("band", lerpf(.16, .06, e))
 	lens_mat.set_shader_parameter("tilt", lerpf(.45, 1.0, e))
-	if not surf:
-		var near := orbit_zoom > .35
-		planet.show_patch(near, true)
-		if near and planet.patch_job.is_empty():
-			var want := look.normalized()
-			if planet.patch_center == Vector3.ZERO or want.angle_to(planet.patch_center) * planet.radius > 2.5:
-				planet.build_patch(want, snap)
-	else:
-		planet.show_patch(true)
+	# a fű a kamera és a nézett pont körül sűrű: leszállva a fa töve körül, kívülről (közelről) a nézett pont körül.
+	# A pont puhán vándorol, a szálak a bolygóhoz rögzítettek, csak a sűrűség változik (előnőnek / visszahúzódnak).
+	var gp := planet.surface_point(trees[focus].dir) if surf else look
+	var gr := maxf(4.5, float(trees[focus].w) * 1.4) if surf else 4.5
+	var gk := 1.0 if surf else smoothstep(.45, .9, orbit_zoom)
+	var kg := 1.0 if snap or grass_pt == Vector3.ZERO else 1.0 - exp(-delta * 2.0)
+	grass_pt = grass_pt.normalized().slerp(gp.normalized(), kg) * lerpf(grass_pt.length(), gp.length(), kg) if grass_pt != Vector3.ZERO else gp
+	grass_r = lerpf(grass_r, gr, kg)
+	grass_k = lerpf(grass_k, gk, kg)
+	planet.grass_view(cam.global_position, grass_pt, grass_r, grass_k)
