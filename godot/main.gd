@@ -125,8 +125,10 @@ const BENCH_STEPS := [
 	["lent", "minden ki, 50%", {"scale": .5, "grass": false, "hi": 1, "shadow": false, "glow": false, "sky": 1, "tilt": false, "aa": false}],
 ]
 var bench_on := false
+var bench_steps: Array = []
 var bench_i := -1
 var bench_t := 0.0
+var bench_last := 0
 var bench_dt := PackedFloat32Array()
 var bench_cpu := 0.0
 var bench_tris := 0
@@ -1172,6 +1174,10 @@ func start_bench() -> void:
 		return
 	bench_on = true
 	bench_rows.clear()
+	bench_steps = BENCH_STEPS
+	# rövid próba a fejlesztéshez (?meres&gyors): csak az alapállapot kint és lent
+	if OS.has_feature("web") and str(JavaScriptBridge.eval("location.search", true)).contains("gyors"):
+		bench_steps = [BENCH_STEPS[0], BENCH_STEPS[8]]
 	bench_tod = tod_i
 	tod_i = 2
 	tod_btn.text = TOD_NAMES[tod_i]
@@ -1180,6 +1186,7 @@ func start_bench() -> void:
 	grow_start = 0.0
 	bench_i = -1
 	bench_t = 0.0
+	bench_last = 0
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval("var o=document.getElementById('mag-bench'); if(o) o.remove();", true)
 
@@ -1204,10 +1211,10 @@ func _bench_next() -> void:
 	bench_t = 0.0
 	bench_dt.clear()
 	bench_cpu = 0.0
-	if bench_i >= BENCH_STEPS.size():
+	if bench_i >= bench_steps.size():
 		_bench_done()
 		return
-	var step: Array = BENCH_STEPS[bench_i]
+	var step: Array = bench_steps[bench_i]
 	var want_view: String = "surface" if step[0] == "lent" else "orbit"
 	if want_view != view:
 		if want_view == "surface":
@@ -1219,7 +1226,11 @@ func _bench_next() -> void:
 	_bench_cfg(step[2])
 
 
-func _bench_process(delta: float) -> void:
+## A képkockaidőt valódi órával mérjük: a motor a delta-t 133 ms-nál levágja, lassú gépen az torzítana.
+func _bench_process(_delta: float) -> void:
+	var now := Time.get_ticks_usec()
+	var delta := (now - bench_last) / 1000000.0 if bench_last > 0 else 0.0
+	bench_last = now
 	if bench_i < 0:
 		# a bolygó összes fája elkészült, a kamera beért
 		if queue.is_empty():
@@ -1228,9 +1239,9 @@ func _bench_process(delta: float) -> void:
 				_bench_next()
 		return
 	bench_t += delta
-	var step: Array = BENCH_STEPS[bench_i]
-	name_l.text = "Mérés %d/%d" % [bench_i + 1, BENCH_STEPS.size()]
-	traits_l.text = "%s · %s – kérlek, ne nyúlj a képernyőhöz (kb. %d mp)" % [step[0], step[1], roundi((BENCH_STEPS.size() - bench_i) * (BENCH_SETTLE + BENCH_MEASURE))]
+	var step: Array = bench_steps[bench_i]
+	name_l.text = "Mérés %d/%d" % [bench_i + 1, bench_steps.size()]
+	traits_l.text = "%s · %s – kérlek, ne nyúlj a képernyőhöz (kb. %d mp)" % [step[0], step[1], roundi((bench_steps.size() - bench_i) * (BENCH_SETTLE + BENCH_MEASURE))]
 	if bench_t < BENCH_SETTLE:
 		return
 	bench_dt.append(delta)
