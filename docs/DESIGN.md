@@ -78,9 +78,39 @@ A herbárium és a tenyésztési célok csak halk háttérelemek, nem kényszer�
 
 Kikelés másnap, a nap magja, múló virágzás (ilyenkor gyűjthető mag), lassan hajló kötözött ágak, valódi évszakok, barát magja kóddal. **Napi legfeljebb egy értesítés** (pl. „Kikelt a tegnapi magod”). Kihagyott nap után semmi nem vész el.
 
-### Külön feature-ként tervezzük
+## Bolygók és csillagok (a kert)
 
-- **A kert mérete és megjelenítése:** mi legyen, ha megtelik (kb. 30 fa a teljesítménykeret), és hova kerülnek a keresztezés nem választott csírái. Selejtezés helyett kíméletes megoldás kell.
+Döntés: 2026. 11. 10. A „kert” kis bolygók sora. A játékos nemcsak fákat, hanem világokat is tenyészt: **a bolygó DNS-ét a rajta élő növények adják**.
+
+### Bolygó
+
+- **Kicsiben indul** 1–3 növénnyel, és minden új fával kicsit nő, kb. 30 fáig (teljesítménykeret).
+- **Ha megtelt, mellette új kis bolygó születik.** Ez természetes mérföldkő, kb. 2–3 hetente. A régi bolygó megmarad, a bolygók között lehet váltani.
+- **Kamera:** húzással forgatod a bolygót, csípéssel közelítesz. Egy fára koppintva a kamera lerepül hozzá a felszínre: ott van tiltshift, gondozás, metszés.
+- **Teljesítmény:** a túloldali fák nem látszanak, kívülről minden fa apró (egyszerűsített szint), a felszín közelében csak a közeli 3–4 fa részletes.
+
+### A bolygó DNS-e
+
+| Növény génje | → Bolygó tulajdonsága |
+|---|---|
+| Virágszín | Légkör, égbolt színe |
+| Szirmok | Holdak, gyűrű |
+| Levél | Felszíntakaró (fű, moha, páfrány, kavics) |
+| Termet | Domborzat (sima, dombos, sziklás, tüskés csúcsok) |
+| Kéreg | Kőzet, talaj színe |
+| Lomb | A fű színe |
+
+- **Alapító:** a bolygó első növénye adja a karaktert. A darabos tulajdonságok (holdak száma, felszíntakaró fajtája, domborzat típusa) tőle jönnek, és nem változnak.
+- **Átlagolás:** a folytonos értékeket (színárnyalatok, domborzat magassága, holdak mérete) minden további növény finoman elhúzza. Az alapító súlya nagyobb (pl. 1/3), a többin a többiek osztoznak. Az árnyalatok átlaga körkörös (szín-kerék).
+- **Saját mag:** minden bolygónak van kódja (pl. a játékos kódja + a bolygó sorszáma). Ebből jön a domborzat zaja, a kráterek és a holdak helye, így **két bolygó sosem egyforma**, még azonos növényekkel sem.
+- Determinisztikus: a bolygó kinézete = f(bolygókód, a rajta élő növények DNS-e). Ültetéskor és elengedéskor lassan, látványosan változik.
+
+### Csillagok
+
+- **Elengedett fából csillag lesz.** Ha egy fát elengedsz (pl. helyet csinálsz neki, vagy nem kell), felszáll az égre. Nincs selejtezés és nincs halál.
+- A bolygó elengedett fái a bolygó egén **csillagképet** rajzolnak. Ez a bolygó emléke és egyben a herbárium: koppintásra látod a fát, és **bármikor visszahozhatod**, újra elvetheted.
+- A keresztezés nem választott csírái ugyanígy csillaggá válnak (nincs külön magtár).
+- **Mások bolygói:** a távoli csillagok más játékosok vagy barátok bolygói. Ráközelítve megnézheted őket és aznapi magjukat. Ehhez szerver kell, így ez később jön; az első verzióban barát bolygója kóddal is megnyitható.
 
 ## Bevétel
 
@@ -105,7 +135,9 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [x] Fő mechanika: DNS-tábla
 - [x] Kert nézet: szembőli, tiltshift, analóg kar
 - [x] Napi kör: kíváncsiság + a nap magja + gondozás (metszés, kötözés)
-- [ ] Kert mérete/megjelenítése, nem választott csírák sorsa (külön feature)
+- [x] Kert = növekvő kis bolygók, bolygó-DNS a növényekből, elengedett fa = csillag
+- [ ] Bolygó-generátor (gömb, domborzat, légkör, holdak) és kamera (forgatás, ráközelítés)
+- [ ] Csillagképek, visszahozás az égről
 - [ ] A nap magja: dátumból generált tábla, magos táska (7 nap)
 - [ ] Alakítási lista a generátorban (metszés, kötözés)
 - [ ] DNS-tábla és spirál átvitele Godotba
