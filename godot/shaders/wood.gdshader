@@ -9,7 +9,7 @@ void vertex() {
 	float b = CUSTOM0.w / max_path * 0.64;
 	float g = smoothstep(b, b + 0.045, grow);
 	float t = smoothstep(b, b + 0.42, grow);
-	VERTEX = mix(prev, c, g) + (VERTEX - c) * (0.22 * g + 0.78 * t) + sway(c, TIME);
+	VERTEX = mix(prev, c, g) + (VERTEX - c) * (0.22 * g + 0.78 * t) + sway(c, TIME) + droop_off(c);
 	path_v = CUSTOM0.w;
 }
 
@@ -17,7 +17,7 @@ void fragment() {
 	float a = atan(UV.y, UV.x);
 	float ridge = 0.5 + 0.5 * sin(a * 7.0 + sin(path_v * 5.0 + a * 2.0) * 1.7);
 	float fine = 0.5 + 0.5 * sin(a * 19.0 + path_v * 9.0 + sin(path_v * 23.0) * 2.0);
-	ALBEDO = COLOR.rgb * (0.5 + 0.55 * ridge + 0.25 * fine);
+	ALBEDO = thirsty_col(COLOR.rgb * (0.5 + 0.55 * ridge + 0.25 * fine), thirst * 0.25);
 	ROUGHNESS = 0.92;
 	SPECULAR = 0.2;
 	AO = 0.72 + 0.28 * ridge;

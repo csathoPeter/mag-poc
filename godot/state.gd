@@ -19,7 +19,7 @@ extends RefCounted
 ## A napok egész számok: a helyi dátum napsorszáma 1970. 01. 01. óta. Mindenhol today()-t használj,
 ## ne a rendszerórát, hogy a teszt-eltolás mindenre hasson.
 
-const VERSION := 1
+const VERSION := 2
 const SAVE_PATH := "user://mag_mentes.json"
 const BACKUP_SUFFIX := ".bak"
 ## Ennyi fa fér egy bolygóra (teljesítménykeret); utána új bolygó születik.
@@ -306,6 +306,10 @@ func _fill_tree(t: Dictionary) -> Dictionary:
 		"revealed": bool(t.get("revealed", false)),
 		# utolsó öntözés napja (-1 = még soha; ilyenkor az ültetés napja számít)
 		"watered": int(t.get("watered", -1)),
+		# maggyűjtés: melyik napon szedtél róla utoljára (-1 = még soha), és melyik virágáról (a növény saját
+		# koordinátáiban; az a virág elhalványul aznap) – naponta fánként legfeljebb egy mag
+		"gathered": int(t.get("gathered", -1)),
+		"gathered_at": _vec(t.get("gathered_at")) if t.get("gathered_at") != null else Vector3.ZERO,
 		# alakítási lista (metszés, kötözés): [{"op": "metszes"/"kotozes", "branch": int, "day": int, ...}]
 		"shaping": (t.get("shaping", []) as Array).duplicate(true) if t.get("shaping") is Array else [],
 		"name": str(t.get("name", "")),
@@ -365,8 +369,12 @@ func _fill_seed(s: Dictionary) -> Dictionary:
 		"origin": str(s.get("origin", "")),
 		# a mag napja (a nap magjánál: melyik nap feladványa; gyűjtésnél: mikor szedted)
 		"day": int(s.get("day", today())),
+		# a szülők DNS-e (gyűjtött magnál: az anyafa DNS-e; keresztezésnél a két szülőé)
 		"parents": _dna_list(s.get("parents", [])),
 		"code": str(s.get("code", "")),
+		# gyűjtött magnál: az anyafa azonosítója és a mag neve („<fajnév> magja”); máskor -1 és üres
+		"tree": int(s.get("tree", -1)),
+		"name": str(s.get("name", "")),
 	}
 
 
@@ -397,6 +405,24 @@ func sow_seed(seed: Dictionary) -> Dictionary:
 		p.founders = [(seed.dna as Array).duplicate()]
 	remove_seed(int(seed.id))
 	return t
+
+
+# ---------------------------------------------------------------- Gondozás (a szabályok: care.gd)
+
+## Öntözés: a fa ma kapott vizet (felegyenesedik). Nincs vízszámláló, bármikor, bármennyiszer.
+func water_tree(t: Dictionary) -> void:
+	t.watered = today()
+
+
+## Maggyűjtés virágzó fáról: a mag a táskába kerül (a fa DNS-ével, eredet: „gyujtes”, szülő: a fa), a fa ma már nem
+## hoz többet. at: a virág helye a növény saját koordinátáiban (az a virág aznap elhalványul). Üres, ha ma nem hozhat.
+func gather_seed(t: Dictionary, at: Vector3) -> Dictionary:
+	if not Care.can_gather(t, today()):
+		return {}
+	t.gathered = today()
+	t.gathered_at = at
+	var dna: Array = (t.dna as Array).duplicate()
+	return new_seed(dna, "gyujtes", {"parents": [dna.duplicate()], "tree": int(t.id), "name": "%s magja" % Genes.latin_name(dna)})
 
 
 # ---------------------------------------------------------------- A nap magja

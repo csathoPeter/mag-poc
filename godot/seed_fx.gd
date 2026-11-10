@@ -79,6 +79,7 @@ var _ring_t := -1.0
 var _ring_p := Vector3.ZERO
 var _ring_n := Vector3.UP
 var _ring_size := 2.4
+var _ring_col := C_SEED
 
 
 func _ready() -> void:
@@ -224,9 +225,10 @@ func play_sow(p: Vector3, n: Vector3, caption: String) -> void:
 	_update(0.0)
 
 
-## Fénygyűrű egy pontban, kissé a felszín (n) fölött; a kikeléskor is.
-func burst(p: Vector3, n: Vector3, size := 2.4) -> void:
+## Fénygyűrű egy pontban, kissé a felszín (n) fölött; a kikeléskor és öntözéskor (vízszínnel) is.
+func burst(p: Vector3, n: Vector3, size := 2.4, col := C_SEED) -> void:
 	_ring_t = 0.0
+	_ring_col = col
 	_ring_p = p
 	_ring_n = n.normalized()
 	_ring_size = size
@@ -426,5 +428,5 @@ func _ring() -> void:
 	var e := 1.0 - pow(1.0 - k, 3.0)
 	# a gyűrű a kamera felé néz (nem a felszínre fektetve): kicsi és gyorsan elhalványul, így ez nem zavar
 	mm.set_instance_transform(W_RING, Transform3D(Basis.from_scale(Vector3.ONE * lerpf(.3, _ring_size, e)), _ring_p + _ring_n * .15))
-	mm.set_instance_color(W_RING, Color(C_SEED.lerp(Color.WHITE, .3), 1.3 * (1.0 - k) * (1.0 - k)))
+	mm.set_instance_color(W_RING, Color(_ring_col.lerp(Color.WHITE, .3), 1.3 * (1.0 - k) * (1.0 - k)))
 	mm.set_instance_custom_data(W_RING, Color(0, 1, 0, 0))

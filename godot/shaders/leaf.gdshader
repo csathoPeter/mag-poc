@@ -12,7 +12,12 @@ void vertex() {
 	float g = smoothstep(INSTANCE_CUSTOM.x, INSTANCE_CUSTOM.x + 0.07, grow);
 	vec3 p = (VERTEX - o) * g;
 	p.z += sin(TIME * 2.3 + o.x * 6.0 + o.z * 4.0) * 0.012 * UV.x * step(0.001, amp);
-	VERTEX = o + p + sway(o, TIME);
+	// szomjasan a levél lehajlik (a hossza marad)
+	float pl = length(p);
+	if (droop > 0.0 && pl > 0.0) {
+		p = normalize(p - tree_up() * pl * droop * 0.9) * pl;
+	}
+	VERTEX = o + p + sway(o, TIME) + droop_off(o);
 	tint_v = INSTANCE_CUSTOM.y;
 	ao_v = INSTANCE_CUSTOM.z;
 	u_v = (INSTANCE_CUSTOM.x - 0.05) / 0.64;
@@ -22,7 +27,7 @@ void fragment() {
 	vec3 a = mix(base, tip, UV.x * UV.x) * (0.8 + tint_v * 0.42);
 	float rib = smoothstep(0.13, 0.0, UV.y);
 	float vein = smoothstep(0.72, 1.0, sin(UV.x * 44.0 + UV.y * 16.0)) * (1.0 - rib);
-	ALBEDO = mix(a, a * 1.5 + 0.012, rib * 0.6 + vein * 0.16);
+	ALBEDO = thirsty_col(mix(a, a * 1.5 + 0.012, rib * 0.6 + vein * 0.16), thirst * 0.55);
 	ROUGHNESS = 0.55;
 	SPECULAR = 0.32;
 	BACKLIGHT = ALBEDO * vec3(1.0, 1.0, 0.75) * 0.9;

@@ -12,6 +12,7 @@
 #   A nagy pillanat: state,óra,helixNN (a kettős spirál NN%-ánál, pl. helix45 = a spirál közepe)
 #     sow (a mag földet ért: jel + felirat) | sowNN (az elvetés NN%-ánál, pl. sow30 = a mag hullik)
 #     hatchNN (elvetés, nap +1, a kikelés NN%-ánál, pl. hatch50) | revealNN (a mentésből kikelő fa, --state és --nap=+1 kell)
+#   Gondozás: state,óra,thirsty (3 nap múlva, lekonyulva) | waterNN (öntözés NN%-nál) | bloom | bud | wilt | gatherNN (maggyűjtés)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 G="$HOME/godot-bin/godot"

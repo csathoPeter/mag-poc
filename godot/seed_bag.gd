@@ -9,6 +9,10 @@ signal solve(day: int)
 signal closed
 
 const ORIGIN_NAMES := {"napi": "A nap magja", "gyujtes": "Gyűjtött mag", "keresztezes": "Keresztezett mag", "csillag": "Csillagról hozott mag"}
+## A táska szakaszai ebben a sorrendben (ha egynél több fajta mag van, fejléccel elválasztva).
+const SECTIONS := [["napi", "A nap magjai"], ["gyujtes", "Gyűjtött magok – a virágzó fáidról"], ["keresztezes", "Keresztezett magok"], ["csillag", "Csillagról hozott magok"]]
+## A gyűjtött mag színe a táskában (kerti zöld), hogy jól elváljon a nap magjától (menta) és a megfejtetlentől (arany).
+const C_GATHERED := Color(.80, .95, .52)
 
 var _panel := PanelContainer.new()
 var _title := Label.new()
@@ -74,25 +78,51 @@ func open(game: GameState, highlight := -1, msg := "", fade := true) -> void:
 			count += 1
 		var seeds: Array = (game.data.bag as Array).duplicate()
 		seeds.reverse()
-		for s in seeds:
-			var dna: Array = s.dna
-			var origin: String = ORIGIN_NAMES.get(str(s.origin), "Mag")
-			var sid := int(s.id)
-			_card(w, s, Genes.latin_name(dna), "%s\n%s · %s" % [Genes.traits_text(dna), origin, GameState.day_label(int(s.day))],
-				"Elvetem", func() -> void: sow.emit(sid), sid == highlight, BoardView.C_AT)
-			count += 1
+		# szakaszonként (a nap magjai, gyűjtött magok, …), mindegyikben a legújabb elöl
+		var groups: Array = []
+		for sec in SECTIONS:
+			groups.append([sec[1], seeds.filter(func(x: Dictionary) -> bool: return str(x.origin) == sec[0])])
+		var known: Array = SECTIONS.map(func(sec: Array) -> String: return sec[0])
+		groups.append(["Más magok", seeds.filter(func(x: Dictionary) -> bool: return not known.has(str(x.origin)))])
+		var filled := groups.filter(func(gr: Array) -> bool: return not (gr[1] as Array).is_empty()).size()
+		for gr in groups:
+			if (gr[1] as Array).is_empty():
+				continue
+			if filled > 1 or count > 0:
+				_header(w, gr[0])
+			for s in gr[1]:
+				var dna: Array = s.dna
+				var sid := int(s.id)
+				if str(s.origin) == "gyujtes":
+					var title: String = s.name if str(s.name) != "" else "%s magja" % Genes.latin_name(dna)
+					_card(w, s, title, "%s\nSaját fádról szedted · %s" % [Genes.traits_text(dna), GameState.day_label(int(s.day))],
+						"Elvetem", func() -> void: sow.emit(sid), sid == highlight, C_GATHERED)
+				else:
+					var origin: String = ORIGIN_NAMES.get(str(s.origin), "Mag")
+					_card(w, s, Genes.latin_name(dna), "%s\n%s · %s" % [Genes.traits_text(dna), origin, GameState.day_label(int(s.day))],
+						"Elvetem", func() -> void: sow.emit(sid), sid == highlight, BoardView.C_AT)
+				count += 1
 	if count == 0:
 		var l := Label.new()
 		BoardView._style_label(l, 13, BoardView.C_DIM)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size = Vector2(w, 0)
-		l.text = "A táska üres. Holnap új napi mag vár, és virágzó fákról is gyűjthetsz majd."
+		l.text = "A táska üres. Holnap új napi mag vár, és virágzó fákról is gyűjthetsz: szállj le egy fához, és koppints egy virágára."
 		_list.add_child(l)
 	_scroll.custom_minimum_size = Vector2(w, 90.0)
 	visible = true
 	if fade:
 		modulate = Color(1, 1, 1, 0)
 		create_tween().tween_property(self, "modulate:a", 1.0, .3)
+
+
+func _header(w: float, text: String) -> void:
+	var l := Label.new()
+	BoardView._style_label(l, 12, BoardView.C_DIM)
+	l.text = text
+	l.custom_minimum_size = Vector2(w, 0)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_list.add_child(l)
 
 
 func _card(w: float, seed: Dictionary, title: String, body: String, action: String, cb: Callable, hl: bool, accent: Color) -> void:
@@ -156,6 +186,12 @@ func _draw_swatch(c: Control, seed: Dictionary, accent: Color) -> void:
 	c.draw_circle(m, 14.0, Genes.allele_color(5, dna[5]))
 	c.draw_circle(m, 8.0, Genes.allele_color(0, dna[0]))
 	c.draw_arc(m, 18.5, 0, TAU, 32, Color(1, 1, 1, .45), 1.0, true)
+	if str(seed.get("origin", "")) == "gyujtes":
+		# gyűjtött mag: kis arany magszem a sarokban
+		var sp := m + Vector2(12.5, 12.5)
+		c.draw_circle(sp, 6.0, Color(.1, .06, .2, .55))
+		c.draw_circle(sp, 4.2, SeedFx.C_SEED)
+		c.draw_circle(sp + Vector2(-1.2, -1.4), 1.5, Color(1, 1, 1, .7))
 
 
 func _process(delta: float) -> void:

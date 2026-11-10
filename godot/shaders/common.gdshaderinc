@@ -10,6 +10,10 @@ uniform float tree_scale = 1.0;
 uniform vec3 glow_col : source_color = vec3(0.5, 0.9, 1.0);
 uniform float glow_amt = 0.0;
 uniform float glow_part = 0.0;
+// Gondozás: lekonyulás (0 = egyenes, 1 = lekonyult; öntözéskor rugalmasan, kicsit túllendülve tér vissza, ezért
+// rövid ideig negatív is lehet) és a szomjúság fakósága (0–1). Csak a kirajzolást hajlítja, a váz nem változik.
+uniform float droop = 0.0;
+uniform float thirst = 0.0;
 // Érintés óta eltelt idő másodpercben (-1: nincs), a tövétől a csúcsa felé futó fényhullámhoz.
 uniform float wave = -1.0;
 
@@ -31,4 +35,30 @@ float touch_wave(float u) {
 	}
 	float front = wave * 0.6 - 0.1;
 	return exp(-pow((u - front) * 6.0, 2.0)) * (1.0 - smoothstep(1.8, 3.0, wave));
+}
+
+// A lekonyulás eltolása egy pontban (világ-koordinátában): a korona lehajlik, a csúcs kissé biccent, a szélső ágak
+// jobban lógnak, mint a törzs közelében lévők. Folytonos mező, így az ágak, levelek és virágok együtt maradnak.
+vec3 droop_off(vec3 wp) {
+	if (droop == 0.0) {
+		return vec3(0.0);
+	}
+	vec3 p = (tree_inv * vec4(wp, 1.0)).xyz * tree_scale;
+	float h = max(p.y, 0.0) / plant_h;
+	float rr = length(p.xz);
+	vec3 off = vec3(p.x, 0.0, p.z) * (0.14 * h);
+	off.y = -(0.8 * h * h * plant_h * 0.3 + 0.6 * rr * h);
+	off.x += 0.7 * h * h * plant_h * 0.3;
+	return mat3(tree_xf) * (off * droop) / tree_scale;
+}
+
+// A fa „felfelé” iránya világ-koordinátában (a levél és a virág lekonyulásához).
+vec3 tree_up() {
+	return normalize(mat3(tree_xf)[1]);
+}
+
+// Szomjas szín: fakóbb, kissé sárgás-olajos és sötétebb.
+vec3 thirsty_col(vec3 c, float k) {
+	float l = dot(c, vec3(0.3, 0.5, 0.2));
+	return mix(c, vec3(l) * vec3(1.12, 1.02, 0.66) * 0.92, k);
 }

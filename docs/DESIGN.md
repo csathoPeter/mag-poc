@@ -82,6 +82,14 @@ A herbárium és a tenyésztési célok csak halk háttérelemek, nem kényszer�
 - **Maggyűjtés:** virágzáskor a fáról érintéssel. Ez köti össze a gondozást a keresztezéssel.
 - **Metszés:** egy ág levágása egy érintéssel, azonnal.
 - **Kötözés:** egy ágat irányba húzol, az napok alatt lassan arra hajlik (bonsai-érzés, újabb ok a visszatérésre).
+- **Godotban (M4, `godot/care.gd` szabályok, `godot/tending.gd` látvány és érintés):**
+  - **Szomjazás:** ha egy fát 3 napja nem öntöztek (az utolsó öntözés, vagy ha még soha, a kikelés óta), lekonyul: a korona lehajlik, az ágvégek és a levelek lógnak, a csúcs kissé biccent, a lomb fakóbb, sárgás-olajos (a 4. naptól még kicsit jobban). A szomjas fa virágai félig becsukódnak, és nem hoz magot (nem fejlődik tovább). Nincs halál. Mellette félmagasságban apró, lassan lüktető vízcsepp-fény (kívülről halvány pont).
+  - **Öntözés:** leszállva a szomjas fára egy koppintás. Csillogó cseppek hullanak a lombra (~2 mp), vízszínű fénygyűrű a tövénél, fényhullám fut fel a fán, a fa rugalmasan, egyszer kicsit túllendülve felegyenesedik (~2 mp), a színe visszatér. `watered` = ma, mentés. A lebegő táblán: „Megöntözted. Lassan felegyenesedik.” Nincs vízszámláló.
+  - **Virágzási ciklus (9 nap):** bimbó 2 nap (kisebb, zárt, zöldes tövű virágok) → virágzás 3 vagy 4 nap (a fa kódjából) → elnyílás 1 nap (szétterülő, fakó, barnás szirmok, a virágok fele már lehullott) → pihenés (nincs virág, a virág-MultiMesh ki se rajzolódik). A kezdő fáknál a ciklus eltolása a hely sorszámából jön (hely × 3 + hely / 3, mod 9), így egymás után virágoznak: már a 3 kezdő fa közül is minden nap virágzik egy, de nem mind. Frissen kikelt fa első bimbója 2–4 nappal a kikelés után jön (2 + hely mod 3), utána 9 naponta; mivel a magok különböző napokon kelnek ki, ezek is elszórtan virágoznak. Napváltáskor minden lassan átúszik.
+  - **Maggyűjtés:** virágzó, nem szomjas fán, ha ma még nem szedtél róla, egy virágon arany csillanás. Leszállva egy virágra (vagy a csillanásra) koppintva a mag kis fényként kibújik, felemelkedik és ívben a Táska gombja felé repül (a 2D rétegben, hogy a gombok fölött és a világos égen is látsszon); a gomb felvillan. A leszedett virág összecsukódik és elsápad (a helye a fa rekordjában, újratöltés után is). Naponta fánként egy mag: a csillanás eltűnik, a táblán „magot hozott ma”. A mag: a fa DNS-e, eredet `gyujtes`, név „<fajnév> magja”, szülő = a fa DNS-e, `tree` = a fa azonosítója. Napi kb. 1–2 mag a kezdő kertben; sok fánál több (a virágzás aránya ~40%), ezt a keresztezés tempója szerint még hangolni kell.
+  - **A lebegő tábla (a fára koppintva):** a név alatt az állapot: „szomjas”, „fiatal / pihen · N nap múlva bimbózik”, „bimbós · holnap kinyílik”, „virágzik (még N napig) · koppints egy virágra: mag” / „magot hozott ma”, „elnyílt”. Éjjel a „virágai világítanak” fák csak virágzáskor világítanak.
+  - **Olcsó:** shader-uniformok (`droop`, `thirst` a fán/levélen/virágon; `bloom_size/open/fade/drop`, `pick` a virágon), csak változáskor írva; a jelek egy MultiMesh (≤64 fénypont), a cseppek egy másik (44, csak öntözéskor). A váz és a determinizmus nem változik.
+  - A próba-bolygón (nem mentett) a fák mindig virágoznak és nem szomjaznak, a mérés így változatlan.
 - **Az alakítás nem öröklődik**, és a DNS-t sem változtatja. Az utód a nyers DNS-ből nő.
 - **Technikai feltétel:** a növény = DNS + kód + *alakítási lista* (ág-index, művelet, kezdőnap). A generátor (`plant_gen.gd`) minden ágat ugyanúgy végigszámol (a véletlenszám-sorrend nem tolódhat el), és a listát csak a kirajzolásnál alkalmazza. Így determinisztikus marad, és minden részletességi szinten ugyanaz a váz.
 
@@ -191,9 +199,10 @@ Döntés: 2026. 11. 10. Az egész játék egyetlen JSON-állapot (`godot/state.g
 
 - **Játékos:** első indításkor véletlen, 6 jelű kód (félreérthető betűk nélkül). A bolygókód = játékoskód + sorszám (pl. `K7MQ2P-1`), a növénykód = bolygókód + a hely sorszáma.
 - **Bolygó:** kód, alapítók (az alapításkori növények DNS-e, rögzítve: ebből jön a darabos jelleg és a domborzat magassága, így újratöltéskor és az alapító elengedése után is ugyanaz a bolygó), fák, csillagok (elengedett fák, a nappal együtt).
-- **Fa:** DNS, kód, irány a bolygón (mentve, nem újraszámolva), forgatás, méret, eredet, szülők, ültetés napja, kikelés napja, látta-e már a kikelést, utolsó öntözés, alakítási lista, név.
-- **Magos táska:** mag = DNS + eredet (napi, gyűjtött, keresztezett, csillagról) + nap.
+- **Fa:** DNS, kód, irány a bolygón (mentve, nem újraszámolva), forgatás, méret, eredet, szülők, ültetés napja, kikelés napja, látta-e már a kikelést, utolsó öntözés, utolsó maggyűjtés napja és a leszedett virág helye, alakítási lista, név.
+- **Magos táska:** mag = DNS + eredet (napi, gyűjtött, keresztezett, csillagról) + nap + szülők DNS-e; gyűjtött magnál az anyafa azonosítója (`tree`) és a mag neve (`name`, „<fajnév> magja”). A táskában szakaszonként (a nap magjai, gyűjtött magok – külön színnel és kis arany magszemmel).
 - **A nap magja (`daily`):** napsorszám → félkész rács (36 érték), vagy kész jelző + a választott DNS. A 7 napnál régebbi félkész rácsok törlődnek.
+- **Verzió 2 (M4):** a fán `gathered` (nap) és `gathered_at` (a virág helye), a magon `tree` és `name`; a régi mentésben hiányzó mezők alapértéket kapnak.
 - **Napok:** a helyi dátum napsorszáma; minden napfüggő dolog a `GameState.today()`-t használja, amit a teszt-eltolás (`?nap=+1`, „nap +N” gomb) is módosít, így a „másnap” telefonon is kipróbálható.
 - **Verziószám** a későbbi migrációhoz; a hiányzó mezőket betöltéskor alapértékkel pótoljuk.
 - A `--shot` és a `--bench` nem olvas és nem ír mentést (a `--shot=...,state` csak olvas, vagy a `--state=fájl`-ba ír); a „próba” bolygó sem kerül a mentésbe.
@@ -233,7 +242,8 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [x] Kettős spirál és elvetés-animáció átvitele Godotba (M3: spirál, mag a táskába, hullás a bolygóra, a kelésre váró mag jele)
 - [x] Helyi mentés (`godot/state.gd`): játékoskód, bolygók és fáik a helyükkel, csillagok, magos táska, napok teszt-eltolással; első indításkor 3 kezdő fa a játékoskódból
 - [x] Több saját növény a kertben, másnapi kikelés (M3: kamera odarepül, csíra kinő, felirat, `revealed` mentve)
-- [ ] Öntözés, herbárium, keresztezés UI
+- [x] Öntözés, lekonyulás, virágzási ciklus (bimbó, virágzás, elnyílás), maggyűjtés virágzó fáról (M4)
+- [ ] Herbárium, keresztezés UI
 - [ ] Mérés olcsó Androidon
 - [ ] iOS-build Mac nélkül (GitHub Actions macOS + TestFlight, Apple Developer-tagság kell)
 - [ ] IAP próba (borravaló)

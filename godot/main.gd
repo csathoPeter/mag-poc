@@ -200,6 +200,7 @@ var bag_btn: Button
 var fx := SeedFx.new()
 var marks := SeedMarks.new()
 var hatching := Hatching.new()
+var tending := Tending.new()
 ## A spirál végén ezt a magot emeli ki a táska, ezzel az üzenettel.
 var helix_seed := -1
 var helix_msg := ""
@@ -229,6 +230,9 @@ func _ready() -> void:
 	add_child(marks)
 	hatching.host = self
 	add_child(hatching)
+	tending.host = self
+	add_child(tending)
+	tending.seed_arrived.connect(_on_seed_arrived)
 	fx.helix_done.connect(_on_helix_done)
 	fx.sow_landed.connect(func() -> void: _refresh_marks(sow_id))
 	space_mat.shader = SPACE_SKY
@@ -931,6 +935,8 @@ func _process(delta: float) -> void:
 				open_daily_day(GameState.today())
 				_on_board_done(board.puzzle.target, false)
 				bag.modulate.a = 1.0
+			elif shot_args[5] in ["thirsty", "bloom", "bud", "wilt"] or (shot_args[5] as String).begins_with("water") or (shot_args[5] as String).begins_with("gather"):
+				_shot_care(shot_args[5])
 			elif (shot_args[5] as String).begins_with("zoom"):
 				orbit_zoom = float((shot_args[5] as String).trim_prefix("zoom"))
 			elif (shot_args[5] as String).begins_with("macro"):
@@ -1088,6 +1094,7 @@ func _enter_planet(code: String, dnas: Array, founders: Array) -> void:
 	fx.cancel()
 	marks.clear()
 	hatching.reset()
+	tending.reset()
 	garden_mode = "planet"
 	view = "orbit"
 	focus = -1
@@ -1186,6 +1193,8 @@ func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
 			m.set_shader_parameter("glow_col", col)
 			m.set_shader_parameter("glow_part", float(t.glow.part))
 			m.set_shader_parameter("glow_amt", float(t.glow.strength) * maxf(night, 0.0))
+	# gondozás: lekonyulás, virágzási szakasz, a ma leszedett virág (a mentett fa rekordjából)
+	tending.attach(t)
 	if item.get("reveal", false):
 		# kikelt, de a játékos még nem látta: a csíra a földben vár, a kikelés-jelenet (hatching.gd) növeszti ki
 		for rec in t.lods:
@@ -1269,7 +1278,10 @@ func _tag_text() -> void:
 			light = "éjjel sötét marad"
 		else:
 			light = "éjjel a %s %s" % [gl.part_name, "világít" if gl.part == 2 else "világítanak"]
-	tag.text = "%s\n%s" % [_tree_title(t), light]
+			if gl.part == 0 and t.has("care") and float(t.care.cur.size) < .3:
+				light += " (ha virágzik)"
+	var care := tending.care_line(t)
+	tag.text = "%s\n%s%s" % [_tree_title(t), care + "\n" if care != "" else "", light]
 
 
 func _zoom(f: float) -> void:
@@ -1308,7 +1320,9 @@ func _tap(pos: Vector2) -> void:
 	if best >= 0:
 		if view == "surface" and best == focus:
 			trees[best].wave = 0.0
-			_macro_at(pos)
+			# szomjas fa: öntözés; virágzó fa virágára: mag; különben közelítés a virágra
+			if not tending.tap_focused(best, pos):
+				_macro_at(pos)
 		else:
 			_focus(best)
 	elif macro:
@@ -1588,6 +1602,10 @@ func _next_day() -> void:
 			have.append(int(t.sid))
 		if want != have:
 			retreat(show_saved_planet)
+		else:
+			# a fák lassan átúsznak az új napba (szomjazás, bimbó, virágzás, elnyílás)
+			tending.refresh()
+			_tag_text()
 
 
 ## Próba-bolygó (véletlen, nem kerül a mentésbe), és vissza a sajátra.
@@ -1639,7 +1657,10 @@ func _state_digest() -> String:
 	var parts: Array = []
 	for t in p.trees:
 		var d: Vector3 = t.dir
-		parts.append("%s %s (%.4f %.4f %.4f) nap %d" % [t.code, "-".join((t.dna as Array).map(func(x: int) -> String: return str(x))), d.x, d.y, d.z, int(t.hatch)])
+		parts.append("%s %s (%.4f %.4f %.4f) nap %d, öntözve %d, mag %d, %s" % [t.code, "-".join((t.dna as Array).map(func(x: int) -> String: return str(x))), d.x, d.y, d.z,
+			int(t.hatch), int(t.watered), int(t.gathered), Care.status_text(t, GameState.today())])
+	for sd in game.data.bag:
+		parts.append("táska: %s %s %s" % [sd.origin, sd.name if str(sd.name) != "" else Genes.latin_name(sd.dna), sd.parents])
 	return "játékos %s · bolygó %s · %d fa · ma %d · hash %08x\n  %s" % [game.data.player, p.code, (p.trees as Array).size(), GameState.today(),
 		hash(JSON.stringify(GameState._plain(game.data), "", true, true)), "\n  ".join(parts)]
 
@@ -1752,6 +1773,13 @@ func _on_helix_done() -> void:
 	open_bag(helix_seed, helix_msg)
 
 
+## A virágról szedett mag a táskába ért: a gomb felvillan, a száma nő.
+func _on_seed_arrived(_seed_id: int) -> void:
+	_sync_daily()
+	bag_btn.modulate = Color(1.7, 1.5, 1.05)
+	create_tween().tween_property(bag_btn, "modulate", Color.WHITE, .9).set_trans(Tween.TRANS_SINE)
+
+
 ## Elvetés a táskából: az aktív (mentett) bolygóra, holnap kel ki. A kamera a bolygó felé fordul, a mag fénypontként
 ## a helyére ereszkedik, és ott egy kis földkupac + lüktető fény jelzi, hogy itt holnap kikel valami.
 func _sow(seed_id: int, animate := true) -> void:
@@ -1790,6 +1818,42 @@ func _sow(seed_id: int, animate := true) -> void:
 	spin = Vector2.ZERO
 	trans_t = 0.0
 	fx.play_sow(planet.surface_point(d), d, "%s\nholnap itt kel ki" % Genes.latin_name(t.dna))
+
+
+## Teszt (--shot ...,state,óra,MÓD): gondozás. thirsty: 3 nappal később (öntözés nélkül) a 0. fa lekonyulva;
+## waterNN: ugyanez, és az öntözés NN%-ánál; bloom / bud / wilt: az első fa, amelyik ma (vagy a következő napok
+## egyikén, ahhoz előretolva a napot) virágzik / bimbós / elnyílt; gatherNN: virágzó fáról maggyűjtés, NN%-nál.
+## --state-tel az öntözés és a gyűjtés a mentésbe is bekerül (a mentés–újratöltés ellenőrzéséhez).
+func _shot_care(mode: String) -> void:
+	if mode == "thirsty" or mode.begins_with("water"):
+		GameState.day_offset += Care.THIRST_DAYS
+		tending.refresh(true)
+		_focus(0)
+		if mode.begins_with("water"):
+			tending.freeze_at = float(mode.trim_prefix("water")) / 100.0 * Tending.WATER_LEN
+			tending.water(trees[0])
+		return
+	var want := Care.BLOOM if mode == "bloom" or mode.begins_with("gather") else (Care.BUD if mode == "bud" else Care.WILT)
+	for shift in Care.CYCLE + 1:
+		for i in trees.size():
+			var rec: Dictionary = trees[i].care.rec
+			if rec.is_empty() or Care.stage(rec, GameState.today()).kind != want:
+				continue
+			if Care.thirsty(rec, GameState.today()):
+				# a képhez meglocsolva (különben a szomjas fa nem hoz magot, és a virágai is fakók)
+				game.water_tree(rec)
+			if mode.begins_with("gather") and not Care.can_gather(rec, GameState.today()):
+				continue
+			tending.refresh(true)
+			_focus(i)
+			_planet_cam(0.0, true)
+			if mode.begins_with("gather"):
+				tending.freeze_at = float(mode.trim_prefix("gather")) / 100.0 * Tending.GATHER_LEN
+				tending.gather(trees[i], trees[i].care.glint)
+			print("CARE %s: %d. fa, nap %+d, %s" % [mode, i, GameState.day_offset, Care.status_text(rec, GameState.today())])
+			return
+		GameState.day_offset += 1
+	print("CARE %s: nincs ilyen fa" % mode)
 
 
 ## Teszt (--shot ...,boardplay): a tábla kitöltése valódi koppintás-eseményekkel, a felület bemenetén át.
