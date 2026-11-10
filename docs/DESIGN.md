@@ -34,15 +34,53 @@ A kész tábla sorai kettős spirállá csavarodnak, maggá húzódnak, a földb
 - **Analóg karral repülsz** a kertben, máshol húzva körülnézel.
 - A közeli 4 fa teljes részletes, a többi egyszerűsített, azonos vázzal (a váltás ne látsszon).
 
-## Napi kör és visszatérés (terv)
+## Napi kör (game loop)
 
-1. Megnézed a kertet: kihajtott egy mag, kinyílt egy bimbó.
-2. Keresztezel egy céllal (pl. kék virág szomorú termeten).
-3. Kirakod a DNS-t (1–2 perc), elülteted.
-4. Öntözöl a pályákért kapott vízzel; a növény napok alatt fejlődik.
-5. Selejtezel: három csírából egyet nevelsz.
+Döntés: 2026. 11. 10. Három pillér, ebben a sorrendben:
 
-Visszahozó elemek: kíváncsiság (a mag csak másnap kel ki), múló virágzás (ilyenkor gyűjthető mag), herbárium üres lapokkal célként, valódi évszakok, a nap közös magja, barát magja kóddal. Napi legfeljebb egy értesítés.
+1. **Kíváncsiság** – a gerinc. Amit ma elvetsz, az holnap kel ki: „milyen lett?”
+2. **A nap magja** – a szokás. Wordle-szerű közös napi feladvány.
+3. **Gondozás** – a kötődés. Öntözés, maggyűjtés, metszés, kötözés.
+
+A herbárium és a tenyésztési célok csak halk háttérelemek, nem kényszerítenek semmire.
+
+### Egy nap (3–5 perc, de bármeddig lehet maradni)
+
+1. **Kikelés (~30 mp).** A kert reggeli fényben nyílik. Ami tegnap a földbe került, kibújt: a kamera odarepül, kis felfedő animáció.
+2. **Gondozás (~30 mp).** Lekonyult növény megérintése = öntözés, felél. Virágzó fáról érintéssel magot szedsz. Metszel, kötözöl, ha kedved van.
+3. **A nap magja (1–2 perc).** Közös DNS-tábla, a szabad géneknél te döntesz → spirál → elvetés. A végén megosztható.
+4. **Ha van kedved: keresztezés** a gyűjtött magokkal. Ezek is másnap kelnek ki.
+5. **Nézelődés:** repülés a kertben.
+
+### A nap magja
+
+- **Mindenkinek ugyanaz a tábla**, de 1–2 szabad génnél a játékos választ → rokon, mégis saját növény.
+- A tábla a dátumból determinisztikusan generálható, **szerver nélkül, offline is** működik.
+- Megosztás az első verzióban: kép + kód. „Mások mit választottak” statisztikához később szerver kell.
+- **Kihagyás:** az elmúlt 7 nap magjai a magos táskában várnak, bármikor elvethetők. Régebbiek nem.
+
+### Tempó
+
+- A nap magja: naponta 1.
+- Keresztezés: annyiszor, **ahány magot gyűjtöttél** a virágzó fákról (napi kb. 1–3). A virágzás napokig tart, a korlátot a természet adja, nem számláló vagy pénz.
+- **Minden elvetett mag másnap kel ki.** Ez az egyetlen várakozás a játékban, és jutalom, nem büntetés.
+
+### Gondozás
+
+- **Öntözés:** ingyenes, korlátlan, nincs vízszámláló. Az elhanyagolt növény csak lekonyul (és nem fejlődik tovább), egy öntözéstől feléled. Nincs halál.
+- **Maggyűjtés:** virágzáskor a fáról érintéssel. Ez köti össze a gondozást a keresztezéssel.
+- **Metszés:** egy ág levágása egy érintéssel, azonnal.
+- **Kötözés:** egy ágat irányba húzol, az napok alatt lassan arra hajlik (bonsai-érzés, újabb ok a visszatérésre).
+- **Az alakítás nem öröklődik**, és a DNS-t sem változtatja. Az utód a nyers DNS-ből nő.
+- **Technikai feltétel:** a növény = DNS + kód + *alakítási lista* (ág-index, művelet, kezdőnap). A generátor (`plant_gen.gd`) minden ágat ugyanúgy végigszámol (a véletlenszám-sorrend nem tolódhat el), és a listát csak a kirajzolásnál alkalmazza. Így determinisztikus marad, és minden részletességi szinten ugyanaz a váz.
+
+### Visszahozó elemek
+
+Kikelés másnap, a nap magja, múló virágzás (ilyenkor gyűjthető mag), lassan hajló kötözött ágak, valódi évszakok, barát magja kóddal. **Napi legfeljebb egy értesítés** (pl. „Kikelt a tegnapi magod”). Kihagyott nap után semmi nem vész el.
+
+### Külön feature-ként tervezzük
+
+- **A kert mérete és megjelenítése:** mi legyen, ha megtelik (kb. 30 fa a teljesítménykeret), és hova kerülnek a keresztezés nem választott csírái. Selejtezés helyett kíméletes megoldás kell.
 
 ## Bevétel
 
@@ -66,6 +104,10 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [x] Engine: Godot 4.7, mobil renderer natívan, Compatibility weben
 - [x] Fő mechanika: DNS-tábla
 - [x] Kert nézet: szembőli, tiltshift, analóg kar
+- [x] Napi kör: kíváncsiság + a nap magja + gondozás (metszés, kötözés)
+- [ ] Kert mérete/megjelenítése, nem választott csírák sorsa (külön feature)
+- [ ] A nap magja: dátumból generált tábla, magos táska (7 nap)
+- [ ] Alakítási lista a generátorban (metszés, kötözés)
 - [ ] DNS-tábla és spirál átvitele Godotba
 - [ ] Mentés (helyi), több saját növény a kertben, másnapi kikelés
 - [ ] Öntözés, herbárium, keresztezés UI
