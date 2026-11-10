@@ -1,6 +1,7 @@
 extends Node3D
 ## Godot PoC: DNS-ből épülő növények egy kis bolygón (bolygó-DNS, napszak, éjszakai fény), valódi árnyékkal és mérőszámokkal.
 ## A korábbi módok (egy fa közelről, repülős kert) a --shot paraméterrel továbbra is elérhetők.
+## Induláskor a mentett játékállapotot (state.gd) mutatja; a --shot és a --bench nem olvas/ír mentést (kivéve --shot=...,state).
 
 const WOOD := preload("res://shaders/wood.gdshader")
 const LEAF := preload("res://shaders/leaf.gdshader")
@@ -173,8 +174,16 @@ var bench_rows: Array = []
 var bench_cli := false
 var bench_tod := 0
 
+# Játékállapot és mentés (state.gd). saved_view: a mentett, aktív bolygó látszik (csak ilyenkor írunk a mentésbe);
+# a --shot planet, a --bench, a mérés és a próba-bolygó nem a mentést mutatja.
+var game := GameState.new()
+var saved_view := false
+var game_l := Label.new()
+var wipe_armed := 0
+
 
 func _ready() -> void:
+	game.persist = false
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	add_child(plants_root)
 	planet = Planet.new()
@@ -185,18 +194,27 @@ func _ready() -> void:
 	_build_world()
 	_build_grass()
 	_build_ui()
+	var opts := GameState.launch_options()
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shot="):
 			shot_args = a.substr(7).split(",")
 		if a == "--bench":
 			bench_cli = true
+	# --shot=kép,state[,óra[,focusN|plant|zoomZ|macro]]: a mentésből induló kert (a többi bolygós lövéssel azonos helyeken)
+	if shot_args.size() > 1 and shot_args[1] == "state":
+		shot_args = shot_args.slice(0, 2) + ["", "0"] + shot_args.slice(2)
 	_build_tag()
 	if DisplayServer.screen_get_scale() >= 2.5:
 		base_scale = .75
 	get_viewport().scaling_3d_scale = base_scale
 	scale_i = SCALES.find(base_scale)
 	_sync_dbg()
-	if shot_args.size() > 0 and shot_args[1] == "planet":
+	if shot_args.size() > 0 and shot_args[1] == "state":
+		grow_start = 1.0
+		if shot_args.size() > 4:
+			shot_hour = float(shot_args[4])
+		_load_game(opts)
+	elif shot_args.size() > 0 and shot_args[1] == "planet":
 		grow_start = 1.0
 		if shot_args.size() > 4:
 			shot_hour = float(shot_args[4])
@@ -209,8 +227,10 @@ func _ready() -> void:
 		show_single(dna, shot_args[2])
 		if shot_args.size() > 4:
 			start_garden()
-	else:
+	elif bench_cli:
 		start_planet("bolygo01", 14)
+	else:
+		_load_game(opts)
 	if bench_cli or (OS.has_feature("web") and str(JavaScriptBridge.eval("location.search", true)).contains("meres")):
 		start_bench.call_deferred()
 
@@ -347,10 +367,6 @@ func _build_ui() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	col.add_child(row)
-	_button(row, "Új bolygó", func() -> void:
-		var c := "%06x" % (randi() & 0xffffff)
-		var n := randi_range(5, 20)
-		retreat(func() -> void: start_planet(c, n)))
 	_button(row, "Ültess", plant_new)
 	tod_btn = _button(row, "Napszak", func() -> void:
 		tod_i = (tod_i + 1) % TOD_PRESETS.size()
@@ -385,6 +401,20 @@ func _build_ui() -> void:
 		vp.msaa_3d = Viewport.MSAA_DISABLED if vp.msaa_3d != Viewport.MSAA_DISABLED else Viewport.MSAA_2X
 		_sync_dbg())
 	btn.bm = _small_button(dbg, "mérés", start_bench)
+	# második apró sor: a játékállapot tesztelése (napok, próba-bolygó, mentés törlése)
+	var dbg2 := HBoxContainer.new()
+	dbg2.add_theme_constant_override("separation", 3)
+	col.add_child(dbg2)
+	btn.day = _small_button(dbg2, "nap +0", _next_day)
+	btn.try = _small_button(dbg2, "próba", _toggle_try)
+	btn.wipe = _small_button(dbg2, "törlés", _wipe_tap)
+	game_l.add_theme_font_size_override("font_size", 11)
+	game_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .6))
+	game_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	game_l.size_flags_stretch_ratio = 1.6
+	game_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	game_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	dbg2.add_child(game_l)
 	joy.set_anchors_preset(Control.PRESET_FULL_RECT)
 	joy.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	joy.draw.connect(func() -> void:
@@ -820,6 +850,8 @@ func _process(delta: float) -> void:
 				if t.high_on:
 					highs += 1
 			print("STATS ", stats_l.text, " | ", name_l.text, " | cam ", cam_pos, " stick ", stick, " highs ", highs)
+			if saved_view:
+				print("STATE ", _state_digest())
 			get_viewport().get_texture().get_image().save_png(shot_args[0])
 			get_tree().quit()
 
@@ -850,32 +882,67 @@ func _build_tag() -> void:
 	add_child(tag)
 
 
-## Új bolygó a kódból: a növények DNS-e determinisztikus, az első az alapító.
+## Próba-bolygó a kódból (mérés, --shot, „próba” gomb): a növények DNS-e determinisztikus, az első az alapító.
+## Nem a mentett állapot, ezért ide ültetve sem írunk a mentésbe.
 func start_planet(code: String, count: int) -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = hash(code)
+	var dnas: Array = []
+	for i in count:
+		var dna: Array = []
+		for k in 6:
+			dna.append(r.randi() % 14)
+		dnas.append(dna)
+	_enter_planet(code, dnas, [])
+	saved_view = false
+	var dirs: Array = []
+	for i in count:
+		var dir := planet.pick_spot(i, dirs)
+		dirs.append(dir)
+		queue.append({"dna": planet_dnas[i], "code": "%s-%d" % [code, i], "dir": dir, "rot": r.randf() * TAU, "size": r.randf_range(.5, .72)})
+	_sync_game_dbg()
+
+
+## A mentett, aktív bolygó: a kikelt fák a mentett helyükön, a bolygó a kódjából és a fák DNS-éből áll össze
+## (az alapítók a mentésből, így újratöltés után is ugyanaz a bolygó).
+func show_saved_planet() -> void:
+	var p := game.active_planet()
+	var shown := game.hatched(p)
+	var dnas: Array = []
+	for t in shown:
+		dnas.append(t.dna)
+	var founders: Array = p.founders
+	if dnas.is_empty() and founders.is_empty():
+		# még fa nélküli bolygó: a kódjából jön egy ideiglenes jelleg
+		founders = [GameState._dna([hash(p.code) % 14, 3, 0, 0, 2, 0])]
+	if not shown.is_empty():
+		# a legutóbb kikelt fa felé nézünk (a bolygó amúgy lassan forog tovább)
+		var d: Vector3 = shown[shown.size() - 1].dir
+		orbit_q = Basis.looking_at(-d, Vector3.UP if absf(d.y) < .98 else Vector3.RIGHT).get_rotation_quaternion()
+	_enter_planet(p.code, dnas, founders)
+	saved_view = true
+	for t in shown:
+		queue.append(_tree_item(t, false))
+	_sync_game_dbg()
+
+
+func _tree_item(t: Dictionary, focus_it: bool) -> Dictionary:
+	return {"dna": t.dna, "code": t.code, "dir": t.dir, "rot": t.rot, "size": t.size, "sid": t.id, "focus": focus_it}
+
+
+func _enter_planet(code: String, dnas: Array, founders: Array) -> void:
 	clear_plants()
 	queue.clear()
 	garden_mode = "planet"
 	view = "orbit"
 	focus = -1
 	build_ms_total = 0.0
-	var r := RandomNumberGenerator.new()
-	r.seed = hash(code)
-	planet_dnas = []
-	for i in count:
-		var dna: Array = []
-		for k in 6:
-			dna.append(r.randi() % 14)
-		planet_dnas.append(dna)
+	planet_dnas = dnas.duplicate()
 	planet.visible = true
 	for n in flat_ground:
 		(n as Node3D).visible = false
-	planet.setup(code, planet_dnas)
+	planet.setup(code, planet_dnas, founders)
 	last_r = planet.radius
-	var dirs: Array = []
-	for i in count:
-		var dir := planet.pick_spot(i, dirs)
-		dirs.append(dir)
-		queue.append({"dna": planet_dnas[i], "code": "%s-%d" % [code, i], "dir": dir, "rot": r.randf() * TAU, "size": r.randf_range(.5, .72)})
 	env.sky.sky_material = space_mat
 	env.fog_enabled = false
 	sun.directional_shadow_max_distance = 60.0
@@ -905,13 +972,29 @@ func _planet_texts() -> void:
 
 
 ## Új fa a bolygón: a bolygó-DNS változik, a bolygó lassan nő, a kamera odarepül a csírához.
+## Ideiglenes (amíg a DNS-tábla nem kész): véletlen DNS, és azonnal kikel. A mentett bolygón el is menti.
 func plant_new() -> void:
 	if garden_mode != "planet" or queue.size() > 0 or retreating:
 		return
-	if trees.size() >= 30:
+	if trees.size() >= GameState.PLANET_FULL:
 		traits_l.text = "A bolygó megtelt. Később itt születik mellette egy új kis bolygó."
 		return
 	var dna := Genes.random_dna()
+	if saved_view:
+		var p := game.active_planet()
+		var st := game.new_tree(p, dna, "ultetes")
+		st.hatch = GameState.today()
+		st.revealed = true
+		game.place_tree(p, st)
+		if (p.founders as Array).is_empty():
+			p.founders = [dna.duplicate()]
+		game.save()
+		planet_dnas.append(dna)
+		planet.add_plant(dna)
+		queue.append(_tree_item(st, true))
+		_planet_texts()
+		_sync_game_dbg()
+		return
 	planet_dnas.append(dna)
 	planet.add_plant(dna)
 	var dirs: Array = []
@@ -937,7 +1020,7 @@ func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
 	var pg: PlantGen = high.pg
 	var w := maxf(pg.bb_max.x - pg.bb_min.x, pg.bb_max.z - pg.bb_min.z) * float(high.s) * .5
 	var t := {"dir": item.dir, "rot": item.rot, "low": low, "high": high, "far": far, "lods": [high, low, far], "lod": 2, "shown": true, "high_on": false, "front": true,
-		"g": gg, "glow": Genes.glow(item.dna), "wave": -1.0, "h": 5.0 * float(item.size), "w": w}
+		"g": gg, "glow": Genes.glow(item.dna), "wave": -1.0, "h": 5.0 * float(item.size), "w": w, "sid": int(item.get("sid", -1))}
 	trees.append(t)
 	_place_tree(t)
 	var col := Genes.hsl(gg.petal_h, .85, .62)
@@ -1308,6 +1391,104 @@ func _update_tod(delta: float, snap: bool) -> void:
 		_tag_text()
 
 
+# ---------------------------------------------------------------- Játékállapot (bekötés; a logika a state.gd-ben)
+
+## A mentett játék betöltése (vagy első indításkor új), és a mentett bolygó megjelenítése.
+func _load_game(opts: Dictionary) -> void:
+	var shot := not shot_args.is_empty()
+	game.path = opts.state if opts.state != "" else GameState.SAVE_PATH
+	# lövésnél csak a külön megadott (--state) fájlba írunk, a valódi mentésbe soha
+	game.persist = not shot or opts.state != ""
+	if opts.wipe and game.persist:
+		game.wipe()
+	var fresh := game.load_or_new(opts.player)
+	if opts.day != null:
+		GameState.day_offset = int(opts.day)
+		game.save()
+	var p := game.active_planet()
+	print("Mag: %s, játékos %s, bolygó %s, %d fa, ma %s (eltolás %+d)" % ["új játék" if fresh else "mentés betöltve", game.data.player, p.code,
+		(p.trees as Array).size(), GameState.day_label(GameState.today()), GameState.day_offset])
+	show_saved_planet()
+
+
+## Teszt: egy nappal előre (a kikelés, öntözés, a nap magja így telefonon is kipróbálható). Visszaállítás: ?nap=0.
+func _next_day() -> void:
+	if game.data.is_empty() or bench_on or retreating:
+		return
+	GameState.day_offset += 1
+	game.save()
+	_sync_game_dbg()
+	if saved_view:
+		var want: Array = []
+		for t in game.hatched(game.active_planet()):
+			want.append(int(t.id))
+		var have: Array = []
+		for t in trees:
+			have.append(int(t.sid))
+		if want != have:
+			retreat(show_saved_planet)
+
+
+## Próba-bolygó (véletlen, nem kerül a mentésbe), és vissza a sajátra.
+func _toggle_try() -> void:
+	if bench_on or retreating:
+		return
+	if saved_view or game.data.is_empty():
+		var c := "%06x" % (randi() & 0xffffff)
+		var n := randi_range(5, 20)
+		retreat(func() -> void: start_planet(c, n))
+	else:
+		retreat(show_saved_planet)
+
+
+## A mentés törlése két koppintással (az első csak élesít 3 másodpercre).
+func _wipe_tap() -> void:
+	if game.data.is_empty() or not game.persist or bench_on or retreating:
+		return
+	var now := Time.get_ticks_msec()
+	if wipe_armed == 0 or now - wipe_armed > 3000:
+		wipe_armed = now
+		dbg_btn.wipe.text = "biztos?"
+		get_tree().create_timer(3.0).timeout.connect(func() -> void:
+			if wipe_armed == now:
+				wipe_armed = 0
+				_sync_game_dbg())
+		return
+	wipe_armed = 0
+	game.wipe()
+	game.new_game()
+	game.save()
+	retreat(show_saved_planet)
+
+
+func _sync_game_dbg() -> void:
+	if not dbg_btn.has("day"):
+		return
+	dbg_btn.day.text = "nap %+d" % GameState.day_offset
+	dbg_btn.try.text = "saját" if not saved_view and not game.data.is_empty() else "próba"
+	dbg_btn.wipe.text = "törlés"
+	var where: String = (game.active_planet().code as String) if saved_view else "nem mentődik"
+	game_l.text = "%s · %s" % [where, GameState.day_label(GameState.today())]
+
+
+## Ellenőrzéshez (--shot ...,state): a mentett állapot tömör lenyomata és a fák helye.
+func _state_digest() -> String:
+	var p := game.active_planet()
+	var parts: Array = []
+	for t in p.trees:
+		var d: Vector3 = t.dir
+		parts.append("%s %s (%.4f %.4f %.4f) nap %d" % [t.code, "-".join((t.dna as Array).map(func(x: int) -> String: return str(x))), d.x, d.y, d.z, int(t.hatch)])
+	return "játékos %s · bolygó %s · %d fa · ma %d · hash %08x\n  %s" % [game.data.player, p.code, (p.trees as Array).size(), GameState.today(),
+		hash(JSON.stringify(GameState._plain(game.data), "", true, true)), "\n  ".join(parts)]
+
+
+## Weben a lap elrejtésekor / bezárásakor is mentünk (a változások úgyis azonnal mentődnek, ez csak biztosíték).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		if saved_view:
+			game.save()
+
+
 # ---------------------------------------------------------------- Mérés
 
 ## Egységes alapállapot (azonos bolygó, nappal), aztán lépésenként egy-egy beállítás, kint és leszállva.
@@ -1449,8 +1630,13 @@ func _bench_info() -> String:
 
 func _bench_done() -> void:
 	bench_on = false
-	if trees.size() != 14:
-		planet.grass_mult = 1.0
+	planet.grass_mult = 1.0
+	if not bench_cli and not game.data.is_empty():
+		# vissza a saját (mentett) bolygóra
+		grow_start = 1.0
+		show_saved_planet()
+		grow_start = 0.0
+	elif trees.size() != 14:
 		start_planet("bolygo01", 14)
 	_bench_cfg({})
 	tod_i = bench_tod

@@ -14,6 +14,7 @@ godot/                  A játék (Godot 4.7.1, GDScript)
   main.gd               Jelenet, UI, kamera (bolygó: forgatás/leszállás; régi: egy fa, repülős kert), napszak, növekedés, mérőszámok
   planet.gd             Kis bolygó: domborzat, légkör, holdak, gyűrű, fű, fénypontok; bolygó-DNS a növényekből
   plant_gen.gd          Növénygenerátor: ágak gyűrűkből, levelek és virágok MultiMesh-ben, részletességi szintek
+  state.gd              Játékállapot és helyi mentés (GameState): játékos, bolygók, fák, csillagok, magos táska, today() + teszt-eltolás
   genes.gd              DNS → genom: 6 gén × 14 változat, termetek, égboltok; DNS-tábla sorai, rejtett éjszakai fény
   shaders/              Fa, levél, virág (szél a fa keretében, éjszakai fény, érintéshullám), fű (régi kert), bolygó-fű (szálanként, GodotGrass-ötletek), bolygó, légkör, űr-ég, gyűrű, fénypontok, lencse (makett-sáv / DSLR-mélységélesség)
   export_presets.cfg    "Web" preset (egyszálas)
@@ -29,6 +30,7 @@ tools/render_shots.sh   Fej nélküli képernyőképek ellenőrzéshez
 - Élő link: **https://csathopeter.github.io/mag-poc/**
 - A `main` ágra pusholt minden `godot/` változás után a GitHub Actions lefordítja a webes buildet és kiteszi a `gh-pages` ágra (kb. 2–4 perc, majd a Pages további 1–2 perc). **A `gh-pages` ágat kézzel ne szerkeszd**, a workflow minden alkalommal felülírja.
 - Péternek adj hozzá egy új lekérdezési paramétert (pl. `?v=<rövid commit>`), hogy a Safari ne a régit töltse be.
+- **Mentés:** a játék induláskor a mentett kertet tölti be (első indításkor új játékoskód, 3 kezdő fa). URL-paraméterek teszteléshez: `?uj` törli a mentést és újat kezd (amíg az URL-ben van, minden betöltéskor!), `?nap=+1` napokkal előre tolja a játék napját (a mentésbe is bekerül, `?nap=0` állítja vissza), `?jatekos=KOD` új játéknál ezt a játékoskódot adja. A második apró gombsorban: „nap +N” (egy nappal előre), „próba” (véletlen bolygó, nem mentődik; „saját” = vissza), „törlés” (két koppintással), mellette az aktív bolygókód és a játék napja.
 - Ha a workflow nem fut vagy elhasal, mondd el Péternek, és ne próbáld megkerülni a Pages beállításait (innen a Pages API nem érhető el).
 
 ## Ellenőrzés munka közben
@@ -39,6 +41,7 @@ cd godot && ~/godot-bin/godot --headless --import 2>&1 | grep -iE "script error|
 tools/render_shots.sh /tmp/a.png planet,bolygo01,14,12 planet,bolygo01,14,23,focus2 2-5-1-3-0-5,kert01,1
 ```
 
+- **Mentésből induló kert:** `--shot=kimenet.png,state[,óra[,focusN|plant|zoomZ|macro]]`. A mentés helye `--state=fájl` (ha nincs meg, új játékot kezd és elmenti; a `plant` ide ültet és ment), `--player=KOD` az új játék kódja, `--nap=+1` eltolás, `--uj` törlés. `--state` nélkül csak olvassa a valódi `user://` mentést. A kimenet `STATE` sorában a játékos, a fák helye és a mentés lenyomata (hash) – mentés → újraindítás után ugyanannak kell lennie. A render_shots.sh-nak: `MAG_ARGS="--state=/tmp/s.json --player=TESZT1" tools/render_shots.sh /tmp/a.png state,12 state,12,zoom0`.
 - A `--shot=kimenet.png,dna,kód,növekedés[,fly[,go]]` argumentumot a `main.gd` kezeli: betölti az állapotot, ha `go`, előretolja a kart, kiírja a `STATS` sort, ment egy képet és kilép.
 - Bolygó: `--shot=kimenet.png,planet,kód,fák száma[,óra[,focusN|plant|zoomZ|macro]]`. Az óra a napszakot rögzíti (pl. 12 nappal, 19 alkony, 23 éjjel). `zoomZ`: bolygó-nézet közelsége (0 = egész bolygó, 1 = alacsony légi nézet), `macro`: leszállás a 0. fára és rá egy virágra.
 - A webes (Compatibility) renderert natívan is ki lehet próbálni: `xvfb-run -a godot --path . --rendering-method gl_compatibility --rendering-driver opengl3 -- --shot=...` – így derült ki, hogy weben a képernyő-textúrának nincs mipmapje.
@@ -64,7 +67,6 @@ tools/render_shots.sh /tmp/a.png planet,bolygo01,14,12 planet,bolygo01,14,23,foc
 ## Következő lépések (prioritás szerint)
 
 1. DNS-tábla, feladvány-generátor, keresztezés és kettős spirál átvitele Godotba a `prototype-threejs/index.html`-ből.
-2. Helyi mentés: a kert fái és DNS-ük megmaradjanak újratöltés után.
-3. Saját növények a kertben, a mag másnap kel ki, öntözés.
-4. Közelről a levelek szögletesek: finomabb levélforma vagy textúra a részletes szinten.
-5. Webes színek hangolása (a Compatibility renderer fakóbb lombot, foltos talajt ad).
+2. Saját növények a kertben, a mag másnap kel ki (a `hatch` mező és a `GameState.today()` már kész), öntözés.
+3. Közelről a levelek szögletesek: finomabb levélforma vagy textúra a részletes szinten.
+4. Webes színek hangolása (a Compatibility renderer fakóbb lombot, foltos talajt ad).

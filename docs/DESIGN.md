@@ -173,6 +173,18 @@ Ihletők: az Avatar filmekből az élő, magától világító, érintésre felr
   - A mintavétel nem épít a képernyő-textúra mipmapjeire (a webes renderer nem készít ilyet), így weben és natívan ugyanúgy néz ki.
 - **Fű:** szálanként renderelve, a [2Retr0/GodotGrass](https://github.com/2Retr0/GodotGrass) (MIT) és a Ghost of Tsushima GDC-előadás ötletei alapján: íves, szélben söprő szálak, a nézetből oldalra esők kiszélesítve, lekerekített normál, átsütő fény. Csak MultiMesh + spatial shader, compute nélkül, így weben is fut. Kívülről ritka, egyszerű réteg borítja a bolygót; leszálláskor a fa körül sűrű folt (belül részletes, kifelé ritkuló szálak). Éjjel a szálak egy része a csúcsán világít.
 
+## Játékállapot és mentés
+
+Döntés: 2026. 11. 10. Az egész játék egyetlen JSON-állapot (`godot/state.gd`, `GameState`), helyben mentve (`user://mag_mentes.json` + `.bak` másolat; weben IndexedDB). **Minden változás után azonnal mentünk**, mert a böngésző bármikor bezárhatja a lapot.
+
+- **Játékos:** első indításkor véletlen, 6 jelű kód (félreérthető betűk nélkül). A bolygókód = játékoskód + sorszám (pl. `K7MQ2P-1`), a növénykód = bolygókód + a hely sorszáma.
+- **Bolygó:** kód, alapítók (az alapításkori növények DNS-e, rögzítve: ebből jön a darabos jelleg és a domborzat magassága, így újratöltéskor és az alapító elengedése után is ugyanaz a bolygó), fák, csillagok (elengedett fák, a nappal együtt).
+- **Fa:** DNS, kód, irány a bolygón (mentve, nem újraszámolva), forgatás, méret, eredet, szülők, ültetés napja, kikelés napja, látta-e már a kikelést, utolsó öntözés, alakítási lista, név.
+- **Magos táska:** mag = DNS + eredet (napi, gyűjtött, keresztezett, csillagról) + nap.
+- **Napok:** a helyi dátum napsorszáma; minden napfüggő dolog a `GameState.today()`-t használja, amit a teszt-eltolás (`?nap=+1`, „nap +N” gomb) is módosít, így a „másnap” telefonon is kipróbálható.
+- **Verziószám** a későbbi migrációhoz; a hiányzó mezőket betöltéskor alapértékkel pótoljuk.
+- A `--shot` és a `--bench` nem olvas és nem ír mentést (a `--shot=...,state` csak olvas, vagy a `--state=fájl`-ba ír); a „próba” bolygó sem kerül a mentésbe.
+
 ## Bevétel
 
 Ingyenes, reklám nélkül. Támogatás: borravaló fogyó IAP-ként (App Store 3.1.1 megengedi), kozmetikai támogatói csomag (pad, szökőkút, kerti dísz). Weben külső támogatási link. Várható bevétel alacsony, ez nem üzleti terv.
@@ -205,7 +217,8 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [ ] A nap magja: dátumból generált tábla, magos táska (7 nap)
 - [ ] Alakítási lista a generátorban (metszés, kötözés)
 - [ ] DNS-tábla és spirál átvitele Godotba
-- [ ] Mentés (helyi), több saját növény a kertben, másnapi kikelés
+- [x] Helyi mentés (`godot/state.gd`): játékoskód, bolygók és fáik a helyükkel, csillagok, magos táska, napok teszt-eltolással; első indításkor 3 kezdő fa a játékoskódból
+- [ ] Több saját növény a kertben, másnapi kikelés (az állapotban már van hely: `planted`, `hatch`, `revealed`)
 - [ ] Öntözés, herbárium, keresztezés UI
 - [ ] Mérés olcsó Androidon
 - [ ] iOS-build Mac nélkül (GitHub Actions macOS + TestFlight, Apple Developer-tagság kell)

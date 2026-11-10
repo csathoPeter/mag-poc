@@ -5,6 +5,9 @@
 #   "fly" a repülős kertet tölti be, "go" ráadásul előretolja az analóg kart.
 #   Bolygó: planet,kód,fák száma[,óra[,focusN|plant]]   pl. planet,bolygo01,14,23,focus2
 #   (óra: napszak 0–24; focusN: leszáll az N-edik fához; plant: ültet egy újat és odarepül)
+#   Mentésből: state[,óra[,focusN|plant|zoomZ|macro]]; a mentés helye a MAG_ARGS-ban, pl.
+#   MAG_ARGS="--state=/tmp/s.json --player=TESZT1" tools/render_shots.sh /tmp/a.png state,12 state,12,zoom0
+#   (ha a fájl nincs meg, új játékot kezd és elmenti; --state nélkül a valódi mentést csak olvassa)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 G="$HOME/godot-bin/godot"
@@ -12,7 +15,7 @@ export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
 out=$1; shift; i=0; files=()
 for s in "$@"; do i=$((i+1)); f=/tmp/shot_$i.png
   (cd "$ROOT/godot" && timeout 280 xvfb-run -a -s "-screen 0 390x780x24" "$G" --path . --rendering-method mobile \
-     --rendering-driver vulkan --resolution 390x780 -- --shot="$f,$s" 2>&1 | grep -E "STATS|SCRIPT ERROR|SHADER ERROR|Parse Error" || true)
+     --rendering-driver vulkan --resolution 390x780 -- ${MAG_ARGS:-} --shot="$f,$s" 2>&1 | grep -E "STATS|STATE|^  [^ ]|SCRIPT ERROR|SHADER ERROR|Parse Error" || true)
   files+=("$f"); done
 python3 - "$out" "${files[@]}" <<'P'
 import sys

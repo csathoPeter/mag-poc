@@ -130,10 +130,12 @@ func _ready() -> void:
 
 
 ## Új bolygó: a domborzat, a felszíntakaró és a holdak az alapítóból, a többi a növényekből.
-func setup(planet_code: String, plant_dnas: Array) -> void:
+## founding: az alapításkori növények DNS-e (a mentésből). Ezekből jön a darabos jelleg és a domborzat magassága,
+## így újratöltéskor (több fával) is ugyanaz a bolygó áll össze. Üres = a mostani növények az alapítók.
+func setup(planet_code: String, plant_dnas: Array, founding: Array = []) -> void:
 	code = planet_code
-	dnas = plant_dnas.duplicate()
-	var founder: Array = dnas[0]
+	var base: Array = founding if not founding.is_empty() else plant_dnas
+	var founder: Array = base[0]
 	terrain = TERRAIN[Genes.TERMET[founder[3]][0]]
 	cover = COVER[COVER_OF_LEAF[founder[2]]]
 	moon_count = MOONS[founder[1]]
@@ -151,8 +153,12 @@ func setup(planet_code: String, plant_dnas: Array) -> void:
 	blade_hi = _clump_mesh([0.0, .33, .66], [.05, .043, .029], float(cover.w), hash(code + "szal"))
 	blade_lo = _clump_mesh([0.0], [.05], float(cover.w), hash(code + "szal"))
 	show_patch(false)
+	dnas = base.duplicate()
 	_compute()
 	amp = target.amp
+	if not plant_dnas.is_empty():
+		dnas = plant_dnas.duplicate()
+		_compute()
 	_snap()
 	_build_surface()
 	_build_grass()
@@ -183,7 +189,7 @@ func _compute() -> void:
 		tall += ws[i] * float(Genes.TERMET[d[3]][2])
 		petals += ws[i] * float(d[1] % 6) / 5.0
 		leaf += ws[i] * float(Genes.LEAF[d[2]][1])
-	radius_target = 3.6 + .85 * sqrt(float(n))
+	radius_target = radius_for(n)
 	target = {
 		"atmo": Genes.hsl(fl.x, minf(fl.y, .8) * .85, .72),
 		"atmo_h": fl.x,
@@ -288,10 +294,20 @@ func _normal(dir: Vector3) -> Vector3:
 	return n if n.dot(dir) > 0.0 else -n
 
 
+## A bolygó sugara n növénnyel (minden új fával kicsit nő).
+static func radius_for(n: int) -> float:
+	return 3.6 + .85 * sqrt(float(maxi(n, 1)))
+
+
 ## Hely a következő fának: determinisztikus a bolygó kódjából és a sorszámból, a többi fától távol.
 func pick_spot(index: int, taken: Array) -> Vector3:
+	return spot_for(code, index, taken, radius_target)
+
+
+## Ugyanez bolygó nélkül (a mentés is ezzel ad helyet a fáknak).
+static func spot_for(planet_code: String, index: int, taken: Array, rad: float) -> Vector3:
 	var r := RandomNumberGenerator.new()
-	r.seed = hash(code + "hely" + str(index))
+	r.seed = hash(planet_code + "hely" + str(index))
 	var best := Vector3.UP
 	var best_d := -1.0
 	for i in 160:
@@ -301,7 +317,7 @@ func pick_spot(index: int, taken: Array) -> Vector3:
 		var md := 9.0
 		for q in taken:
 			md = minf(md, dir.distance_to(q))
-		if md * radius_target > 3.4:
+		if md * rad > 3.4:
 			return dir
 		if md > best_d:
 			best_d = md
