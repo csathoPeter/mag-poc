@@ -5,6 +5,9 @@ extends RefCounted
 const SIDES := [9, 6, 5, 3]
 const STEP := [.2, .15, .12, .1]
 const SIDES_LOW := [6, 4, 3, 3]
+const SIDES_FAR := [5, 3, 3, 3]
+## E részletesség alatt a "távoli" szint: kevesebb, nagyobb levél, kevés virág, csak a vastagabb ágak.
+const FAR := .1
 
 var r := RandomNumberGenerator.new()
 var rl := RandomNumberGenerator.new()
@@ -50,7 +53,7 @@ func build(genome: Dictionary, det := 1.0) -> void:
 	g = genome
 	detail = det
 	max_leaves = int(2600 * det)
-	max_flowers = 260 if det >= 1.0 else 35
+	max_flowers = 260 if det >= 1.0 else (35 if det >= FAR else 14)
 	r.seed = g.gen_seed
 	rl.seed = g.gen_seed + 9
 	max_level = 2 if g.b2 < .6 else 3
@@ -105,13 +108,14 @@ func _branch(p0: Vector3, d0: Vector3, length: float, rad: float, lvl: int, path
 		p += d * step
 	max_path = maxf(max_path, ps[segs])
 
-	var sides: int = SIDES[lvl] if detail >= 1.0 else SIDES_LOW[lvl]
+	var sides: int = SIDES[lvl] if detail >= 1.0 else (SIDES_LOW[lvl] if detail >= FAR else SIDES_FAR[lvl])
 	var base := n
-	var draw_rings := detail >= 1.0 or lvl < max_level
+	var draw_rings := detail >= 1.0 or lvl < (max_level if detail >= FAR else max_level - 1)
+	var ring_every := 1 if detail >= 1.0 else (2 if detail >= FAR else 3)
 	var ring_ids: Array[int] = []
 	if draw_rings:
 		for i in segs + 1:
-			if detail >= 1.0 or i % 2 == 0 or i == segs:
+			if i % ring_every == 0 or i == segs:
 				ring_ids.append(i)
 	for k in ring_ids.size():
 		var i := ring_ids[k]
@@ -209,7 +213,7 @@ func wood_mesh() -> ArrayMesh:
 
 
 func leaf_mesh() -> ArrayMesh:
-	var rows := 6 if detail >= 1.0 else 3
+	var rows := 6 if detail >= 1.0 else (3 if detail >= FAR else 2)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for i in rows + 1:
@@ -262,9 +266,15 @@ func flower_mesh() -> ArrayMesh:
 	var np: int = g.petals
 	for i in np:
 		add_petal.call(float(i) / np * TAU, g.petal_len, g.petal_w * g.petal_len * .62, deg_to_rad(g.petal_cup))
-	if g.layers == 2:
+	if g.layers == 2 and detail >= FAR:
 		for i in np:
 			add_petal.call((i + .5) / np * TAU, g.petal_len * .68, g.petal_w * g.petal_len * .46, deg_to_rad(g.petal_cup + 18.0))
+	if detail < FAR:
+		# távolról a porzó nem látszik
+		st.generate_normals()
+		var mf := st.commit()
+		mf.custom_aabb = local_aabb()
+		return mf
 	var ball := SphereMesh.new()
 	ball.radius = .16 * g.petal_len
 	ball.height = .32 * g.petal_len

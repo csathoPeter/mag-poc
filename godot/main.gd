@@ -96,9 +96,14 @@ const SKY_MODES := ["ég tex", "ég sima", "ég régi"]
 var scale_i := 0
 var sky_i := 0
 var tilt_ok := true
-var hi_trees := 4
+## Egyszerre legfeljebb ennyi részletes fa (a mérés szerint leszállva a legtöbb úgyis kívül esik a képen).
+const HI_TREES := 4
+var hi_trees := HI_TREES
+## Alap belső 3D-felbontás: sűrű kijelzőn (pl. iPhone, 3×) 75%, mert ott a pixelek kitöltése drága, és a tiltshiftes képen nem látszik.
+var base_scale := 1.0
 ## A részletes fák távolsághatára (a fa közepétől a kameráig) és a visszaváltás többlete.
 const LOD_DIST := 22.0
+const MID_EXTRA := 5.0
 const LOD_HYST := 3.0
 var lod_force := false
 var dbg_btn := {}
@@ -108,22 +113,20 @@ const BENCH_SETTLE := 1.2
 const BENCH_MEASURE := 3.5
 ## Terheléses mérés: meddig bírja a telefon 60 fps-sel (fű sűrűsége, részletes fák, fák száma).
 const LOAD_STEPS := [
-	["lent", "fű ×1", {}],
+	["lent", "alap (14 fa)", {}],
+	["lent", "100% felbontás", {"scale": 1.0}],
 	["lent", "fű ×1,5", {"gmul": 1.5}],
 	["lent", "fű ×2", {"gmul": 2.0}],
 	["lent", "fű ×3", {"gmul": 3.0}],
-	["lent", "fű ×4", {"gmul": 4.0}],
-	["lent", "fű ×6", {"gmul": 6.0}],
-	["lent", "fű ×6, 75%", {"gmul": 6.0, "scale": .75}],
-	["lent", "8 részletes fa", {"hi": 8, "force": true}],
 	["lent", "minden látható részletes", {"hi": 99, "force": true}],
 	["kint", "14 fa", {}],
-	["kint", "14 fa, fű ×3", {"gmul": 3.0}],
 	["kint", "30 fa", {"trees": 30}],
 	["lent", "30 fa", {"trees": 30}],
+	["lent", "30 fa, 100%", {"trees": 30, "scale": 1.0}],
+	["lent", "30 fa, fű ×1,5", {"trees": 30, "gmul": 1.5}],
+	["lent", "30 fa, fű ×2", {"trees": 30, "gmul": 2.0}],
 	["kint", "45 fa", {"trees": 45}],
 	["lent", "45 fa", {"trees": 45}],
-	["lent", "30 fa, fű ×3, 8 részl.", {"trees": 30, "gmul": 3.0, "hi": 8, "force": true}],
 ]
 ## Beállítás-mérés (?meres&beall): egyenként kikapcsolja a drága részeket.
 const BENCH_STEPS := [
@@ -179,6 +182,11 @@ func _ready() -> void:
 		if a == "--bench":
 			bench_cli = true
 	_build_tag()
+	if DisplayServer.screen_get_scale() >= 2.5:
+		base_scale = .75
+	get_viewport().scaling_3d_scale = base_scale
+	scale_i = SCALES.find(base_scale)
+	_sync_dbg()
 	if shot_args.size() > 0 and shot_args[1] == "planet":
 		grow_start = 1.0
 		if shot_args.size() > 4:
@@ -350,8 +358,8 @@ func _build_ui() -> void:
 	btn.gr = _small_button(dbg, "fű be", func() -> void:
 		planet.set_grass(not planet.grass_on)
 		_sync_dbg())
-	btn.ht = _small_button(dbg, "fa 4", func() -> void:
-		hi_trees = 1 if hi_trees == 4 else 4
+	btn.ht = _small_button(dbg, "fa %d" % HI_TREES, func() -> void:
+		hi_trees = 1 if hi_trees == HI_TREES else HI_TREES
 		_planet_lod()
 		_sync_dbg())
 	btn.sk = _small_button(dbg, SKY_MODES[0], func() -> void:
@@ -889,23 +897,37 @@ func plant_new() -> void:
 
 
 func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
+	# három részletességi szint ugyanabból a vázból: részletes (közel), egyszerűsített, távoli
+	var far := spawn(gg, Vector3.ZERO, 0.0, item.size, .09)
 	var low := spawn(gg, Vector3.ZERO, 0.0, item.size, .22)
 	var high := spawn(gg, Vector3.ZERO, 0.0, item.size, 1.0)
 	(high.node as Node3D).visible = false
+	(low.node as Node3D).visible = false
+	# árnyékot csak az egyszerűsített szint vet (a részletes fa helyett is, csak árnyékként): a puha árnyékon
+	# nem látszik a különbség, de a részletes fát így nem kell kétszer kirajzolni; a távoli fa nem vet árnyékot
+	_cast_shadow(high, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+	_cast_shadow(far, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)
+	_cast_shadow(low, GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
 	var pg: PlantGen = high.pg
 	var w := maxf(pg.bb_max.x - pg.bb_min.x, pg.bb_max.z - pg.bb_min.z) * float(high.s) * .5
-	var t := {"dir": item.dir, "rot": item.rot, "low": low, "high": high, "high_on": false, "front": true,
+	var t := {"dir": item.dir, "rot": item.rot, "low": low, "high": high, "far": far, "lods": [high, low, far], "lod": 2, "shown": true, "high_on": false, "front": true,
 		"g": gg, "glow": Genes.glow(item.dna), "wave": -1.0, "h": 5.0 * float(item.size), "w": w}
 	trees.append(t)
 	_place_tree(t)
 	var col := Genes.hsl(gg.petal_h, .85, .62)
-	for rec in [low, high]:
+	for rec in t.lods:
 		for m in rec.mats:
 			m.set_shader_parameter("glow_col", col)
 			m.set_shader_parameter("glow_part", float(t.glow.part))
 			m.set_shader_parameter("glow_amt", float(t.glow.strength) * maxf(night, 0.0))
 	if item.get("focus", false):
 		_focus(trees.size() - 1)
+
+
+func _cast_shadow(rec: Dictionary, mode: GeometryInstance3D.ShadowCastingSetting) -> void:
+	for c in (rec.node as Node3D).get_children():
+		if c is GeometryInstance3D and not (c is MultiMeshInstance3D and (c as MultiMeshInstance3D).material_override.shader == FLOWER):
+			(c as GeometryInstance3D).cast_shadow = mode
 
 
 func _tree_frame(i: int) -> Basis:
@@ -916,7 +938,7 @@ func _place_tree(t: Dictionary) -> void:
 	var d: Vector3 = t.dir
 	var b := Basis(Quaternion(Vector3.UP, d)) * Basis(Vector3.UP, t.rot)
 	var pos := planet.surface_point(d) - d * .06
-	for rec in [t.low, t.high]:
+	for rec in t.lods:
 		(rec.node as Node3D).transform = Transform3D(b.scaled(Vector3.ONE * float(rec.s)), pos)
 		_set_tree_xf(rec)
 
@@ -944,9 +966,16 @@ func _focus(i: int) -> void:
 		up_hint = Basis(orbit_q).x
 	orbit_q = Basis.looking_at(-(t.dir as Vector3), up_hint).get_rotation_quaternion()
 	tilt_quad.visible = tilt_ok
-	planet.build_patch(t.dir)
+	planet.build_patch(_patch_center(i), not shot_args.is_empty())
 	planet.show_patch(true)
 	_tag_text()
+
+
+## A sűrű fűfolt középpontja: a fa és a kamera között, hogy a sűrű fű a képen legyen, ne a fa mögött.
+func _patch_center(i: int) -> Vector3:
+	var t: Dictionary = trees[i]
+	var off := _tree_frame(i) * Vector3(sin(s_yaw), 0, cos(s_yaw)) * minf(s_dist * .45, 4.0)
+	return (planet.surface_point(t.dir) + off).normalized()
 
 
 func _unfocus() -> void:
@@ -1063,12 +1092,16 @@ func _planet_process(delta: float) -> void:
 			_place_tree(t)
 	_update_tod(delta, snap)
 	_planet_cam(delta, snap)
+	if view == "surface" and focus >= 0 and planet.patch_job.is_empty() and not snap:
+		var want := _patch_center(focus)
+		if want.angle_to(planet.patch_center) * planet.radius > 2.5:
+			planet.build_patch(want)
 	for t in trees:
 		if float(t.wave) >= 0.0:
 			t.wave = float(t.wave) + delta
 			if t.wave > 3.2:
 				t.wave = -1.0
-			for rec in [t.low, t.high]:
+			for rec in t.lods:
 				for m in rec.mats:
 					m.set_shader_parameter("wave", t.wave)
 	lod_timer += delta
@@ -1135,7 +1168,8 @@ func _planet_cam(delta: float, snap: bool) -> void:
 
 
 ## Részletességi szint: a kiválasztott fa mindig részletes; a többi közül a legközelebbiek (legfeljebb hi_trees),
-## ha elég közel vannak. A visszaváltás távolabb történik, mint a felváltás, így a határon nem villog.
+## ha elég közel vannak; a közepesen távoliak egyszerűsítettek, a többiek távoli szintűek.
+## A visszaváltás távolabb történik, mint a felváltás, így a határon nem villog.
 func _planet_lod() -> void:
 	var en := eye.normalized()
 	var thr := planet.radius / maxf(eye.length(), .001) - .35
@@ -1152,13 +1186,23 @@ func _planet_lod() -> void:
 		return float(a.d) < float(b.d))
 	var used := 0
 	for t in order:
-		var limit := LOD_DIST + (LOD_HYST if t.high_on else 0.0)
+		var limit := LOD_DIST + (LOD_HYST if int(t.lod) == 0 else 0.0)
 		var hi: bool = t.focused or (t.front and used < hi_trees and (float(t.d) < limit or lod_force))
 		if hi:
 			used += 1
+		# kívülről egyszerűsített (a bolygó peremén a fák jól látszanak); leszállva a háttér távoli szintű,
+		# mert ott a tiltshift úgyis elmossa
+		var mid_limit := (1e9 if view == "orbit" else s_dist + MID_EXTRA) + (LOD_HYST if int(t.lod) <= 1 else 0.0)
+		var lod := 0 if hi else (1 if float(t.d) < mid_limit else 2)
+		var shown: bool = t.front or t.focused
+		if lod != int(t.lod) or shown != bool(t.get("shown", false)):
+			t.lod = lod
+			t.shown = shown
+			for k in 3:
+				((t.lods[k] as Dictionary).node as Node3D).visible = shown and (k == lod or (lod == 0 and k == 1))
+			# részletes fánál az egyszerűsített szint csak árnyékként van jelen
+			_cast_shadow(t.low, GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if lod == 0 else GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
 		t.high_on = hi
-		(t.high.node as Node3D).visible = hi
-		(t.low.node as Node3D).visible = (t.front or t.focused) and not hi
 
 
 func _tod_target() -> float:
@@ -1189,7 +1233,7 @@ func _update_tod(delta: float, snap: bool) -> void:
 	space_mat.set_shader_parameter("dusk", dusk)
 	planet.set_night(night)
 	for t in trees:
-		for rec in [t.low, t.high]:
+		for rec in t.lods:
 			for m in rec.mats:
 				m.set_shader_parameter("glow_amt", float(t.glow.strength) * night)
 	var c := Color(1.0, .95, .88).lerp(Color(1.0, .72, .64), dusk).lerp(Color(.55, .66, 1.0), night)
@@ -1214,7 +1258,7 @@ func start_bench() -> void:
 		bench_steps = BENCH_STEPS
 	# rövid próba a fejlesztéshez (?meres&gyors): fű ×2 lent, aztán 30 fa kint (bolygó-újraépítéssel)
 	if q.contains("gyors") or (bench_cli and OS.get_cmdline_user_args().has("--gyors")):
-		bench_steps = [LOAD_STEPS[2], LOAD_STEPS[11]]
+		bench_steps = [LOAD_STEPS[3], LOAD_STEPS[7]]
 	bench_tod = tod_i
 	tod_i = 2
 	tod_btn.text = TOD_NAMES[tod_i]
@@ -1231,9 +1275,9 @@ func start_bench() -> void:
 
 
 func _bench_cfg(cfg: Dictionary) -> void:
-	get_viewport().scaling_3d_scale = cfg.get("scale", 1.0)
+	get_viewport().scaling_3d_scale = cfg.get("scale", base_scale)
 	planet.set_grass(cfg.get("grass", true))
-	hi_trees = cfg.get("hi", 4)
+	hi_trees = cfg.get("hi", HI_TREES)
 	lod_force = cfg.get("force", false)
 	planet.set_grass_mult(cfg.get("gmul", 1.0))
 	sun.shadow_enabled = cfg.get("shadow", true)
@@ -1346,8 +1390,8 @@ func _bench_done() -> void:
 	_unfocus()
 	_planet_texts()
 	var info := _bench_info()
-	var txt := "Mag mérés\n%s\n\n" % info
-	var md := "Automatikus mérés a játékból.\n\n%s\n\n| nézet | beállítás | fps | átlag ms | 95%% ms | CPU ms | háromszög |\n|---|---|---|---|---|---|---|\n" % info.replace("\n", "  \n")
+	var txt := "Mag mérés · alap: %d%% felbontás, %d részletes fa\n%s\n\n" % [roundi(base_scale * 100.0), HI_TREES, info]
+	var md := "Automatikus mérés a játékból. Alap: %d%% belső felbontás, %d részletes fa, fű ×1 = a mostani alapsűrűség.\n\n%s\n\n| nézet | beállítás | fps | átlag ms | 95%% ms | CPU ms | háromszög |\n|---|---|---|---|---|---|---|\n" % [roundi(base_scale * 100.0), HI_TREES, info.replace("\n", "  \n")]
 	for r in bench_rows:
 		txt += "%-4s %-24s %5.1f fps  %5.1f ms  95%%: %5.1f  CPU %4.1f  %dk\n" % [r.view, r.name, r.fps, r.avg, r.p95, r.cpu, r.tris / 1000]
 		md += "| %s | %s | %.1f | %.1f | %.1f | %.1f | %dk |\n" % [r.view, r.name, r.fps, r.avg, r.p95, r.cpu, r.tris / 1000]

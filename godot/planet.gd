@@ -29,12 +29,12 @@ const COVER := [
 	{"name": "páfrányos", "h": .55, "w": 1.7, "count": 1800, "dens": .35},
 	{"name": "kavicsos", "h": .08, "w": 1.8, "count": 900, "dens": .18},
 ]
-## A fa körüli sűrű fűfolt: belül részletes csomók, kifelé ritkább, egyszerűbb csomók (csomó/egység², 4 szál/csomó).
+## A kamera előtti sűrű fűfolt: belül részletes csomók, kifelé ritkább, egyszerűbb csomók (csomó/egység², 4 szál/csomó).
 ## A folt szeletekre van vágva, így a kamera mögötti szeleteket a motor kihagyja.
 const PATCH_NEAR := 4.5
 const PATCH_FAR := 13.0
-const NEAR_DENS := 95.0
-const FAR_DENS := 24.0
+const NEAR_DENS := 140.0
+const FAR_DENS := 34.0
 const SECTORS := 8
 const CLUMP_BLADES := 4
 ## Holdak száma és gyűrű az alapító szirmaiból.
@@ -60,7 +60,9 @@ var body := Node3D.new()
 var surface := MeshInstance3D.new()
 var atmo := MeshInstance3D.new()
 var grass := MultiMeshInstance3D.new()
-var patch_nodes: Array = []
+var patch_sets: Array = []
+var patch_active := 0
+var patch_job := {}
 var patch_on := false
 var grass_on := true
 ## A fű sűrűségének szorzója (a terheléses méréshez): a bolygót borító réteg és a fa körüli folt is ennyiszer sűrűbb.
@@ -97,13 +99,17 @@ func _ready() -> void:
 	grass.material_override = grass_mat
 	grass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	body.add_child(grass)
-	for i in SECTORS * 2:
-		var g := MultiMeshInstance3D.new()
-		g.material_override = grass_mat
-		g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		g.visible = false
-		body.add_child(g)
-		patch_nodes.append(g)
+	# két készlet: az egyik látszik, a másikba épül a következő folt (így áthelyezéskor sincs üres pillanat)
+	for set_i in 2:
+		var nodes: Array = []
+		for i in SECTORS * 2:
+			var g := MultiMeshInstance3D.new()
+			g.material_override = grass_mat
+			g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			g.visible = false
+			body.add_child(g)
+			nodes.append(g)
+		patch_sets.append(nodes)
 	clump_noise.noise_type = FastNoiseLite.TYPE_CELLULAR
 	clump_noise.frequency = 9.0
 	motes_mat.shader = MOTES
@@ -136,6 +142,10 @@ func setup(planet_code: String, plant_dnas: Array) -> void:
 	patch.seed = hash(code + "folt")
 	clump_noise.seed = hash(code + "csomo")
 	patch_center = Vector3.ZERO
+	patch_job = {}
+	for set_i in 2:
+		for n in patch_sets[set_i]:
+			(n as MultiMeshInstance3D).multimesh = null
 	blade_hi = _clump_mesh([0.0, .33, .66], [.05, .043, .029], float(cover.w), hash(code + "szal"))
 	blade_lo = _clump_mesh([0.0], [.05], float(cover.w), hash(code + "szal"))
 	show_patch(false)
@@ -236,6 +246,8 @@ func set_night(v: float) -> void:
 func _process(delta: float) -> void:
 	if cur.is_empty():
 		return
+	if not patch_job.is_empty():
+		_patch_step()
 	var k := 1.0 - exp(-delta * 1.2)
 	var moving := absf(radius - radius_target) > .0005
 	if moving:
@@ -400,38 +412,53 @@ func _build_grass() -> void:
 	grass.multimesh = _grass_mm(blade_lo, buf, count, AABB(Vector3.ONE * -1.5, Vector3.ONE * 3.0))
 
 
-## Sűrű fűfolt egy pont (pl. a kiválasztott fa) körül: belül részletes csomók, kifelé ritkább, egyszerűbb csomók.
+## Sűrű fűfolt egy pont körül (a kiválasztott fa és a kamera között): belül részletes csomók, kifelé ritkább, egyszerűbb csomók.
 ## Szeletenként külön csomópont saját befoglaló dobozzal, így a kamera mögötti szeletek nem rajzolódnak ki.
-## Determinisztikus a bolygó kódjából és a középpontból.
-func build_patch(center: Vector3) -> void:
+## A rejtett készletbe épül, képkockánként egy szelet (nincs akadás), a végén csere. Minden szelet saját magból
+## készül, így a folt determinisztikus a bolygó kódjából és a középpontból, akárhány lépésben épül.
+func build_patch(center: Vector3, immediate := false) -> void:
 	patch_center = center
+	patch_job = {"center": center, "next": 0, "set": 1 - patch_active}
+	if immediate:
+		while not patch_job.is_empty():
+			_patch_step()
+
+
+func _patch_step() -> void:
+	var center: Vector3 = patch_job.center
+	var piece: int = patch_job.next
+	var ri := piece / SECTORS
+	var sec := piece % SECTORS
 	var r := RandomNumberGenerator.new()
-	r.seed = hash(code + "folt" + str(center.snapped(Vector3.ONE * .001)))
+	r.seed = hash(code + "folt" + str(center.snapped(Vector3.ONE * .001)) + str(piece))
 	var t1 := center.cross(Vector3.UP if absf(center.y) < .99 else Vector3.RIGHT).normalized()
 	var t2 := center.cross(t1)
 	var k := float(cover.dens) * grass_mult
 	var rr := radius_target
 	var margin := float(cover.h) * 1.6 / rr
 	var rings := [[0.0, PATCH_NEAR, NEAR_DENS, blade_hi], [PATCH_NEAR, PATCH_FAR, FAR_DENS, blade_lo]]
-	for ri in rings.size():
-		var ring: Array = rings[ri]
-		var r0: float = ring[0]
-		var r1: float = ring[1]
-		var per := int(PI * (r1 * r1 - r0 * r0) * float(ring[2]) * k / SECTORS)
-		for sec in SECTORS:
-			var buf := PackedFloat32Array()
-			buf.resize(per * 16)
-			var lo := Vector3.ONE * 9.0
-			var hi := Vector3.ONE * -9.0
-			for i in per:
-				var rad := sqrt(r.randf_range(r0 * r0, r1 * r1))
-				var a := (sec + r.randf()) * TAU / SECTORS
-				var dir := (center + (t1 * cos(a) + t2 * sin(a)) * rad / rr).normalized()
-				var p := _put_blade(buf, i, dir, r)
-				lo = lo.min(p)
-				hi = hi.max(p)
-			var node: MultiMeshInstance3D = patch_nodes[ri * SECTORS + sec]
-			node.multimesh = _grass_mm(ring[3], buf, per, AABB(lo - Vector3.ONE * margin, hi - lo + Vector3.ONE * margin * 2.0))
+	var ring: Array = rings[ri]
+	var r0: float = ring[0]
+	var r1: float = ring[1]
+	var per := int(PI * (r1 * r1 - r0 * r0) * float(ring[2]) * k / SECTORS)
+	var buf := PackedFloat32Array()
+	buf.resize(per * 16)
+	var lo := Vector3.ONE * 9.0
+	var hi := Vector3.ONE * -9.0
+	for i in per:
+		var rad := sqrt(r.randf_range(r0 * r0, r1 * r1))
+		var a := (sec + r.randf()) * TAU / SECTORS
+		var dir := (center + (t1 * cos(a) + t2 * sin(a)) * rad / rr).normalized()
+		var p := _put_blade(buf, i, dir, r)
+		lo = lo.min(p)
+		hi = hi.max(p)
+	var node: MultiMeshInstance3D = patch_sets[patch_job.set][piece]
+	node.multimesh = _grass_mm(ring[3], buf, per, AABB(lo - Vector3.ONE * margin, hi - lo + Vector3.ONE * margin * 2.0))
+	patch_job.next = piece + 1
+	if patch_job.next >= SECTORS * 2:
+		patch_active = patch_job.set
+		patch_job = {}
+		_grass_visibility()
 
 
 func set_grass_mult(m: float) -> void:
@@ -440,7 +467,7 @@ func set_grass_mult(m: float) -> void:
 	grass_mult = m
 	_build_grass()
 	if patch_center != Vector3.ZERO:
-		build_patch(patch_center)
+		build_patch(patch_center, true)
 
 
 ## Leszálláskor a folt látszik, a bolygót borító ritka réteg nem (így nem duplázódik a fű).
@@ -456,8 +483,9 @@ func set_grass(on: bool) -> void:
 
 
 func _grass_visibility() -> void:
-	for n in patch_nodes:
-		(n as Node3D).visible = patch_on and grass_on
+	for set_i in 2:
+		for n in patch_sets[set_i]:
+			(n as Node3D).visible = patch_on and grass_on and set_i == patch_active
 	grass.visible = grass_on and not patch_on
 
 
