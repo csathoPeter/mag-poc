@@ -15,7 +15,7 @@ godot/                  A játék (Godot 4.7.1, GDScript)
   planet.gd             Kis bolygó: domborzat, légkör, holdak, gyűrű, fű, fénypontok; bolygó-DNS a növényekből
   plant_gen.gd          Növénygenerátor: ágak gyűrűkből, levelek és virágok MultiMesh-ben, részletességi szintek
   genes.gd              DNS → genom: 6 gén × 14 változat, termetek, égboltok; DNS-tábla sorai, rejtett éjszakai fény
-  shaders/              Fa, levél, virág (szél a fa keretében, éjszakai fény, érintéshullám), fű, bolygó, légkör, űr-ég, gyűrű, fénypontok, tiltshift
+  shaders/              Fa, levél, virág (szél a fa keretében, éjszakai fény, érintéshullám), fű (régi kert), bolygó-fű (szálanként, GodotGrass-ötletek), bolygó, légkör, űr-ég, gyűrű, fénypontok, tiltshift
   export_presets.cfg    "Web" preset (egyszálas)
 prototype-threejs/      Korábbi Three.js-prototípus egy fájlban. Itt van kész a DNS-tábla, a feladvány-generátor,
                         a keresztezés és a kettős spirál animáció – ezeket kell Godotba átvinni.

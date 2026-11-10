@@ -802,6 +802,8 @@ func _focus(i: int) -> void:
 		up_hint = Basis(orbit_q).x
 	orbit_q = Basis.looking_at(-(t.dir as Vector3), up_hint).get_rotation_quaternion()
 	tilt_quad.visible = true
+	planet.build_patch(t.dir)
+	planet.show_patch(true)
 	_tag_text()
 
 
@@ -810,6 +812,7 @@ func _unfocus() -> void:
 	focus = -1
 	trans_t = 0.0
 	tilt_quad.visible = false
+	planet.show_patch(false)
 	orbit_dist = clampf(orbit_dist, _fit_dist(planet.radius) * .45, _fit_dist(planet.radius) * 1.4)
 
 
