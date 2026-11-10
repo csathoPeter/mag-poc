@@ -2,9 +2,12 @@ shader_type spatial;
 // Szálankénti fű a bolygón. Az ötletek a 2Retr0/GodotGrass projektből (MIT) és a Ghost of Tsushima GDC-előadásból jönnek:
 // magassággal arányos hajlás (íves szál), egységes szél, nézetből oldalra eső szálak kiszélesítése,
 // lekerekített normál, tő felé sötétedő szín, puha szórt fény és hátulról átsütő fény.
-// Egy példány egy csomó (több szál), így ugyanannyi példányból sűrűbb a fű.
+// Egy példány egy csomó (több szál). A csomó helyét, irányát és méretét itt számoljuk a csempe és a példány sorszámából
+// (hash), a magasságot a felszín rácsából: a fű a bolygóhoz rögzített, és sosem generálódik újra.
+// Sűrűség: a csempén belül a sorban hátrébb lévő csomók csak sűrűbb fűnél látszanak (közel a kamerához és a nézett
+// ponthoz); a határon puhán előnőnek, nem pattannak elő.
 // Csak spatial shader + MultiMesh, így a webes (Compatibility) rendererrel is működik.
-render_mode cull_disabled, shadows_disabled;
+render_mode cull_disabled, shadows_disabled, skip_vertex_transform;
 
 uniform vec3 base_col : source_color = vec3(0.12, 0.22, 0.1);
 uniform vec3 tip_col : source_color = vec3(0.6, 0.75, 0.45);
@@ -14,6 +17,33 @@ uniform float night = 0.0;
 uniform float wind = 1.0;
 // A szél a bolygó körül kering e tengely körül.
 uniform vec3 wind_axis = vec3(0.3, 1.0, 0.2);
+
+// elhelyezés: a csomópont egy csempecsoport közepén áll; a csoport group × group csempéjéből a planet.gd annyi szálat
+// tesz a pufferbe, amennyi ott kell (csempénként a sor eleje).
+// A részletes (hi_layer) csomópont a kamerához hi_dist-nél közelebbi csempék szálait rajzolja, a másik a többit.
+uniform bool hi_layer = false;
+uniform int tiles_n = 6;
+uniform int group = 3;
+uniform int res = 40;
+uniform int seed = 0;
+// a felszín magassága laponként (res+1)² rácsban, a lapok egymás alatt
+uniform sampler2D height_tex : filter_nearest, repeat_disable;
+uniform vec3 planet_pos = vec3(0.0);
+uniform float planet_r = 6.0;
+// a csempe közepétől a legtávolabbi sarkáig (egységgömbön)
+uniform float tile_rad = 0.25;
+uniform float blade_h = 0.4;
+// sűrűség, csomó / egység²
+uniform float near_w = 140.0;
+uniform float base_w = 8.0;
+uniform vec3 cam_pos = vec3(0.0);
+uniform float cam_r = 3.0;
+uniform float cam_far = 12.0;
+uniform vec3 focus_pt = vec3(0.0);
+uniform float focus_r = 4.5;
+uniform float focus_k = 0.0;
+uniform float focus_far = 9.9;
+uniform float hi_dist = 6.5;
 
 varying float hf_v;
 varying float rnd_v;
@@ -33,56 +63,194 @@ mat3 rot_x(float a) {
 	return mat3(vec3(1.0, 0.0, 0.0), vec3(0.0, c, s), vec3(0.0, -s, c));
 }
 
+uint hash_u(uint x) {
+	x ^= x >> 16u;
+	x *= 2146121005u;
+	x ^= x >> 15u;
+	x *= 2221713035u;
+	x ^= x >> 16u;
+	return x;
+}
+
+float rnd(uint key, uint i) {
+	return float(hash_u(key + i * 2654435761u) >> 8u) / 16777216.0;
+}
+
+float hash3(vec3 p) {
+	p = fract(p * 0.3183099 + 0.1);
+	p *= 17.0;
+	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float vnoise(vec3 x) {
+	vec3 i = floor(x);
+	vec3 f = fract(x);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), f.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), f.x), f.y),
+		mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), f.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+// a kocka lapjai ugyanabban a sorrendben, mint a planet.gd FACES tömbje
+vec3 face_n(int f) {
+	if (f == 0) return vec3(0.0, 1.0, 0.0);
+	if (f == 1) return vec3(0.0, -1.0, 0.0);
+	if (f == 2) return vec3(-1.0, 0.0, 0.0);
+	if (f == 3) return vec3(1.0, 0.0, 0.0);
+	if (f == 4) return vec3(0.0, 0.0, -1.0);
+	return vec3(0.0, 0.0, 1.0);
+}
+
+int face_of(vec3 c) {
+	vec3 a = abs(c);
+	if (a.y >= a.x && a.y >= a.z) return c.y > 0.0 ? 0 : 1;
+	if (a.x >= a.z) return c.x < 0.0 ? 2 : 3;
+	return c.z < 0.0 ? 4 : 5;
+}
+
+// magasság a lap (a, b) pontjában, a felszín háromszögein belül lineárisan (mint a háló)
+float height_at(int f, float a, float b) {
+	float gx = (a * 0.5 + 0.5) * float(res);
+	float gy = (b * 0.5 + 0.5) * float(res);
+	int i0 = clamp(int(floor(gx)), 0, res - 1);
+	int j0 = clamp(int(floor(gy)), 0, res - 1);
+	float fx = clamp(gx - float(i0), 0.0, 1.0);
+	float fy = clamp(gy - float(j0), 0.0, 1.0);
+	int row = f * (res + 1) + j0;
+	float h00 = texelFetch(height_tex, ivec2(i0, row), 0).r;
+	float h10 = texelFetch(height_tex, ivec2(i0 + 1, row), 0).r;
+	float h01 = texelFetch(height_tex, ivec2(i0, row + 1), 0).r;
+	float h11 = texelFetch(height_tex, ivec2(i0 + 1, row + 1), 0).r;
+	if (fx + fy < 1.0) {
+		return h00 + fx * (h10 - h00) + fy * (h01 - h00);
+	}
+	return h11 + (1.0 - fx) * (h01 - h11) + (1.0 - fy) * (h10 - h11);
+}
+
+// sűrűség-tényező egy pont körül: r0-on belül 1, kifelé a távolság négyzetével ritkul (a képen így egyenletes), r1-nél 0
+float fall(float d, float r0, float r1) {
+	float f = d < r0 ? 1.0 : r0 * r0 / (d * d);
+	return f * (1.0 - smoothstep(r1 * 0.55, r1, d));
+}
+
 void vertex() {
-	// INSTANCE_CUSTOM: y = véletlen, z = csomó (0..1), w = második véletlen
-	// CUSTOM0 (csúcspontonként): xy = a szál töve a csomóban, z = félszélesség, w = oldal (-1, 0, 1)
-	// UV.y = magasság a szálon belül (0 tő, 1 csúcs)
-	float rnd = INSTANCE_CUSTOM.y;
-	float rnd2 = INSTANCE_CUSTOM.w;
-	float hf = UV.y;
-	vec3 root = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-	vec3 up_w = normalize(MODEL_MATRIX[1].xyz);
+	int gn = tiles_n / group;
+	vec3 c = normalize(MODEL_MATRIX[3].xyz - planet_pos);
+	int f = face_of(c);
+	vec3 n = face_n(f);
+	vec3 u = n.yzx;
+	vec3 v = cross(n, u);
+	float ac = atan(dot(c, u) / dot(c, n)) * 4.0 / PI;
+	float bc = atan(dot(c, v) / dot(c, n)) * 4.0 / PI;
+	int gi = clamp(int(floor((ac * 0.5 + 0.5) * float(gn))), 0, gn - 1);
+	int gj = clamp(int(floor((bc * 0.5 + 0.5) * float(gn))), 0, gn - 1);
+	// a példány mátrixa csak két számot hordoz: 1. oszlop hossza = helyi csempe-index, 2. oszlopé = a szál sorszáma
+	float sc = length(MODEL_MATRIX[2].xyz);
+	int lt = int(round(length(MODEL_MATRIX[0].xyz) / sc));
+	int k = int(round(length(MODEL_MATRIX[1].xyz) / sc));
+	int ti = gi * group + lt / group;
+	int tj = gj * group + lt % group;
+	int tile = (f * tiles_n + ti) * tiles_n + tj;
+	float stp = 2.0 / float(tiles_n);
 
-	// szél: a tengely körül keringő irány; a széllökések hullámként futnak körbe a bolygón (varrat nélkül)
-	vec3 ax = normalize(wind_axis);
-	vec3 bx = normalize(cross(ax, vec3(1.0, 0.0, 0.0)));
-	vec3 cx = cross(ax, bx);
-	float phi = atan(dot(root, cx), dot(root, bx));
-	float along = dot(root, ax);
-	float gust = 0.5 + 0.5 * sin(phi * 9.0 + along * 0.8 - TIME * 1.6);
-	gust *= 0.55 + 0.45 * sin(phi * 4.0 + along * 2.1 - TIME * 0.9);
-	vec3 wdir = cross(ax, up_w);
-	wdir = length(wdir) > 0.001 ? normalize(wdir) : vec3(1.0, 0.0, 0.0);
-	float strength = wind * gust;
+	// a csempe legnagyobb sűrűsége (a kamerához és a nézett ponthoz legközelebbi pontján); a planet.gd ugyanígy számol
+	vec3 tc = planet_pos + normalize(n + u * tan((-1.0 + (float(ti) + 0.5) * stp) * PI * 0.25) + v * tan((-1.0 + (float(tj) + 0.5) * stp) * PI * 0.25)) * planet_r;
+	float tr = tile_rad * planet_r;
+	float dct = distance(tc, cam_pos) - tr;
+	float wb = mix(base_w, near_w, max(fall(max(dct, 0.0), cam_r, cam_far), focus_k * fall(max(distance(tc, focus_pt) - tr, 0.0), focus_r, focus_far)));
 
-	// a csomó a véletlen irány és a szél iránya között áll
-	vec3 wl = transpose(mat3(MODEL_MATRIX)) * wdir;
-	vec2 rd = vec2(sin(rnd * 6.2831), cos(rnd * 6.2831));
-	vec2 wd = normalize(wl.xz + vec2(1e-5));
-	vec2 d = normalize(mix(rd, wd, clamp(0.35 + strength * 0.6, 0.0, 0.95)));
-	mat3 ry = rot_y(atan(d.x, d.y));
-	// hajlás: minél magasabban van a pont, annál jobban (íves szál); minden szál a saját töve körül hajlik
-	float bend = (mix(0.12, 0.42, rnd2) + strength * 0.55 + 0.08 * sin(TIME * 3.1 + rnd * 20.0) * strength) * hf;
-	mat3 r = ry * rot_x(bend);
-	vec3 base = vec3(CUSTOM0.x, 0.0, CUSTOM0.y);
-	vec3 side_l = normalize(cross(vec3(0.0, 1.0, 0.0), NORMAL));
-	VERTEX = ry * base + r * (VERTEX - base);
-	NORMAL = r * NORMAL;
+	uint key = hash_u(hash_u(uint(tile) + uint(seed) * 977u) + uint(k));
+	// a csomó helye a csempén belül (a lap paraméterterében egyenletesen)
+	float a = -1.0 + (float(ti) + rnd(key, 1u)) * stp;
+	float b = -1.0 + (float(tj) + rnd(key, 2u)) * stp;
+	float ta = tan(a * PI * 0.25);
+	float tb = tan(b * PI * 0.25);
+	// sorrend szerinti sűrűség: ez a csomó ennél a sűrűségnél (csomó / egység²) jelenik meg
+	float jac = PI * PI / 16.0 * (1.0 + ta * ta) * (1.0 + tb * tb) / pow(1.0 + ta * ta + tb * tb, 1.5);
+	float rank = (float(k) + 0.5) / (stp * stp * jac * planet_r * planet_r);
 
-	// nézetből oldalra eső szálak kiszélesítése, a távoliak eleve szélesebbek (így ritkább fű is dúsnak hat)
-	vec3 vv = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	vec3 nv = normalize((MODELVIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
-	float edge = 1.0 - abs(dot(nv, normalize(-vv)));
-	float scale = length(MODEL_MATRIX[0].xyz);
-	float far = clamp(length(vv) * 0.05 - 0.5, 0.0, 1.2);
-	vv.x += (edge * edge * edge * edge * 1.5 + far) * CUSTOM0.z * scale * CUSTOM0.w;
-	POSITION = PROJECTION_MATRIX * vec4(vv, 1.0);
+	hf_v = UV.y;
+	rnd_v = 0.0;
+	clump_v = 0.0;
+	gust_v = 0.0;
+	side_v = vec3(0.0, 1.0, 0.0);
+	vec3 dir = normalize(n + u * ta + v * tb);
+	vec3 root = vec3(0.0);
+	float dcam = 0.0;
+	bool mine = false;
+	if (rank < wb) {
+		root = planet_pos + dir * planet_r * (1.0 + height_at(f, a, b) - 0.003);
+		dcam = distance(root, cam_pos);
+		// a kamerához közeli szálakat a részletes csomópont rajzolja, a többit az egyszerű (szálanként, pontos határral)
+		mine = hi_layer == (dcam < hi_dist);
+	}
+	if (!mine) {
+		// ez a csomó itt nem látszik: a képen kívülre tesszük, a háromszögei kiesnek
+		POSITION = vec4(2.0, 2.0, 2.0, 1.0);
+	} else {
+		float fk = max(fall(dcam, cam_r, cam_far), focus_k * fall(distance(root, focus_pt), focus_r, focus_far));
+		float grow = smoothstep(rank, rank * 1.35, mix(base_w, near_w, fk));
 
-	side_v = normalize((MODELVIEW_MATRIX * vec4(r * side_l, 0.0)).xyz);
-	hf_v = hf;
-	rnd_v = rnd;
-	clump_v = INSTANCE_CUSTOM.z;
-	gust_v = gust;
+		float rnd1 = rnd(key, 5u);
+		float rnd2 = rnd(key, 6u);
+		float clump = smoothstep(0.2, 0.8, vnoise(dir * 9.0 + vec3(float(seed % 97))));
+		float hgt = blade_h * mix(0.55, 1.35, clump) * mix(0.75, 1.2, rnd(key, 4u)) * grow;
+		vec3 ref = abs(dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+		vec3 e1 = normalize(cross(ref, dir));
+		vec3 e2 = cross(dir, e1);
+		float ang = rnd(key, 3u) * 6.2831;
+		vec3 bx = e1 * cos(ang) + e2 * sin(ang);
+		mat3 rb = mat3(bx, dir, cross(bx, dir));
+
+		// CUSTOM0 (csúcspontonként): xy = a szál töve a csomóban, z = félszélesség, w = oldal (-1, 0, 1)
+		// UV.y = magasság a szálon belül (0 tő, 1 csúcs)
+		float hf = UV.y;
+
+		// szél: a tengely körül keringő irány; a széllökések hullámként futnak körbe a bolygón (varrat nélkül)
+		vec3 rp = root - planet_pos;
+		vec3 ax = normalize(wind_axis);
+		vec3 bx2 = normalize(cross(ax, vec3(1.0, 0.0, 0.0)));
+		vec3 cx = cross(ax, bx2);
+		float phi = atan(dot(rp, cx), dot(rp, bx2));
+		float along = dot(rp, ax);
+		float gust = 0.5 + 0.5 * sin(phi * 9.0 + along * 0.8 - TIME * 1.6);
+		gust *= 0.55 + 0.45 * sin(phi * 4.0 + along * 2.1 - TIME * 0.9);
+		vec3 wdir = cross(ax, dir);
+		wdir = length(wdir) > 0.001 ? normalize(wdir) : vec3(1.0, 0.0, 0.0);
+		float strength = wind * gust;
+
+		// a csomó a véletlen irány és a szél iránya között áll
+		vec3 wl = transpose(rb) * wdir;
+		vec2 rd = vec2(sin(rnd1 * 6.2831), cos(rnd1 * 6.2831));
+		vec2 wd = normalize(wl.xz + vec2(1e-5));
+		vec2 d = normalize(mix(rd, wd, clamp(0.35 + strength * 0.6, 0.0, 0.95)));
+		mat3 ry = rot_y(atan(d.x, d.y));
+		// hajlás: minél magasabban van a pont, annál jobban (íves szál); minden szál a saját töve körül hajlik.
+		// A részletes szál a váltási távolság felé kiegyenesedik, így ott pont olyan, mint az egyszerű (nincs pattanás).
+		float straight = smoothstep(hi_dist - 2.5, hi_dist, dcam);
+		float bend = (mix(0.12, 0.42, rnd2) + strength * 0.55 + 0.08 * sin(TIME * 3.1 + rnd1 * 20.0) * strength) * mix(hf, 1.0, straight);
+		mat3 r = ry * rot_x(bend);
+		vec3 base = vec3(CUSTOM0.x, 0.0, CUSTOM0.y);
+		vec3 side_l = normalize(cross(vec3(0.0, 1.0, 0.0), NORMAL));
+		vec3 lp = ry * base + r * (VERTEX - base);
+		vec3 ln = r * NORMAL;
+
+		// nézetből oldalra eső szálak kiszélesítése, a távoliak eleve szélesebbek (így ritkább fű is dúsnak hat)
+		mat3 vr = mat3(VIEW_MATRIX) * rb;
+		vec3 vv = (VIEW_MATRIX * vec4(root, 1.0)).xyz + vr * lp * hgt;
+		vec3 nv = normalize(vr * ln);
+		float edge = 1.0 - abs(dot(nv, normalize(-vv)));
+		float far = clamp(length(vv) * 0.05 - 0.5, 0.0, 1.2);
+		vv.x += (edge * edge * edge * edge * 1.5 + far) * CUSTOM0.z * hgt * CUSTOM0.w;
+		VERTEX = vv;
+		NORMAL = nv;
+		POSITION = PROJECTION_MATRIX * vec4(vv, 1.0);
+
+		side_v = normalize(vr * (r * side_l));
+		hf_v = hf;
+		rnd_v = rnd1;
+		clump_v = clump;
+		gust_v = gust;
+	}
 }
 
 void fragment() {
