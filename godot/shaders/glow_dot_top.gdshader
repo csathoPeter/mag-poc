@@ -1,0 +1,4 @@
+shader_type spatial;
+// Fénylő pont a világ fölött (mélységteszt nélkül): a kettős spirál a kamera előtt lebeg. Lásd glow_dot.gdshaderinc.
+render_mode unshaded, blend_add, depth_draw_never, depth_test_disabled, cull_disabled, fog_disabled, shadows_disabled;
+#include "res://shaders/glow_dot.gdshaderinc"

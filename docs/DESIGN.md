@@ -28,7 +28,14 @@ Nyugodt, ingyenes telefonos játék (iOS, Android, web), amelyben DNS-ből kinö
 
 ## A nagy pillanat
 
-A kész tábla sorai kettős spirállá csavarodnak, maggá húzódnak, a földbe hullanak, és kinő a növény. (A Three.js-es prototípusban kész, Godotba még át kell vinni.)
+A kész tábla sorai kettős spirállá csavarodnak, maggá húzódnak, a földbe hullanak, és kinő a növény.
+
+**Godotban (M3, `godot/seed_fx.gd`, `seed_marks.gd`, `hatching.gd`):**
+- **Spirál (~3,9 mp):** a tábla mezői helyén bázispárok (két golyó + a mező színű kötés) jelennek meg, a feliratok elhalványulnak. A sorok kettős spirállá csavarodnak (a két gerincet apró fénypontok rajzolják ki), a spirál lassan pörög, felgyorsulva maggá húzódik, a mag ívben a táska felé repül, és a táska nyílik az új maggal. A tábla mögötti sötét lila fátyol folytatódik a spirál alatt, a végén feloszlik. A mag már a tábla elkészültekor mentődik (a lap bármikor bezárulhat).
+- **Elvetés (~4,6 mp + felirat):** „Elvetem” után a gombsor elrejtőzik, a kamera a bolygó felé fordul (a hely a kép közepére), a mag fénypontként, csóvával, lágyan himbálózva leereszkedik, földet érve fénygyűrű fut szét, és ott marad a jele: kis földkupac, fölötte halványan lüktető meleg fény. Lebegő felirat: „<fajnév> holnap itt kel ki”.
+- **Másnapi kikelés (~7 mp fánként):** megnyitáskor (vagy „nap +1” után) a kikelt, de még nem látott fákhoz a kamera odarepül (leszállás), a jel fénygyűrűvel szétnyílik, a csíra kinő, a bolygó lassan átúszik az új bolygó-DNS-be (a fa csak ekkor számít bele), a fa melletti lebegő táblán: „Kikelt a tegnapi magod: <fajnév> …”. Utána `revealed` = igaz, mentés. Több fa egymás után.
+- **Koppintás:** a spirál és az elvetés alatt az első koppintás gyorsít, a második a végére ugrik; a kikelést egy koppintás befejezi. Nincs büntetés, semmi nem vész el.
+- **Olcsó:** két MultiMesh (≈215 fénylő pont, 36 pálca), önvilágító pasztell, additív haló, valódi bloom nélkül; a fátyol egy teljes képernyős négyszög (csak a spirál alatt). Weben (Compatibility) a fátyol erőssége külön hangolt, mert ott a keverés sRGB-ben történik.
 
 ## A kert
 
@@ -60,7 +67,7 @@ A herbárium és a tenyésztési célok csak halk háttérelemek, nem kényszer�
 - A tábla a dátumból determinisztikusan generálható, **szerver nélkül, offline is** működik.
 - Megosztás az első verzióban: kép + kód. „Mások mit választottak” statisztikához később szerver kell.
 - **Kihagyás:** az elmúlt 7 nap magjai a magos táskában várnak, bármikor elvethetők. Régebbiek nem.
-- **Megvalósítás (M2):** a feladvány a helyi dátum napsorszámából jön, saját, motorfüggetlen véletlenszám-generátorral (xorshift32), így minden eszközön ugyanaz. A táskában a mai és legfeljebb 7 korábbi nap megfejtetlen magja „Megfejtem” gombbal áll (a játék kezdete előtti napok nem), a kész napi mag „Elvetem” gombbal: az aktív bolygóra kerül, holnap kel ki. A félkész tábla naponként mentődik. A spirál és az elvetés látványa az M3-ban jön.
+- **Megvalósítás (M2):** a feladvány a helyi dátum napsorszámából jön, saját, motorfüggetlen véletlenszám-generátorral (xorshift32), így minden eszközön ugyanaz. A táskában a mai és legfeljebb 7 korábbi nap megfejtetlen magja „Megfejtem” gombbal áll (a játék kezdete előtti napok nem), a kész napi mag „Elvetem” gombbal: az aktív bolygóra kerül, holnap kel ki. A félkész tábla naponként mentődik. A spirál, az elvetés és a kikelés látványa: lásd „A nagy pillanat”.
 - **Fajnév a DNS-ből:** ugyanaz a DNS mindig ugyanazt a latin nevet kapja (a második tag a virágszínből, pl. *rosea*, *violacea*), így a nap magja összevethető („nekem Calulina lilacina lett”), és a táskában és a kikelt fán ugyanaz a név.
 
 ### Tempó
@@ -223,9 +230,9 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [x] A nap magja: dátumból generált tábla, magos táska (7 nap), egyszerű elvetés (M2)
 - [ ] Alakítási lista a generátorban (metszés, kötözés)
 - [x] DNS-tábla átvitele Godotba (logika, feladvány, legközelebbi szabályos DNS, felület)
-- [ ] Kettős spirál és elvetés-animáció átvitele Godotba
+- [x] Kettős spirál és elvetés-animáció átvitele Godotba (M3: spirál, mag a táskába, hullás a bolygóra, a kelésre váró mag jele)
 - [x] Helyi mentés (`godot/state.gd`): játékoskód, bolygók és fáik a helyükkel, csillagok, magos táska, napok teszt-eltolással; első indításkor 3 kezdő fa a játékoskódból
-- [ ] Több saját növény a kertben, másnapi kikelés (az állapotban már van hely: `planted`, `hatch`, `revealed`)
+- [x] Több saját növény a kertben, másnapi kikelés (M3: kamera odarepül, csíra kinő, felirat, `revealed` mentve)
 - [ ] Öntözés, herbárium, keresztezés UI
 - [ ] Mérés olcsó Androidon
 - [ ] iOS-build Mac nélkül (GitHub Actions macOS + TestFlight, Apple Developer-tagság kell)

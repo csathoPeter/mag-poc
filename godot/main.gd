@@ -195,6 +195,19 @@ var ui_col: VBoxContainer
 var daily_btn: Button
 var bag_btn: Button
 
+# A nagy pillanat (seed_fx.gd: kettős spirál, a mag hullása), a kelésre váró magok jele (seed_marks.gd),
+# a másnapi kikelés (hatching.gd). Itt csak a bekötés van.
+var fx := SeedFx.new()
+var marks := SeedMarks.new()
+var hatching := Hatching.new()
+## A spirál végén ezt a magot emeli ki a táska, ezzel az üzenettel.
+var helix_seed := -1
+var helix_msg := ""
+## Az épp elvetett fa (a jele a földet éréskor bukkan fel).
+var sow_id := -1
+## A gombsor egy nagy pillanat miatt rejtett (utána visszaúszik).
+var ui_moment := false
+
 
 func _ready() -> void:
 	game.persist = false
@@ -210,6 +223,14 @@ func _ready() -> void:
 	planet = Planet.new()
 	planet.visible = false
 	add_child(planet)
+	fx.cam = cam
+	add_child(fx)
+	marks.planet = planet
+	add_child(marks)
+	hatching.host = self
+	add_child(hatching)
+	fx.helix_done.connect(_on_helix_done)
+	fx.sow_landed.connect(func() -> void: _refresh_marks(sow_id))
 	space_mat.shader = SPACE_SKY
 	space_mat.set_shader_parameter("nebula", _nebula_texture())
 	_build_world()
@@ -739,6 +760,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	# nyitott tábla vagy táska alatt a világ nem reagál az érintésre
 	if board.visible or bag.visible:
 		return
+	# a nagy pillanat és a kikelés alatt a koppintás gyorsít / átugrik
+	if fx.busy() or hatching.active():
+		if event is InputEventScreenTouch and event.pressed:
+			fx.skip()
+			hatching.skip()
+		return
 	if garden_mode == "planet":
 		_planet_input(event)
 		return
@@ -804,6 +831,9 @@ func _process(delta: float) -> void:
 		rate = -1.8 if retreating else 1.0 / (4.5 if garden_mode != "" else 11.0)
 	var all_zero := true
 	for p in plants:
+		# kikelésre váró csíra: a hatching.gd növeszti (visszavonuláskor viszont ez is összemegy)
+		if p.has("hold") and not retreating:
+			continue
 		var before: float = p.t
 		p.t = clampf(before + delta * rate, 0.0, 1.0)
 		if p.t > 0.0:
@@ -847,6 +877,7 @@ func _process(delta: float) -> void:
 
 	if bench_on:
 		_bench_process(delta)
+	_sync_ui_visible()
 
 	if shot_args.size() > 0 and queue.is_empty():
 		shot_frames += 1
@@ -867,16 +898,38 @@ func _process(delta: float) -> void:
 			elif shot_args[5] == "bag":
 				open_bag()
 				bag.modulate.a = 1.0
-			elif shot_args[5] == "sow":
-				# megoldás, majd a mag elvetése a táskából (holnap kel ki; --nap=+1-gyel látszik)
+			elif (shot_args[5] as String).begins_with("sow"):
+				# megoldás, majd a mag elvetése a táskából (holnap kel ki; --nap=+1-gyel látszik).
+				# sow: a mag már földet ért (a jele és a felirat látszik); sowNN: az elvetés NN%-ánál (a mag hullik)
 				open_daily_day(GameState.today())
-				_on_board_done(board.puzzle.target)
+				_on_board_done(board.puzzle.target, false)
 				var bag_seeds: Array = game.data.bag
 				_sow(int(bag_seeds[bag_seeds.size() - 1].id))
+				var spec := (shot_args[5] as String).trim_prefix("sow")
+				fx.freeze(SeedFx.S_LAND + 1.6 if spec == "" else float(spec) / 100.0 * SeedFx.S_LEN)
+			elif (shot_args[5] as String).begins_with("hatch"):
+				# hatchNN: a mai mag elvetve, egy nappal később: a kikelés-jelenet NN%-ánál (alapból a közepén)
+				open_daily_day(GameState.today())
+				_on_board_done(board.puzzle.target, false)
+				var bag_seeds: Array = game.data.bag
+				_sow(int(bag_seeds[bag_seeds.size() - 1].id), false)
+				GameState.day_offset += 1
+				var spec := (shot_args[5] as String).trim_prefix("hatch")
+				hatching.freeze_at = (float(spec) if spec != "" else 50.0) / 100.0 * Hatching.DUR
+				show_saved_planet()
+			elif (shot_args[5] as String).begins_with("reveal"):
+				# revealNN: a mentésből (--state, --nap=+1) kikelő fák jelenete NN%-nál; „reveal” magában: fut (és ment)
+				var spec := (shot_args[5] as String).trim_prefix("reveal")
+				if spec != "":
+					hatching.freeze_at = float(spec) / 100.0 * Hatching.DUR
+			elif (shot_args[5] as String).begins_with("helix"):
+				# helixNN: a kettős spirál NN%-ánál (a 3. képkockában indul, amikor a tábla már a helyén van)
+				open_daily_day(GameState.today())
+				board.modulate.a = 1.0
 			elif shot_args[5] == "solve":
 				# a mai feladvány megoldva (a céllal): a mag a táskába kerül, a táska nyílik
 				open_daily_day(GameState.today())
-				_on_board_done(board.puzzle.target)
+				_on_board_done(board.puzzle.target, false)
 				bag.modulate.a = 1.0
 			elif (shot_args[5] as String).begins_with("zoom"):
 				orbit_zoom = float((shot_args[5] as String).trim_prefix("zoom"))
@@ -902,6 +955,9 @@ func _process(delta: float) -> void:
 					orbit_q = (orbit_q * Quaternion(Vector3.UP, dy)).normalized()
 		if shot_frames == 3 and shot_args.size() > 5 and shot_args[5] == "boardplay":
 			_shot_play_board()
+		if shot_frames == 3 and shot_args.size() > 5 and (shot_args[5] as String).begins_with("helix"):
+			_on_board_done(board.puzzle.target)
+			fx.freeze(float((shot_args[5] as String).trim_prefix("helix")) / 100.0 * SeedFx.H_LEN)
 		if shot_frames == 1 and shot_args.size() > 5:
 			var c := _joy_center()
 			var t1 := InputEventScreenTouch.new()
@@ -942,6 +998,10 @@ func _build_tag() -> void:
 	tag.width = 760.0
 	tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tag.shaded = false
+	# a lebegő tábla a lomb előtt is olvasható maradjon (pl. a kikelő fa kinő elé)
+	tag.no_depth_test = true
+	tag.render_priority = 12
+	tag.outline_render_priority = 11
 	tag.modulate = Color(1, 1, 1, 0)
 	tag.outline_modulate = Color(.12, .08, .22, 0)
 	tag.visible = false
@@ -975,8 +1035,15 @@ func show_saved_planet() -> void:
 	var p := game.active_planet()
 	var shown := game.hatched(p)
 	var dnas: Array = []
+	# kikelt, de még nem látott fák: a kikelés-jelenetben nőnek ki, és csak akkor kerülnek a bolygó-DNS-be
+	# (képernyőképnél csak a hatchNN módban; máskor kinőve látszanak)
+	var reveal: Array = []
+	var can_reveal := shot_args.is_empty() or (shot_args.size() > 5 and ((shot_args[5] as String).begins_with("hatch") or (shot_args[5] as String).begins_with("reveal")))
 	for t in shown:
-		dnas.append(t.dna)
+		if can_reveal and not bool(t.revealed):
+			reveal.append(int(t.id))
+		else:
+			dnas.append(t.dna)
 	var founders: Array = p.founders
 	if dnas.is_empty() and founders.is_empty():
 		# még fa nélküli bolygó: a kódjából jön egy ideiglenes jelleg
@@ -988,8 +1055,27 @@ func show_saved_planet() -> void:
 	_enter_planet(p.code, dnas, founders)
 	saved_view = true
 	for t in shown:
-		queue.append(_tree_item(t, false))
+		var item := _tree_item(t, false)
+		item.reveal = reveal.has(int(t.id))
+		queue.append(item)
+	hatching.reset(reveal)
+	_refresh_marks()
 	_sync_game_dbg()
+
+
+## A kelésre váró magok jele a mentett bolygón (holnap kel ki, vagy kikelt, de a jelenete még hátravan).
+## fresh: az épp földet ért mag, ennek a jele puhán felbukkan.
+func _refresh_marks(fresh := -1) -> void:
+	if not saved_view or game.data.is_empty():
+		marks.clear()
+		return
+	var list: Array = []
+	var today := GameState.today()
+	for t in game.active_planet().trees:
+		var id := int(t.id)
+		if int(t.hatch) > today or hatching.waiting.has(id) or (hatching.cur == id and hatching.t < Hatching.T_OPEN):
+			list.append({"id": id, "dir": t.dir})
+	marks.set_marks(list, fresh)
 
 
 func _tree_item(t: Dictionary, focus_it: bool) -> Dictionary:
@@ -999,6 +1085,9 @@ func _tree_item(t: Dictionary, focus_it: bool) -> Dictionary:
 func _enter_planet(code: String, dnas: Array, founders: Array) -> void:
 	clear_plants()
 	queue.clear()
+	fx.cancel()
+	marks.clear()
+	hatching.reset()
 	garden_mode = "planet"
 	view = "orbit"
 	focus = -1
@@ -1097,6 +1186,13 @@ func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
 			m.set_shader_parameter("glow_col", col)
 			m.set_shader_parameter("glow_part", float(t.glow.part))
 			m.set_shader_parameter("glow_amt", float(t.glow.strength) * maxf(night, 0.0))
+	if item.get("reveal", false):
+		# kikelt, de a játékos még nem látta: a csíra a földben vár, a kikelés-jelenet (hatching.gd) növeszti ki
+		for rec in t.lods:
+			rec.hold = true
+			rec.t = 0.0
+			for m in rec.mats:
+				m.set_shader_parameter("grow", 0.0)
 	if item.get("focus", false):
 		_focus(trees.size() - 1)
 
@@ -1155,12 +1251,17 @@ func _unfocus() -> void:
 	orbit_zoom = maxf(orbit_zoom, .75)
 
 
+## A fa neve és fő tulajdonságai (a lebegő táblán; a kikelés felirata is ezt használja).
+func _tree_title(t: Dictionary) -> String:
+	var g: Dictionary = t.g
+	var dna: Array = g.dna
+	return "%s\n%s termet · %s levél · %s virág" % [_latin(g), g.form, Genes.LEAF[dna[2]][0], Genes.FLOWER[dna[0]][0]]
+
+
 func _tag_text() -> void:
 	if focus < 0:
 		return
 	var t: Dictionary = trees[focus]
-	var g: Dictionary = t.g
-	var dna: Array = g.dna
 	var gl: Dictionary = t.glow
 	var light := "éjszakai fénye: titok, nézd meg este"
 	if night > .5:
@@ -1168,7 +1269,7 @@ func _tag_text() -> void:
 			light = "éjjel sötét marad"
 		else:
 			light = "éjjel a %s %s" % [gl.part_name, "világít" if gl.part == 2 else "világítanak"]
-	tag.text = "%s\n%s termet · %s levél · %s virág\n%s" % [_latin(g), g.form, Genes.LEAF[dna[2]][0], Genes.FLOWER[dna[0]][0], light]
+	tag.text = "%s\n%s" % [_tree_title(t), light]
 
 
 func _zoom(f: float) -> void:
@@ -1324,7 +1425,8 @@ func _planet_cam(delta: float, snap: bool) -> void:
 	var want_up: Vector3
 	if view == "orbit" or focus < 0:
 		if touches.is_empty():
-			if spin.length() < .02 and not bench_on:
+			# a bolygó lassan forog tovább, kivéve a nagy pillanatok alatt (a mag helye maradjon a kép közepén)
+			if spin.length() < .02 and not bench_on and not fx.busy() and not hatching.active():
 				spin = spin.lerp(Vector2(.03, 0), 1.0 - exp(-delta * .5))
 			orbit_q = (orbit_q * Quaternion(Vector3.UP, spin.x * delta) * Quaternion(Vector3.RIGHT, spin.y * delta)).normalized()
 			spin *= exp(-delta * 2.2)
@@ -1580,6 +1682,19 @@ func open_bag(highlight := -1, msg := "") -> void:
 	ui_col.visible = false
 
 
+## A gombsor a nagy pillanatok (spirál, elvetés, kikelés) alatt eltűnik, utána puhán visszaúszik
+## (ha közben a tábla vagy a táska nyílt meg, azok maguk rejtik és mutatják).
+func _sync_ui_visible() -> void:
+	var moment := fx.busy() or hatching.active()
+	if moment:
+		ui_col.visible = false
+	elif ui_moment and not board.visible and not bag.visible:
+		ui_col.visible = true
+		ui_col.modulate.a = 0.0
+		create_tween().tween_property(ui_col, "modulate:a", 1.0, .6)
+	ui_moment = moment
+
+
 func _overlay_closed() -> void:
 	board_day = -1
 	if not board.visible and not bag.visible:
@@ -1595,23 +1710,51 @@ func _on_board_changed(grid: Array) -> void:
 	game.save()
 
 
-## Kész a tábla: a mag a táskába kerül (eredet: a nap magja + dátum), mentés, és a táska mutatja.
-## (M3: itt jön majd a kettős spirál és az elvetés látványa.)
-func _on_board_done(dna: Array) -> void:
-	board.close()
+## Kész a tábla: a mag azonnal a táskába kerül és mentődik (a böngésző bármikor bezárhatja a lapot), közben a nagy
+## pillanat: a tábla sorai kettős spirállá csavarodnak, maggá húzódnak, a mag a táskába repül; utána nyílik a táska.
+## animate = false: azonnal (képernyőképhez, méréshez).
+func _on_board_done(dna: Array, animate := true) -> void:
+	animate = animate and not bench_on
+	if animate:
+		var cells: Array = []
+		var vals: Array = []
+		for y in DnaBoard.N:
+			for x in DnaBoard.N:
+				cells.append(board.cell_center(x, y))
+				vals.append(int(board.grid[y][x]))
+		var vp := get_viewport().get_visible_rect().size
+		var r := bag_btn.get_global_rect()
+		var to := r.get_center() if r.size.x > 1.0 else Vector2(vp.x * .62, 130.0)
+		board.fade_out()
+		fx.play_helix(cells, vals, board.cell, to)
+	else:
+		board.close()
+	helix_seed = -1
+	if game.data.is_empty():
+		helix_msg = "Kész: %s (próba, nem mentődik)" % Genes.latin_name(dna)
+	else:
+		var s := game.finish_daily(board_day, dna)
+		game.save()
+		helix_seed = int(s.id)
+		helix_msg = "Kész! %s a táskádba került." % Genes.latin_name(dna)
+	board_day = -1
+	_sync_daily()
+	if not animate:
+		_on_helix_done()
+
+
+## A mag a táskában: a táska nyílik, kiemelve az új magot.
+func _on_helix_done() -> void:
 	if game.data.is_empty():
 		_overlay_closed()
-		traits_l.text = "Kész: %s (próba, nem mentődik)" % Genes.latin_name(dna)
+		traits_l.text = helix_msg
 		return
-	var s := game.finish_daily(board_day, dna)
-	game.save()
-	board_day = -1
-	open_bag(int(s.id), "Kész! %s a táskádba került." % Genes.latin_name(dna))
-	_sync_daily()
+	open_bag(helix_seed, helix_msg)
 
 
-## Elvetés a táskából: az aktív (mentett) bolygóra, holnap kel ki.
-func _sow(seed_id: int) -> void:
+## Elvetés a táskából: az aktív (mentett) bolygóra, holnap kel ki. A kamera a bolygó felé fordul, a mag fénypontként
+## a helyére ereszkedik, és ott egy kis földkupac + lüktető fény jelzi, hogy itt holnap kikel valami.
+func _sow(seed_id: int, animate := true) -> void:
 	if game.data.is_empty() or retreating:
 		return
 	var s := game.find_seed(seed_id)
@@ -1628,8 +1771,25 @@ func _sow(seed_id: int) -> void:
 	var where: String = planet.planet_name() if saved_view else str(p.code)
 	var az := "az" if "AEIOUÁÉÍÓÖŐÚÜŰ".contains(where.left(1).to_upper()) else "a"
 	traits_l.text = "Elvetve: %s %s %s bolygón. Holnap kel ki. (Próbához: „nap +1”.)" % [Genes.latin_name(t.dna), az, where]
+	sow_id = int(t.id)
 	if not saved_view:
 		retreat(show_saved_planet)
+		return
+	if not animate or bench_on:
+		_refresh_marks(sow_id)
+		return
+	# a kamera a bolygó felé fordul: a mag helye a kép közepére kerül, közepes magasságból (látszik a bolygó íve)
+	var d: Vector3 = t.dir
+	if view == "surface":
+		_unfocus()
+	var up_hint := Basis(orbit_q).y
+	if absf(up_hint.dot(d)) > .98:
+		up_hint = Basis(orbit_q).x
+	orbit_q = Basis.looking_at(-d, up_hint).get_rotation_quaternion()
+	orbit_zoom = .5
+	spin = Vector2.ZERO
+	trans_t = 0.0
+	fx.play_sow(planet.surface_point(d), d, "%s\nholnap itt kel ki" % Genes.latin_name(t.dna))
 
 
 ## Teszt (--shot ...,boardplay): a tábla kitöltése valódi koppintás-eseményekkel, a felület bemenetén át.

@@ -2,7 +2,7 @@ class_name SeedBag
 extends Control
 ## A magos táska: a táskában lévő magok (név, főbb tulajdonságok, eredet, nap) és a még megfejtetlen napi magok
 ## (a mai és az elmúlt 7 nap kihagyottjai; koppintásra a táblájuk nyílik). Lebegő, fénylő panel, mint a DNS-tábla.
-## Az elvetés itt egyelőre egy gomb (M3-ban jön a spirál és a másnapi kikelés látványa).
+## „Elvetem”: a táska bezárul, a mag fénypontként a bolygóra hull (seed_fx.gd), másnap kikel (hatching.gd).
 
 signal sow(seed_id: int)
 signal solve(day: int)

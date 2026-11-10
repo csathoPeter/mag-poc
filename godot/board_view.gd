@@ -47,6 +47,9 @@ var _rules := Label.new()
 var _hint_b: Button
 var _reset_b: Button
 var _close_b: Button
+## Elhalványulás a kész tábla után: a mezők helyén már a kettős spirál golyói vannak (seed_fx.gd), a fátyol is ott folytatódik.
+var _fading := false
+var _fade_tw: Tween
 
 
 func _ready() -> void:
@@ -106,6 +109,7 @@ func open(p: Dictionary, title: String, subtitle: String, saved: Array = [], par
 	finishing = false
 	_done_t = -1.0
 	_pop.clear()
+	_stop_fade()
 	_layout()
 	_update_texts()
 	visible = true
@@ -114,7 +118,26 @@ func open(p: Dictionary, title: String, subtitle: String, saved: Array = [], par
 
 
 func close() -> void:
+	_stop_fade()
 	visible = false
+
+
+## A kész tábla elhalványul: a mezők azonnal eltűnnek (a spirál golyói veszik át a helyüket), a feliratok lassan.
+func fade_out(dur := .6) -> void:
+	_stop_fade()
+	_fading = true
+	_fade_tw = create_tween()
+	_fade_tw.tween_property(self, "modulate:a", 0.0, dur)
+	_fade_tw.tween_callback(func() -> void:
+		_fading = false
+		visible = false)
+
+
+func _stop_fade() -> void:
+	if _fade_tw != null and _fade_tw.is_valid():
+		_fade_tw.kill()
+	_fade_tw = null
+	_fading = false
 
 
 ## Hány mező volt üres a kiindulásnál (a játékos ennyit tölt ki).
@@ -182,6 +205,8 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	if _fading:
+		return
 	# a világ elsötétül és ködbe borul a tábla mögött, de átlátszik
 	draw_rect(get_viewport_rect(), Color(.04, .02, .10, .42))
 	var c := _panel.position + _panel.size * .5
@@ -197,6 +222,9 @@ func _draw_grid() -> void:
 	var gw := 6.0 * cell + 5.0 * gap
 	for y in DnaBoard.N:
 		var y0 := y * (cell + gap)
+		if _fading:
+			_draw_label(font, Vector2(gw + 10.0, y0), y)
+			continue
 		if free.has(y):
 			# szabad gén: meleg, arany sáv a sor mögött
 			_sb.bg_color = Color(C_FREE, .10 + .03 * sin(_t * 1.6))

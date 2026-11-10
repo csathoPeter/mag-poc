@@ -8,7 +8,10 @@
 #   Mentésből: state[,óra[,focusN|plant|zoomZ|macro]]; a mentés helye a MAG_ARGS-ban, pl.
 #   MAG_ARGS="--state=/tmp/s.json --player=TESZT1" tools/render_shots.sh /tmp/a.png state,12 state,12,zoom0
 #   (ha a fájl nincs meg, új játékot kezd és elmenti; --state nélkül a valódi mentést csak olvassa)
-#   DNS-tábla és táska: state,óra,board | boardNN | boardNNx | boardplay | solve | bag | sow   pl. state,12,board50x
+#   DNS-tábla és táska: state,óra,board | boardNN | boardNNx | boardplay | solve | bag   pl. state,12,board50x
+#   A nagy pillanat: state,óra,helixNN (a kettős spirál NN%-ánál, pl. helix45 = a spirál közepe)
+#     sow (a mag földet ért: jel + felirat) | sowNN (az elvetés NN%-ánál, pl. sow30 = a mag hullik)
+#     hatchNN (elvetés, nap +1, a kikelés NN%-ánál, pl. hatch50) | revealNN (a mentésből kikelő fa, --state és --nap=+1 kell)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 G="$HOME/godot-bin/godot"
