@@ -48,7 +48,7 @@ float view_z(vec2 uv, mat4 inv_proj) {
 
 // az elmosás mértéke (0..1) egy képpontban: a makett-sáv a képernyő helyéből, a mélységélesség a mélységből
 float coc(vec2 uv, float z) {
-	float c_tilt = smoothstep(band, band + 0.36, abs(uv.y - band_y)) * tilt;
+	float c_tilt = smoothstep(band, band + 0.32, abs(uv.y - band_y)) * tilt;
 	float c_dof = aperture * max(abs(z - focus) - zone, 0.0) / max(z, 0.01);
 	float c = mix(c_tilt, c_dof, dof_mix);
 	if (legacy > 0.5) {
