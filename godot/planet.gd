@@ -298,6 +298,11 @@ static func _frond_shader() -> Shader:
 	return _frond
 
 
+static func _lin(c: Color) -> Vector3:
+	var l := c.srgb_to_linear()
+	return Vector3(l.r, l.g, l.b)
+
+
 func _apply() -> void:
 	body.scale = Vector3.ONE * radius
 	var deco := float(cur.deco)
@@ -317,10 +322,11 @@ func _apply() -> void:
 		hi_mat.set_shader_parameter("hi_layer", true)
 	for m in [grass_mat, hi_mat]:
 		var gm := m as ShaderMaterial
-		gm.set_shader_parameter("base_col", Color(gc.r * .45, gc.g * .5, gc.b * .45))
-		gm.set_shader_parameter("tip_col", gc.lerp(Color(1, .98, .9), .22))
-		gm.set_shader_parameter("sss_col", gc.lerp(Color(1, .9, .7), .6))
-		gm.set_shader_parameter("glow_col", Genes.hsl(cur.atmo_h + .45, .8, .62))
+		# a fű színei lineárisan (sima vec3 uniform; a shader így képpontonként nem alakít át)
+		gm.set_shader_parameter("base_lin", _lin(Color(gc.r * .45, gc.g * .5, gc.b * .45)))
+		gm.set_shader_parameter("tip_lin", _lin(gc.lerp(Color(1, .98, .9), .22)))
+		gm.set_shader_parameter("sss_lin", _lin(gc.lerp(Color(1, .9, .7), .6)))
+		gm.set_shader_parameter("glow_lin", _lin(Genes.hsl(cur.atmo_h + .45, .8, .62)))
 		gm.set_shader_parameter("night", night)
 		gm.set_shader_parameter("planet_pos", global_position)
 		gm.set_shader_parameter("planet_r", radius)

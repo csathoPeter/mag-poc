@@ -29,7 +29,9 @@ void fragment() {
 	// télen dér/hó az ágak felfelé néző oldalán (M11)
 	float snow = season_snow(dot(normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz), tree_up())) * (0.75 + 0.25 * fine);
 	alb = mix(alb, vec3(0.78, 0.82, 0.88), snow * 0.85);
-	ALBEDO = col_out(ao_direct(alb, AO, 0.5));
+	vec3 alb_l = ao_direct(alb, AO, 0.5);
+	ALBEDO = col_out(alb_l);
+	soft_fix = soft_fix_of(alb_l, ALBEDO);
 	ROUGHNESS = 0.92;
 	AO_LIGHT_AFFECT = 0.5;
 	float lines = smoothstep(0.8, 1.0, fine) * ridge;
@@ -44,6 +46,6 @@ void fragment() {
 
 void light() {
 	vec3 sp;
-	DIFFUSE_LIGHT += soft_light(NORMAL, LIGHT, VIEW, ATTENUATION, LIGHT_COLOR, 0.0, 0.12, sp) * light_albedo_fix(ALBEDO);
+	DIFFUSE_LIGHT += soft_light(NORMAL, LIGHT, VIEW, ATTENUATION, LIGHT_COLOR, 0.0, 0.12, sp) * soft_fix;
 	SPECULAR_LIGHT += sp;
 }

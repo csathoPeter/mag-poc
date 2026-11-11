@@ -117,7 +117,9 @@ void fragment() {
 	vec3 alb = mix(a, a * 1.5 + 0.012, rib * 0.6 + vein * 0.22 + edge * 0.12);
 	alb = season_leaf(alb, tint_v, s / max(w, 1e-3), up_v);
 	alb = thirsty_col(alb, thirst * 0.55);
-	ALBEDO = col_out(ao_direct(alb, ao_v, 0.45));
+	vec3 alb_l = ao_direct(alb, ao_v, 0.45);
+	ALBEDO = col_out(alb_l);
+	soft_fix = soft_fix_of(alb_l, ALBEDO);
 	// a levél fénye a korona egészét követi (egy puha tömb), nem a saját állását
 	NORMAL = normalize(mix(soft_face(NORMAL, VIEW), normalize((VIEW_MATRIX * vec4(crown_w, 0.0)).xyz), crown_k));
 	ROUGHNESS = 0.55;
@@ -135,6 +137,6 @@ void fragment() {
 
 void light() {
 	vec3 sp;
-	DIFFUSE_LIGHT += soft_light(NORMAL, LIGHT, VIEW, ATTENUATION, LIGHT_COLOR, 0.75, 0.25, sp) * light_albedo_fix(ALBEDO);
+	DIFFUSE_LIGHT += soft_light(NORMAL, LIGHT, VIEW, ATTENUATION, LIGHT_COLOR, 0.75, 0.25, sp) * soft_fix;
 	SPECULAR_LIGHT += sp;
 }

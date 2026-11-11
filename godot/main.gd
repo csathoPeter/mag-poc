@@ -159,6 +159,9 @@ const BENCH_STEPS := [
 	["kint", "ég sima", {"sky": 1}],
 	["kint", "AA ki", {"aa": false}],
 	["kint", "régi stílus", {"soft": false}],
+	["kint", "tilt ki", {"tilt": false}],
+	["kint", "levél-körvonal ki", {"leafcut": false}],
+	["kint", "felület, csillagok ki", {"hud": false}],
 	["lent", "alap", {}],
 	["lent", "75%", {"scale": .75}],
 	["lent", "60%", {"scale": .6}],
@@ -171,6 +174,11 @@ const BENCH_STEPS := [
 	["lent", "tilt ki", {"tilt": false}],
 	["lent", "AA ki", {"aa": false}],
 	["lent", "régi stílus", {"soft": false}],
+	["lent", "levél-körvonal ki", {"leafcut": false}],
+	["lent", "kerek szirom ki", {"petal": false}],
+	["lent", "felület, csillagok ki", {"hud": false}],
+	["lent", "évszak-részecskék ki", {"fx": false}],
+	["lent", "tilt + körvonal + szirom ki", {"tilt": false, "leafcut": false, "petal": false}],
 	["lent", "minden ki, 50%", {"scale": .5, "grass": false, "hi": 1, "shadow": false, "glow": false, "sky": 1, "tilt": false, "aa": false}],
 ]
 var bench_on := false
@@ -3076,7 +3084,7 @@ func start_bench() -> void:
 	bench_rows.clear()
 	bench_steps = LOAD_STEPS
 	var q := str(JavaScriptBridge.eval("location.search", true)) if OS.has_feature("web") else ""
-	if q.contains("beall"):
+	if q.contains("beall") or (bench_cli and OS.get_cmdline_user_args().has("--beall")):
 		bench_steps = BENCH_STEPS
 	# rövid próba a fejlesztéshez (?meres&gyors): fű ×2 lent, aztán 30 fa kint (bolygó-újraépítéssel)
 	if q.contains("gyors") or (bench_cli and OS.get_cmdline_user_args().has("--gyors")):
@@ -3111,8 +3119,25 @@ func _bench_cfg(cfg: Dictionary) -> void:
 	tilt_ok = cfg.get("tilt", true)
 	tilt_quad.visible = tilt_ok and view == "surface"
 	get_viewport().msaa_3d = Viewport.MSAA_2X if cfg.get("aa", true) else Viewport.MSAA_DISABLED
+	_bench_cuts(cfg.get("leafcut", true), cfg.get("petal", true))
+	hud.visible = cfg.get("hud", true)
+	stars.visible = cfg.get("hud", true)
+	seasons.visible = cfg.get("fx", true)
 	_planet_lod()
 	_sync_dbg()
+
+
+## Méréshez: a levél SDF-körvonala (M11) és a kerek szirom (puha stílus) ki-be – mindkettő discard-dal rajzol, ami
+## az Apple GPU-n (rejtett felület eltávolítás) drága lehet. Kikapcsolva a részletes szinten a befoglaló burok látszik.
+func _bench_cuts(leaf: bool, petal: bool) -> void:
+	for rec in plants:
+		var pg: PlantGen = rec.pg
+		for m in rec.mats:
+			var sm := m as ShaderMaterial
+			if sm.shader == LEAF:
+				sm.set_shader_parameter("leaf_cut", 1.0 if leaf and pg.detail >= 1.0 else 0.0)
+			elif sm.shader == FLOWER:
+				sm.set_shader_parameter("petal_cut", 1.0 if petal and pg.detail >= 1.0 else 0.0)
 
 
 func _bench_next() -> void:

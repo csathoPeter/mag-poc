@@ -8,16 +8,17 @@ shader_type spatial;
 // ponthoz); a határon puhán előnőnek, nem pattannak elő.
 // Csak spatial shader + MultiMesh, így a webes (Compatibility) rendererrel is működik.
 render_mode cull_disabled, shadows_disabled, skip_vertex_transform;
-// Színtér (M11): a source_color uniformokat col_in()-nel olvassuk, a kimenetet col_out()-tal írjuk (weben így egyezik).
+// Színtér (M11): a színeket a planet.gd eleve lineárisan adja (sima vec3, nem source_color – így képpontonként nincs
+// col_in), a kimenetet col_out()-tal írjuk (weben így egyezik a két renderer).
 // Puha stílus (soft_light.gdshaderinc): a mező szőnyegként árnyékolódik, világosabb tő, színes árnyék, évszakos szín.
 #include "res://shaders/color_space.gdshaderinc"
 #include "res://shaders/season.gdshaderinc"
 #include "res://shaders/soft_light.gdshaderinc"
 
-uniform vec3 base_col : source_color = vec3(0.12, 0.22, 0.1);
-uniform vec3 tip_col : source_color = vec3(0.6, 0.75, 0.45);
-uniform vec3 sss_col : source_color = vec3(1.0, 0.86, 0.6);
-uniform vec3 glow_col : source_color = vec3(0.5, 1.0, 0.8);
+uniform vec3 base_lin = vec3(0.013, 0.04, 0.01);
+uniform vec3 tip_lin = vec3(0.32, 0.52, 0.17);
+uniform vec3 sss_lin = vec3(1.0, 0.71, 0.32);
+uniform vec3 glow_lin = vec3(0.21, 1.0, 0.6);
 uniform float night = 0.0;
 uniform float wind = 1.0;
 // A szél a bolygó körül kering e tengely körül.
@@ -276,8 +277,8 @@ void fragment() {
 	NORMAL = normalize(mix(NORMAL, up_v, 0.6 * soft_k));
 	float h = hf_v;
 	// a tő sötétebb a csúcsnál, de puha stílusban nem fekete
-	vec3 base_l = col_in(base_col) * mix(1.0, 1.15, soft_k);
-	vec3 tip_l = col_in(tip_col);
+	vec3 base_l = base_lin * mix(1.0, 1.15, soft_k);
+	vec3 tip_l = tip_lin;
 	vec3 tip = tip_l * (0.85 + 0.3 * clump_v);
 	vec3 c = mix(base_l, tip, h * h);
 	// a tő felé sötétedik; puha stílusban jóval kevésbé (a sötét tövek adták a szálas, pixeles hatást)
@@ -294,17 +295,18 @@ void fragment() {
 	c = mix(c, vec3(ml) * vec3(1.45, 1.0, 0.42), season.z * 0.42);
 	c = mix(c, vec3(0.74, 0.8, 0.88) * max(ml * 2.0, 0.3), season.w * (0.25 + 0.45 * h * h));
 	ALBEDO = col_out(c);
+	soft_fix = soft_fix_of(c, ALBEDO);
 	ROUGHNESS = mix(1.0, 0.45, h);
 	SPECULAR = 0.25;
-	EMISSION = col_out(col_in(glow_col) * night * step(0.93, rnd_v) * h * h * 1.2);
+	EMISSION = col_out(glow_lin * night * step(0.93, rnd_v) * h * h * 1.2);
 }
 
 void light() {
 	// puha szórt fény (sosem teljesen sötét) + hátulról átsütő fény
 	float diff = mix(pow(4.0, dot(NORMAL, LIGHT)) / 4.0, soft_diffuse(dot(NORMAL, LIGHT)), soft_k);
 	float sss = max(-dot(VIEW, LIGHT), 0.0) * 0.55 * hf_v;
-	DIFFUSE_LIGHT += ((diff + sss * col_in(sss_col)) * ATTENUATION * LIGHT_COLOR / PI + shade_tint * ((1.0 - diff * ATTENUATION) * soft_k))
-		* light_albedo_fix(ALBEDO);
+	DIFFUSE_LIGHT += ((diff + sss * sss_lin) * ATTENUATION * LIGHT_COLOR / PI + shade_tint * ((1.0 - diff * ATTENUATION) * soft_k))
+		* soft_fix;
 	vec3 hv = normalize(LIGHT + VIEW);
 	// a fényfolt puha stílusban nincs: a szőnyeg-normálon az egész mező csillogna (weben ráadásul erősebb)
 	SPECULAR_LIGHT += pow(max(dot(NORMAL, hv), 0.0), 24.0) * diff * hf_v * 0.35 * (1.0 - soft_k) * ATTENUATION * LIGHT_COLOR / PI;

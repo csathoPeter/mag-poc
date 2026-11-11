@@ -12,10 +12,14 @@ global uniform float soft_k;
 
 // A saját light() függvény eredményét a Compatibility (web) renderer a még sRGB-kódolt albedóval szorozza (col_out után),
 // a Mobile a lineárissal; ettől weben a közvetlen fény 2–3× erősebb volt, a sötétebb csatornákon jobban (a füvön mérve:
-// csak környezeti fénnyel a kettő egyezik). A light()-ban ezzel szorozzuk a közvetlen fényt: weben lineáris / kódolt.
-vec3 light_albedo_fix(vec3 albedo) {
+// csak környezeti fénnyel a kettő egyezik). A fragmentben egyszer kiszámoljuk a lineáris / kódolt arányt (soft_fix_of),
+// a light() ezzel szorozza a közvetlen fényt. (Fényenként újraszámolva képpontonként még egy pow() lenne – a fű sok
+// egymást takaró szálán ez drága.)
+varying vec3 soft_fix;
+
+vec3 soft_fix_of(vec3 lin, vec3 enc) {
 #if CURRENT_RENDERER == RENDERER_COMPATIBILITY
-	return col_in(albedo) / max(albedo, vec3(1e-4));
+	return lin / max(enc, vec3(1e-4));
 #else
 	return vec3(1.0);
 #endif
