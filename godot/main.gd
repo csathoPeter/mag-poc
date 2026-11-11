@@ -1944,6 +1944,7 @@ func _planet_cam(delta: float, snap: bool) -> void:
 		cam.far = maxf(cam.far, eye.distance_to(look) + 3000.0)
 	space_mat.set_shader_parameter("cosmos", stars.cosmos())
 	cosmos.set_fade(stars.cosmos(), str(game.data.get("player", "")) if not game.data.is_empty() else "")
+	cosmos.position = system.space_origin()
 	sun.directional_shadow_max_distance = 26.0 if view == "surface" else eye.distance_to(look) + planet.radius * 1.2
 	_lens(delta, snap)
 	# a nap a kamerához (kint) vagy a fához (lent) igazodik, így a látható oldal mindig meg van világítva
