@@ -36,6 +36,8 @@
 #     „húzd” tipp) | tipdaily / tiptree / tipbag / tiptomorrow / tipplanets | morning / morningT (reggel T mp-nél; 0.6: fátyol,
 #     7: jelzés + a nap magjának hívása; --nap=+3-mal szomjas fa) | debugtap (hármas koppintás → fejlesztői mód);
 #     bármelyik lövés 7.+ elemeként „debug”: a fejlesztői sávokkal, pl. state,23,hud,debug
+#   Fejlődés: bármelyik planet / state lövés 7.+ elemeként ageNN (minden fa NN%-os korban, 100 = kifejlett),
+#     pl. planet,bolygo01,14,12,focus0,age45
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 G="$HOME/godot-bin/godot"

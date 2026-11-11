@@ -107,6 +107,11 @@ func run() -> void:
 	var sown: Dictionary = game.active_planet().trees.back()
 	_expect(bool(sown.revealed) and int(sown.hatch) <= GameState.today(), "a tegnapi mag kikelt és látszott (revealed)")
 	_check("nap +1: kikelés", {"trees0": 4})
+	# fejlődés: a kikelt fa csemete (a kezdő fák kifejlettek), a jelenetben is ekkora
+	var m0 := Care.maturity(sown, GameState.today())
+	_expect(Care.growth_days(sown, GameState.today()) == 0 and is_equal_approx(m0, Care.AGE0), "a kikelt fa csemete (kor %.2f)" % m0)
+	_expect(Care.maturity(game.active_planet().trees[0], GameState.today()) == 1.0, "a kezdő fa kifejlett")
+	_expect(_scene_age(sown) >= 0.0 and absf(_scene_age(sown) - m0) < .01, "a jelenetben a csemete kora %.2f" % _scene_age(sown))
 
 	# --- öntözés: két nap múlva a kezdő fák szomjasak
 	await _next_day()
@@ -118,6 +123,18 @@ func run() -> void:
 		_expect(int(thirsty.watered) == GameState.today(), "öntözés: watered = ma")
 	await _water_all()
 	_check("öntözés", {"trees0": 4})
+	# két nap alatt nőtt (a kikelés óta nem volt szomjas), a jelenetben is lassan utoléri
+	var m2 := Care.maturity(sown, GameState.today())
+	_expect(Care.growth_days(sown, GameState.today()) == 2 and m2 > m0, "a csemete két nap alatt nőtt (%.2f → %.2f)" % [m0, m2])
+	await _until(func() -> bool: return absf(_scene_age(sown) - m2) < .01, "a jelenetben a fa kora utoléri (%.2f)" % m2)
+	var si := _scene_index(sown)
+	if si >= 0:
+		var sm: ShaderMaterial = host.trees[si].high.mats[0]
+		_expect(absf(float(sm.get_shader_parameter("age")) - m2) < .01, "a shaderben is a fa kora")
+	# a fejlesztői gomb: a fiatal fák 5 nappal többet nőnek (a kezdő fák kifejlettek maradnak)
+	host._debug_grow(5)
+	_expect(Care.growth_days(sown, GameState.today()) == 7, "fejlesztői gomb: +5 nap növés (%d)" % Care.growth_days(sown, GameState.today()))
+	await _until(func() -> bool: return absf(_scene_age(sown) - Care.maturity(sown, GameState.today())) < .01, "a fa átnő az új korába")
 
 	# --- maggyűjtés: amíg nincs magot érlelő fa, napokat léptetünk (és öntözünk)
 	var bearer := {}
@@ -483,11 +500,13 @@ func run() -> void:
 			ok = ok and bool(p.born_seen) and not (p.founders as Array).is_empty() and not p.has("stars")
 			for t in p.trees:
 				ok = ok and (ver >= 6 or (t.shaping as Array).is_empty()) and (t.dir as Vector3).length() > .5
+				# a régi mentés fái kifejlettek (v8 előtt nem volt fejlődés)
+				ok = ok and Care.maturity(t, GameState.today()) == 1.0
 		var gst: Array = g3.data.stars
 		for k in gst.size():
 			ok = ok and int(gst[k].seq) == k and str(gst[k].planet) != ""
 		ok = ok and int(g3.data.next_star) == gst.size()
-		_expect(ok, "v%d: a hiányzó mezők pótolva (born_seen, alapító, a csillagok egy listában, sorszámmal, bolygóval)" % ver)
+		_expect(ok, "v%d: a hiányzó mezők pótolva (born_seen, alapító, a csillagok egy listában, sorszámmal, bolygóval; a fák kifejlettek)" % ver)
 		var want_stars := 0
 		for p in old.planets:
 			want_stars += (p.get("stars", []) as Array).size()
@@ -531,6 +550,11 @@ func run() -> void:
 static func _downgrade(d: Dictionary, ver: int) -> Dictionary:
 	var o: Dictionary = d.duplicate(true)
 	o.version = ver
+	# v8 előtt: nincs fejlődés (a fák kifejlettek)
+	for p in o.planets:
+		for t in p.trees:
+			t.erase("grown")
+			t.erase("grown_day")
 	# v7 előtt: a csillagok bolygónként (a "planet" mezőjük szerint), bolygónkénti sorszámmal
 	var by := {}
 	for p in o.planets:
@@ -839,6 +863,12 @@ func _scene_index(t: Dictionary) -> int:
 		if int(host.trees[i].sid) == int(t.id):
 			return i
 	return -1
+
+
+## A fa kora a jelenetben (fejlődés), vagy -1, ha nincs a jelenetben.
+func _scene_age(t: Dictionary) -> float:
+	var i := _scene_index(t)
+	return float(host.trees[i].get("age", -1.0)) if i >= 0 else -1.0
 
 
 func _has_op(t: Dictionary, op: String) -> bool:

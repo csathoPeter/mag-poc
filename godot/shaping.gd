@@ -324,7 +324,7 @@ func _pick(pos: Vector2) -> Dictionary:
 	var cam: Camera3D = host.cam
 	var vp: Vector2 = get_viewport().get_visible_rect().size
 	var px := vp.y * .5 / tan(deg_to_rad(cam.fov) * .5)
-	return (_pg() as PlantGen).pick_branch(cam, _xf(), pos, maxf(48.0, vp.y * .06), px)
+	return (_pg() as PlantGen).pick_branch(cam, _xf(), pos, maxf(48.0, vp.y * .06), px, float(tree.get("age", 1.0)))
 
 
 func _pg() -> PlantGen:
@@ -618,7 +618,7 @@ func _update_ghost(delta: float) -> void:
 	var lx := _ghost_local(b, q)
 	_ghost.global_transform = node_xf * lx
 	var wm: ShaderMaterial = tree.high.mats[0]
-	for key in ["tree_xf", "tree_inv", "tree_scale", "max_path", "plant_h", "grow", "droop", "amp"]:
+	for key in ["tree_xf", "tree_inv", "tree_scale", "max_path", "plant_h", "grow", "age", "droop", "amp"]:
 		var v: Variant = wm.get_shader_parameter(key)
 		if v != null:
 			_ghost_mat.set_shader_parameter(key, v)
@@ -657,7 +657,7 @@ func rebuild(t: Dictionary) -> void:
 		_queue.append([t, rec])
 	t.shape_day = GameState.today()
 	if t.has("care"):
-		t.care.glint = Tending._glint_flower(t.high.pg, str((t.g as Dictionary).code))
+		t.care.glint = Tending._glint_flower(t.high.pg, str((t.g as Dictionary).code), float(t.get("age", 1.0)))
 		host.tending._flags(t)
 	if is_same(t, tree):
 		_ghost_b = -1
@@ -732,7 +732,7 @@ func _sync_hi() -> void:
 	var rec: Dictionary = tree.high
 	_hi.global_transform = (rec.node as Node3D).global_transform
 	var wm: ShaderMaterial = rec.mats[0]
-	for k in ["tree_xf", "tree_inv", "tree_scale", "max_path", "plant_h", "grow", "droop", "amp"]:
+	for k in ["tree_xf", "tree_inv", "tree_scale", "max_path", "plant_h", "grow", "age", "droop", "amp"]:
 		var v: Variant = wm.get_shader_parameter(k)
 		if v != null:
 			_hi_mat.set_shader_parameter(k, v)
@@ -1069,6 +1069,69 @@ static func self_test() -> String:
 	if not ok_inh:
 		fails += 1
 	out.append("öröklés: a csillag megőrzi (%d), a visszahozott és a gyűjtött magból kikelő fa üres listával: %s" % [(st.shaping as Array).size(), "OK" if ok_inh else "HIBA"])
+	# 7. fejlődés: a gyerekág a szülője után hajt ki (ott, ahol a szülő már tart), a születési idők mindhárom szinten
+	# azonosak (a váz és a csúcsok szintjén), 1-nél minden kinőtt, és az első virágzáskor már van kinőtt virág
+	var dev_fail := 0
+	var min_flo := 1 << 30
+	var min_leaf := 1 << 30
+	for k in 60:
+		var dna := [k % 14, (k * 5 + 3) % 14, (k * 3 + 1) % 14, (k * 7 + k / 14) % 14, (k * 11 + 4) % 14, (k * 13 + 6) % 14]
+		var code := "fejl-%d" % k
+		var g := Genes.from_dna(dna, code)
+		var hi := _built(g, 1.0, [], day)
+		var ok := true
+		for b in hi.branch_count():
+			var pa := hi.br_parent[b]
+			if pa >= 0 and hi.br_birth[b] < hi.br_birth[pa]:
+				ok = false
+		for det in [.22, .09]:
+			var lp := _built(g, det, [], day)
+			if lp.br_birth != hi.br_birth or lp.dev_max != hi.dev_max:
+				ok = false
+		var mx := 0.0
+		for i in range(3, hi.c1.size(), 4):
+			mx = maxf(mx, hi.c1[i])
+		for i in hi.leaf_birth.size():
+			mx = maxf(mx, hi.dev_at(hi.leaf_birth[i]))
+		for i in hi.flo_birth.size():
+			mx = maxf(mx, hi.dev_at(hi.flo_birth[i]))
+		if mx > PlantGen.DEV_SPAN + .0001:
+			ok = false
+		# az első bimbó a kikelés után legkorábban YOUTH_DAYS nappal (öntözve): ekkora a fa
+		var age := Care.maturity({"grown": 0, "hatch": 0, "watered": Care.YOUTH_DAYS}, Care.YOUTH_DAYS)
+		if hi.flo_p.size() > 0:
+			var nf := 0
+			for i in hi.flo_p.size():
+				if hi.flower_born(i, age):
+					nf += 1
+			min_flo = mini(min_flo, nf)
+		var nl := 0
+		for i in hi.leaf_p.size():
+			if hi.dev_at(hi.leaf_birth[i]) + .04 < Care.AGE0:
+				nl += 1
+		min_leaf = mini(min_leaf, nl)
+		if not ok:
+			dev_fail += 1
+	if dev_fail > 0 or min_flo < 1:
+		fails += 1
+	out.append("fejlődés (60 DNS): sorrend, három szint, 1-nél kész: %s; az első virágzáskor kinőtt virág legalább %d, a csemetén levél legalább %d %s" % [
+		"OK" if dev_fail == 0 else "%d HIBA" % dev_fail, min_flo, min_leaf, "OK" if dev_fail == 0 and min_flo >= 1 else "HIBA"])
+	# 8. a növés napjai: szomjasan nem nő, öntözéskor a múlt lezárul, a régi mentés fája kifejlett
+	var gt := {"grown": 0, "hatch": 100, "watered": -1}
+	var d1 := Care.growth_days(gt, 102)
+	var d2 := Care.growth_days(gt, 110)
+	Care.commit_growth(gt, 110)
+	gt.watered = 110
+	var d3 := Care.growth_days(gt, 110)
+	var d4 := Care.growth_days(gt, 112)
+	var d5 := Care.growth_days(gt, 200)
+	var old_t := Care.growth_days({"hatch": 3}, 4)
+	# (a 3. naptól szomjas: 102 után áll; az öntözés napja már növő nap; két nap múlva újra szomjas, megint áll)
+	var ok_days := d1 == 2 and d2 == 2 and d3 == 3 and d4 == 5 and d5 == 5 and old_t == Care.GROW_DAYS \
+		and Care.maturity({"grown": Care.GROW_DAYS}, 200) == 1.0 and is_equal_approx(Care.maturity({"grown": 0, "hatch": 5}, 5), Care.AGE0)
+	if not ok_days:
+		fails += 1
+	out.append("növő napok (2 nap, szomjasan áll, öntözve újra nő, újra szomjas, régi mentés: kifejlett): %d/%d/%d/%d/%d/%d %s" % [d1, d2, d3, d4, d5, old_t, "OK" if ok_days else "HIBA"])
 	out.append("ÖSSZESEN: %s" % ("minden rendben" if fails == 0 else "%d hiba" % fails))
 	return "\n".join(out)
 

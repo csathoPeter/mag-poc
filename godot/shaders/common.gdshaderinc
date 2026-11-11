@@ -4,6 +4,9 @@ uniform float grow = 1.0;
 uniform float amp = 0.09;
 uniform float plant_h = 5.0;
 uniform float max_path = 1.0;
+// Fejlődés (plant_gen.gd): a fa kora (0 = csíra, 1 = kifejlett). A gyűrűk, levelek, virágok születési ideje a
+// csúcs-adatban / példányban, már normálva (legfeljebb 0,85, így 1-nél minden kinőtt és megvastagodott).
+uniform float age = 1.0;
 // A fa saját kerete (a bolygón a fák ferdén állnak, a szél a fa "felfelé" irányához igazodik).
 uniform mat4 tree_xf = mat4(1.0);
 uniform mat4 tree_inv = mat4(1.0);

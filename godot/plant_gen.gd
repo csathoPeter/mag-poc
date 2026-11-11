@@ -11,6 +11,13 @@ extends RefCounted
 ## leszármazottai közvetlenül utána következnek, így az ág a rajta nőtt ágakkal együtt összefüggő tartomány
 ## (b … br_end[b]), és a csúcsaik, indexeik, leveleik, virágaik, vázpontjaik is összefüggő szeletek a tömbökben.
 ## Üres listával a kimenet bitre ugyanaz, mint az alakítás előtt (--shapetest).
+##
+## Fejlődés (2026. 11. 11.): a fa nem egyszerre nő ki. Minden ág kap egy kihajtási időt (a szülője ott tart-e már, ahonnan
+## nő), és a hosszát a szintjére jellemző idő alatt éri el; a gyűrűk, levelek, virágok ebből kapják a születési idejüket
+## (a csúcs-adat CUSTOM1.w-je, a példányok custom.a-ja, normálva: dev_at). A shader az `age` (0–1, 1 = kifejlett)
+## paraméter alapján rajzolja ki, ami már kinőtt: a fiatal fán a törzs még rövid, az alsó ágak már elágaznak, fent
+## újak hajtanak ki, és ezek napról napra hosszabbodnak, vastagodnak, leveleket hoznak. Csak a váz `r` sorozatából és a
+## helyekből jön, így determinisztikus és mindhárom részletességi szinten ugyanaz; age = 1-nél a kép pontosan a régi.
 
 const SIDES := [9, 6, 5, 3]
 const STEP := [.2, .15, .12, .1]
@@ -79,6 +86,18 @@ var leaf_cut := PackedByteArray()
 var flo_cut := PackedByteArray()
 var idx_draw := PackedInt32Array()
 var bend_q := {}
+## Fejlődés: az ág kihajtási ideje és hossza ideje (nyers egységben), a levelek / virágok születési ideje, a
+## legkésőbbi születés (a shader ezzel normál: dev_at). DEV_D: egy ág ennyi idő alatt éri el a hosszát (szintenként);
+## DEV_LAG: a kihajtás késése, miután a szülő odaért; DEV_SPAN: a normált idő, amikorra minden kinőtt (a maradék a
+## vastagodásé, így age = 1-nél minden teljes).
+const DEV_D := [.42, .27, .16, .09]
+const DEV_LAG := .025
+const DEV_SPAN := .85
+var br_birth := PackedFloat32Array()
+var br_dur := PackedFloat32Array()
+var leaf_birth := PackedFloat32Array()
+var flo_birth := PackedFloat32Array()
+var dev_max := .001
 ## A lomb közepe és sugara (a levelek árnyékolásához), az alakítás előtti helyekből, hogy egy kötözés ne színezze át
 ## a többi levelet.
 var leaf_center := Vector3.ZERO
@@ -108,13 +127,20 @@ func build(genome: Dictionary, det := 1.0) -> void:
 		var splay := (r.randf_range(.22, .52) if stems > 1 else .04 + g.wind * .5) as float
 		var dir := Vector3(cos(a) * splay, 1, sin(a) * splay)
 		var off := Vector3(cos(a) * .12, -.06, sin(a) * .12) if stems > 1 else Vector3(0, -.06, 0)
-		_branch(off, dir, g.height * (r.randf_range(.75, 1.1) if stems > 1 else 1.0), g.height * .055 * g.thick, 0, 0.0, -1)
+		_branch(off, dir, g.height * (r.randf_range(.75, 1.1) if stems > 1 else 1.0), g.height * .055 * g.thick, 0, 0.0, -1, 0.0)
 	var count := leaf_p.size()
 	for p in leaf_p:
 		leaf_center += p
 	leaf_center /= maxi(count, 1)
 	for p in leaf_p:
 		leaf_far = maxf(leaf_far, p.distance_to(leaf_center))
+	# a legkésőbbi születés a vázból (ág vége), a levelekből, virágokból: a részletes szinten több levél / virág van,
+	# de ezek mind egy ágon ülnek, és legfeljebb .02-vel az ág vége után jönnek, ezért a vázból számolva szintenként azonos
+	for b in mini(br_birth.size(), max_twigs):
+		dev_max = maxf(dev_max, br_birth[b] + br_dur[b] + .02)
+	# a gyűrűk születési ideje normálva (a shader így csak az `age`-et kapja; más anyagnál az alapértéke 1 = kifejlett)
+	for i in range(3, c1.size(), 4):
+		c1[i] = dev_at(c1[i])
 
 
 func _expand(p: Vector3) -> void:
@@ -122,8 +148,11 @@ func _expand(p: Vector3) -> void:
 	bb_max = bb_max.max(p)
 
 
-func _branch(p0: Vector3, d0: Vector3, length: float, rad: float, lvl: int, path: float, parent: int) -> void:
+func _branch(p0: Vector3, d0: Vector3, length: float, rad: float, lvl: int, path: float, parent: int, tau: float) -> void:
 	var bi := twigs
+	var dur: float = DEV_D[lvl]
+	br_birth.append(tau)
+	br_dur.append(dur)
 	twigs += 1
 	br_parent.append(parent)
 	br_level.append(lvl)
@@ -204,7 +233,7 @@ func _branch(p0: Vector3, d0: Vector3, length: float, rad: float, lvl: int, path
 			var bc: Color = g.bark
 			col.append(Color(bc.r * sh, bc.g * sh, bc.b * sh))
 			c0.append(c.x); c0.append(c.y); c0.append(c.z); c0.append(ps[i])
-			c1.append(prev.x); c1.append(prev.y); c1.append(prev.z); c1.append(0.0)
+			c1.append(prev.x); c1.append(prev.y); c1.append(prev.z); c1.append(tau + dur * float(i) / segs)
 	for i in maxi(ring_ids.size() - 1, 0):
 		for s in sides:
 			var a := base + i * sides + s
@@ -230,15 +259,18 @@ func _branch(p0: Vector3, d0: Vector3, length: float, rad: float, lvl: int, path
 			leaf_p.append(pts[i]); leaf_d.append(dir); leaf_n.append(nv)
 			leaf_s.append(g.leaf_len * rl.randf_range(.65, 1.25) * (1.0 - .25 * t) * sqrt(1.0 / detail))
 			leaf_path.append(ps[i]); leaf_tint.append(rl.randf())
+			leaf_birth.append(tau + dur * float(i) / segs + .01)
 			_expand(pts[i])
 			az += 2.39996
 	if lvl == max_level:
 		if flo_p.size() < max_flowers and rl.randf() < g.flower_odds * maxf(detail, .7):
 			var dir := (ds[segs] * .55 + Vector3(rl.randf() - .5, .7, rl.randf() - .5) * .8).normalized()
 			flo_p.append(pts[segs]); flo_d.append(dir); flo_s.append(g.flower_size * rl.randf_range(.8, 1.2) * (1.0 if detail >= 1.0 else 1.5)); flo_path.append(ps[segs])
+			flo_birth.append(tau + dur + .02)
 		if flo_p.size() < max_flowers and rl.randf() < g.flower_odds * .5 * maxf(detail, .7):
 			var i := int(segs * rl.randf_range(.3, .8))
 			flo_p.append(pts[i]); flo_d.append(Vector3(rl.randf() - .5, .9, rl.randf() - .5).normalized()); flo_s.append(g.flower_size * rl.randf_range(.7, 1.05) * (1.0 if detail >= 1.0 else 1.5)); flo_path.append(ps[i])
+			flo_birth.append(tau + dur * float(i) / segs + .02)
 
 	if lvl < max_level:
 		var cnt: int = roundi(g["b%d" % lvl])
@@ -253,7 +285,7 @@ func _branch(p0: Vector3, d0: Vector3, length: float, rad: float, lvl: int, path
 			var a: float = deg_to_rad(g["a%d" % lvl]) * r.randf_range(.8, 1.2)
 			var cd := ds[i] * cos(a) + out * sin(a)
 			var profile := lerpf(1.0, 1.0 - u * .8, g.crown)
-			_branch(pts[i], cd, length * g["r%d" % lvl] * profile * r.randf_range(.8, 1.2), rs[i] * (.62 if lvl == 0 else .68), lvl + 1, ps[i] + .02, bi)
+			_branch(pts[i], cd, length * g["r%d" % lvl] * profile * r.randf_range(.8, 1.2), rs[i] * (.62 if lvl == 0 else .68), lvl + 1, ps[i] + .02, bi, tau + dur * float(i) / segs + DEV_LAG)
 			az += 2.39996 + (r.randf() - .5) * .4
 	br_end[bi] = twigs - 1
 
@@ -455,7 +487,7 @@ func _leaf_buffer(i0: int, i1: int) -> PackedFloat32Array:
 		var s := leaf_s[i]
 		if not leaf_cut.is_empty() and leaf_cut[i] != 0:
 			s = 0.0
-		_basis_buffer(buf, i - i0, leaf_p[i], leaf_d[i], leaf_n[i], s, Color(birth, leaf_tint[i], ao, 0))
+		_basis_buffer(buf, i - i0, leaf_p[i], leaf_d[i], leaf_n[i], s, Color(birth, leaf_tint[i], ao, dev_at(leaf_birth[i])))
 	return buf
 
 
@@ -468,7 +500,7 @@ func _flower_buffer(i0: int, i1: int) -> PackedFloat32Array:
 		var s := flo_s[i]
 		if not flo_cut.is_empty() and flo_cut[i] != 0:
 			s = 0.0
-		_basis_buffer(buf, i - i0, flo_p[i], flo_d[i], hint, s, Color(birth, .9 + fmod(i * .618, 1.0) * .22, 1, 0))
+		_basis_buffer(buf, i - i0, flo_p[i], flo_d[i], hint, s, Color(birth, .9 + fmod(i * .618, 1.0) * .22, 1, dev_at(flo_birth[i])))
 	return buf
 
 
@@ -680,16 +712,20 @@ func tie_target(b: int, e: Dictionary, u: float) -> Vector3:
 ## A koppintáshoz legközelebbi élő ág a képen (a váz szakaszaiból). xf: a növény csomópontjának transzformációja.
 ## Visszaad: {"b": index, "d": távolság képpontban, "at": a legközelebbi vázpont a növény keretében, "u": hol az ágon}
 ## vagy üreset, ha radius-on belül nincs ág. A vékony ágvégeknél a vastagabb ág kicsit előnyt kap.
-func pick_branch(cam: Camera3D, xf: Transform3D, pos: Vector2, radius: float, px_per_unit: float) -> Dictionary:
+func pick_branch(cam: Camera3D, xf: Transform3D, pos: Vector2, radius: float, px_per_unit: float, age := 1.0) -> Dictionary:
 	var best := {}
 	var best_s := radius
 	var nb := br_level.size()
 	var scale := xf.basis.get_scale().x
 	for b in nb:
-		if not branch_live(b):
+		if not branch_live(b) or not branch_born(b, age):
 			continue
 		var k0 := br_k0[b]
 		var k1 := _own_end(br_k0, br_pts.size(), b)
+		var k1_full := k1
+		# a fiatal fán csak a már kinőtt része (fejlődés)
+		if age < 1.0:
+			k1 = mini(k1, k0 + 1 + int(floor(branch_grown(b, age) * float(k1 - k0 - 1))))
 		if k1 - k0 < 2:
 			continue
 		var prev := Vector2.ZERO
@@ -712,7 +748,7 @@ func pick_branch(cam: Camera3D, xf: Transform3D, pos: Vector2, radius: float, px
 				if s < best_s:
 					best_s = s
 					var local := br_pts[k - 1].lerp(br_pts[k], t)
-					best = {"b": b, "d": d, "at": local, "u": (float(k - 1 - k0) + t) / float(k1 - k0 - 1)}
+					best = {"b": b, "d": d, "at": local, "u": (float(k - 1 - k0) + t) / float(k1_full - k0 - 1)}
 			prev = sp
 			prev_w = w
 			prev_ok = true
@@ -766,13 +802,70 @@ func subtree_flowers_multimesh(b: int) -> MultiMesh:
 
 
 ## Lenyomat a kirajzolandó adatokról (önellenőrzéshez): SHA-256 a mesh-ek és a példány-pufferek bájtjaiból.
-func digest() -> String:
+## dev: a fejlődés csatornája (a gyűrűk és példányok születési ideje) is beleszámít-e; nélküle a lenyomat ugyanaz,
+## mint a fejlődés bevezetése előtt (ott ezek a mezők nullák voltak).
+func digest(dev := false) -> String:
 	var h := HashingContext.new()
 	h.start(HashingContext.HASH_SHA256)
 	var arr := wood_mesh().surface_get_arrays(0)
 	for i in [Mesh.ARRAY_VERTEX, Mesh.ARRAY_NORMAL, Mesh.ARRAY_TEX_UV, Mesh.ARRAY_COLOR, Mesh.ARRAY_CUSTOM0, Mesh.ARRAY_CUSTOM1, Mesh.ARRAY_INDEX]:
 		if arr[i] != null:
-			h.update(arr[i].to_byte_array())
-	h.update(leaves_multimesh().buffer.to_byte_array())
-	h.update(flowers_multimesh().buffer.to_byte_array())
+			var a: Variant = arr[i]
+			if i == Mesh.ARRAY_CUSTOM1 and not dev:
+				a = _zero_every(a as PackedFloat32Array, 4, 3)
+			h.update(a.to_byte_array())
+	for buf in [leaves_multimesh().buffer, flowers_multimesh().buffer]:
+		h.update((buf if dev else _zero_every(buf, 16, 15)).to_byte_array())
 	return h.finish().hex_encode().substr(0, 16)
+
+
+static func _zero_every(a: PackedFloat32Array, stride: int, k: int) -> PackedFloat32Array:
+	var b := a.duplicate()
+	for i in range(k, b.size(), stride):
+		b[i] = 0.0
+	return b
+
+
+# ---------------------------------------------------------------- Fejlődés
+
+## A nyers születési idő normálva (0–DEV_SPAN): ugyanaz, mint a shaderben (common.gdshaderinc dev_at).
+func dev_at(b: float) -> float:
+	return b / maxf(dev_max, .0001) * DEV_SPAN
+
+
+## Kihajtott-e már az ág (látszik-e belőle valami) ezen a koron.
+func branch_born(b: int, age: float) -> bool:
+	return age >= 1.0 or dev_at(br_birth[b]) + .01 < age
+
+
+## Mekkora része nőtt ki az ágnak (0–1) ezen a koron.
+func branch_grown(b: int, age: float) -> float:
+	if age >= 1.0:
+		return 1.0
+	var t0 := dev_at(br_birth[b])
+	var t1 := dev_at(br_birth[b] + br_dur[b])
+	return clampf((age - t0) / maxf(t1 - t0, .0001), 0.0, 1.0)
+
+
+func flower_born(i: int, age: float) -> bool:
+	return age >= 1.0 or dev_at(flo_birth[i]) + .04 < age
+
+
+## A már kinőtt vázpontok befoglaló doboza (a fa saját keretében): a fiatal fa látszó mérete (a kamera, a felirat helye).
+func grown_aabb(age: float) -> AABB:
+	if age >= 1.0:
+		return AABB(bb_min, bb_max - bb_min)
+	var lo := Vector3.ZERO
+	var hi := Vector3.ZERO
+	for b in mini(br_birth.size(), max_twigs):
+		var k0 := br_k0[b]
+		var k1 := _own_end(br_k0, br_pts.size(), b)
+		var cnt := k1 - k0
+		for k in range(k0, k1):
+			var bt := br_birth[b] + br_dur[b] * float(k - k0) / maxf(cnt - 1, 1)
+			if dev_at(bt) > age:
+				break
+			lo = lo.min(br_pts[k])
+			hi = hi.max(br_pts[k])
+	var m := Vector3.ONE * float(g.leaf_len) * .6
+	return AABB(lo - Vector3(m.x, 0, m.z), hi - lo + Vector3(m.x * 2, m.y, m.z * 2))

@@ -33,7 +33,8 @@ extends RefCounted
 ## 7: a csillagok a játékoséi (data.stars, data.next_star), nem a bolygóké; a csillagon "planet" (melyik bolygón lett
 ##    csillag). A régi mentés bolygónkénti csillagai egy listába kerülnek (elengedés napja, bolygó, sorszám szerint), új
 ##    sorszámmal.
-const VERSION := 7
+## 8: a fán "grown", "grown_day" (fejlődés, care.gd growth_days); a régi mentés fái kifejlettek.
+const VERSION := 8
 const SAVE_PATH := "user://mag_mentes.json"
 const BACKUP_SUFFIX := ".bak"
 ## Ennyi fa fér egy bolygóra (teljesítménykeret); utána új bolygó születik.
@@ -212,6 +213,7 @@ func new_game(player_code := "") -> void:
 		t.planted = today() - 1
 		t.hatch = today() - 1
 		t.revealed = true
+		t.grown = Care.GROW_DAYS
 		place_tree(p, t)
 
 
@@ -442,6 +444,8 @@ func new_tree(p: Dictionary, dna: Array, origin: String, code := "") -> Dictiona
 		"planted": today(),
 		# másnap kel ki (a DESIGN szerint minden elvetett mag); a hívó felülírhatja
 		"hatch": today() + 1,
+		# csemeteként kel ki, és napról napra fejlődik (Care.growth_days)
+		"grown": 0,
 	})
 
 
@@ -479,6 +483,10 @@ func _fill_tree(t: Dictionary) -> Dictionary:
 		"name": str(t.get("name", "")),
 		# lappangó virágszín (M5, rejtett gén; -1 = a virágszínéhez tartozó alapérték, lásd Breeding.LATENT)
 		"hidden": clampi(int(t.get("hidden", -1)), -1, 13),
+		# fejlődés (v8, care.gd growth_days): ennyi növő napot zárt le "grown_day"-ig (-1: a kikeléstől számol); a régi
+		# mentés fái (nincs mező) kifejlettek
+		"grown": clampi(int(t.get("grown", Care.GROW_DAYS)), 0, Care.GROW_DAYS),
+		"grown_day": int(t.get("grown_day", -1)),
 	}
 
 
@@ -605,6 +613,7 @@ func debug_fill(p: Dictionary, upto: int) -> int:
 		t.planted = today() - 1 - r.randi() % 6
 		t.hatch = t.planted + 1
 		t.revealed = true
+		t.grown = Care.GROW_DAYS
 		place_tree(p, t)
 		if (p.founders as Array).is_empty():
 			p.founders = [dna.duplicate()]
@@ -711,6 +720,7 @@ func receive_seed(code: String, dna: Array, hidden: int, tree_code: String, shar
 
 ## Öntözés: a fa ma kapott vizet (felegyenesedik). Nincs vízszámláló, bármikor, bármennyiszer.
 func water_tree(t: Dictionary) -> void:
+	Care.commit_growth(t, today())
 	t.watered = today()
 
 

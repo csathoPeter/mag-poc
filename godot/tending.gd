@@ -109,7 +109,7 @@ func attach(t: Dictionary) -> void:
 			if c is MultiMeshInstance3D and (c as MultiMeshInstance3D).material_override.shader == FLOWER:
 				fmis.append(c)
 	var pg: PlantGen = t.high.pg
-	t.care = {"rec": rec, "fmis": fmis, "glint": _glint_flower(pg, str((t.g as Dictionary).code)), "cur": {}, "want": {}}
+	t.care = {"rec": rec, "fmis": fmis, "glint": null, "cur": {}, "want": {}}
 	day = GameState.today()
 	_retarget(t, true)
 
@@ -127,8 +127,9 @@ func refresh(snap := false) -> void:
 func _retarget(t: Dictionary, snap: bool) -> void:
 	var c: Dictionary = t.care
 	var rec: Dictionary = c.rec
-	var w := {"droop": 0.0, "thirst": 0.0, "size": 1.0, "open": 1.0, "fade": 0.0, "drop": 0.0, "pick": 0.0}
+	var w := {"droop": 0.0, "thirst": 0.0, "size": 1.0, "open": 1.0, "fade": 0.0, "drop": 0.0, "pick": 0.0, "age": 1.0}
 	if not rec.is_empty():
+		w.age = Care.maturity(rec, day)
 		var look := Care.flower_look(rec, day)
 		w.droop = Care.droop(rec, day)
 		w.thirst = clampf(w.droop * 1.1, 0.0, 1.0)
@@ -138,10 +139,19 @@ func _retarget(t: Dictionary, snap: bool) -> void:
 		w.drop = look.drop
 		w.pick = 1.0 if Care.gathered_today(rec, day) else 0.0
 	c.want = w
+	var grew := float(w.age) != float(t.get("age_want", -1.0))
+	t.age_want = w.age
+	if grew or c.glint == null:
+		# a csillanó virág a már kinőtt virágok közül (a fiatal fán a kinőtt ágvégeken)
+		c.glint = _glint_flower(t.high.pg, str((t.g as Dictionary).code), float(w.age))
 	_flags(t)
 	if snap or (c.cur as Dictionary).is_empty():
 		c.cur = w.duplicate()
 		_push(t)
+	if grew:
+		# a látszó méret a cél-korhoz (a kamera, a felirat, a jelek ehhez igazodnak), a kép a mostani korból nő tovább
+		host.apply_age(t, float(w.age), true)
+		host.apply_age(t, float(c.cur.age))
 
 
 ## A jelekhez: szomjas-e, és hozhat-e ma magot (napváltáskor, öntözés és gyűjtés után frissül, nem minden képkockán).
@@ -169,13 +179,15 @@ func _push(t: Dictionary) -> void:
 				sm.set_shader_parameter("bloom_fade", cur.fade)
 				sm.set_shader_parameter("bloom_drop", cur.drop)
 				sm.set_shader_parameter("pick", Vector4(pick_at.x, pick_at.y, pick_at.z, cur.pick))
+	if float(cur.age) != float(t.get("age", 1.0)):
+		host.apply_age(t, float(cur.age))
 	for fmi in c.fmis:
 		(fmi as Node3D).visible = float(cur.size) > .005
 
 
 ## A csillanó virág (ezen „vár” a mag): a lomb egyik külső, magasabb virága a részletes szinten, a fa kódjából
 ## választott irányban. A virág helye a növény saját koordinátáiban (vagy null, ha nincs virága).
-static func _glint_flower(pg: PlantGen, code: String) -> Variant:
+static func _glint_flower(pg: PlantGen, code: String, age := 1.0) -> Variant:
 	if pg.flo_p.is_empty():
 		return null
 	var az := float(Care.str_hash(code + "mag") % 6283) / 1000.0
@@ -187,8 +199,8 @@ static func _glint_flower(pg: PlantGen, code: String) -> Variant:
 	var best := -1
 	var best_s := -1e9
 	for i in pg.flo_p.size():
-		# a levágott ág virágain nem vár mag (M8)
-		if not pg.flower_live(i):
+		# a levágott ág virágain nem vár mag (M8), és a még ki nem nőtt ágvégeken sem
+		if not pg.flower_live(i) or not pg.flower_born(i, age):
 			continue
 		var p: Vector3 = pg.flo_p[i]
 		var s := (p - center).dot(dir) + (p.y - center.y) * .6
@@ -225,8 +237,9 @@ func _flower_at(t: Dictionary, pos: Vector2) -> Variant:
 	var xf: Transform3D = (t.high.node as Node3D).transform
 	var best: Variant = null
 	var bd := 90.0
+	var age := float(t.get("age", 1.0))
 	for k in pg.flo_p.size():
-		if not pg.flower_live(k):
+		if not pg.flower_live(k) or not pg.flower_born(k, age):
 			continue
 		var p: Vector3 = pg.flo_p[k]
 		var w: Vector3 = xf * p

@@ -18,7 +18,11 @@ void vertex() {
 	float t = smoothstep(b, b + 0.42, grow);
 	vec3 r = VERTEX - c;
 	vec3 out_dir = length(r) > 1e-5 ? normalize(r) : NORMAL;
-	VERTEX = mix(prev, c, g) + (r * 1.15 + out_dir * shell) * (0.22 * g + 0.78 * t) + sway(c, TIME) + droop_off(c);
+	float bd = CUSTOM1.w;
+	float ga = smoothstep(bd, bd + 0.025, age);
+	// a hajtás vége hegyesre fut (a friss rész vékony), és a fiatal fa egésze is karcsúbb
+	float ka = mix(0.1, 1.0, smoothstep(bd, bd + 0.15, age)) * mix(0.55, 1.0, age);
+	VERTEX = mix(prev, c, g * ga) + (r * 1.15 * ka + out_dir * shell) * (0.22 * g + 0.78 * t) * ga + sway(c, TIME) + droop_off(c);
 }
 
 void fragment() {

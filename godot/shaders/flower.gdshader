@@ -28,6 +28,9 @@ void vertex() {
 	vec3 axis = normalize(MODEL_MATRIX[1].xyz);
 	float g = smoothstep(INSTANCE_CUSTOM.x, INSTANCE_CUSTOM.x + 0.07, grow);
 	float open = smoothstep(INSTANCE_CUSTOM.x + 0.03, INSTANCE_CUSTOM.x + 0.15, grow) * bloom_open;
+	// fejlődés: csak a már kinőtt ágvégeken nyílik virág
+	float bd = INSTANCE_CUSTOM.w;
+	g *= smoothstep(bd, bd + 0.04, age);
 	// a leszedett virág: a helye a növény saját koordinátáiban
 	vec3 lp = (tree_inv * vec4(o, 1.0)).xyz;
 	float pk = pick.w * (1.0 - smoothstep(0.03, 0.12, distance(lp, pick.xyz)));
