@@ -206,7 +206,9 @@ func open_menu(on: bool) -> void:
 ## Fejlesztői mód be/ki (mérőszámok, apró gombsorok); save: a mentésbe is (flags.debug).
 func set_debug(on: bool, save := true) -> void:
 	debug = on
-	dbg_rows.visible = on
+	# a kapcsolók a fejlesztői fiókban vannak (debug_drawer.gd, ⚙ a jobb szélen); fent csak a mérőszám-sor látszik,
+	# a régi apró gombsorok rejtve maradnak (a fiók ezeket nyomja meg)
+	dbg_rows.visible = false
 	if save and host != null and not (host.game.data as Dictionary).is_empty() and host.game.persist:
 		host.game.data.flags.debug = on
 		host.game.save()
