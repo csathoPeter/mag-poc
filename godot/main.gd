@@ -123,6 +123,7 @@ var lod_force := false
 ## Képernyőképhez (--shot ...,lodK): a kiválasztott fa részletességi szintje rögzítve (-1 = automatikus).
 var shot_lod := -1
 var dbg_btn := {}
+var dbg_drawer := DebugDrawer.new()
 ## Önálló felbontás (2026. 11. 11.): iPhone-on tartós terhelésnél a telefon felmelegszik és visszafogja a GPU-t (a mérésen
 ## ~1 perc után 60 → 40 → 20 fps, beállítástól függetlenül). Ilyenkor a belső 3D-felbontás lépésenként csökken (legfeljebb
 ## 50%-ig), majd ha újra van tartalék, lassan visszanő az alapig. A fejlesztői felbontás-gomb kézire vált („auto” = ez).
@@ -137,6 +138,11 @@ var res_last := 0
 ## A fű sűrűsége melegedéskor (planet.grass_mult): ha a felbontás már 50%-on van és még mindig lassú, ez megy le
 ## lépésenként (1 → 0,8 → 0,6), lehűléskor előbb ez jön vissza, csak utána a felbontás.
 var grass_q := 1.0
+## A legkisebb önálló felbontás (nagy ablakon, pl. Mac-en 5000×2500, kisebb lehet: _fit_base_scale) és a feljebb lépés
+## utáni próbaidő: ha a próba alatt nem marad tiszta 60 fps, visszalép (így nem ragad 55 fps-en).
+var res_min := .5
+var res_trial := 0.0
+var res_trial_bad := 0.0
 ## Puha stílus be/ki (a fejlesztői „puha”/„régi” gomb, ?stilus=regi, a mérés „soft” kulcsa); _soft_globals() alkalmazza.
 var soft_on := true
 var _soft_last: Array = []
@@ -196,6 +202,11 @@ const BENCH_STEPS := [
 	["lent", "minden ki, 50%", {"scale": .5, "grass": false, "hi": 1, "shadow": false, "glow": false, "sky": 1, "tilt": false, "aa": false}],
 ]
 var bench_on := false
+## A fejlesztői fiókból indított mérés módja ("&beall", "&tartos", "&gyors"; üres = terheléses), az URL helyett.
+var bench_mode := ""
+## A fejlesztői fiók kapcsolói, amelyeket az új fák is követnek (a levél-körvonal és a kerek szirom, mindkettő discard).
+var dbg_leafcut := true
+var dbg_petal := true
 var bench_steps: Array = []
 var bench_wait := false
 var bench_i := -1
@@ -361,11 +372,8 @@ func _ready() -> void:
 	if shot_args.size() > 1 and shot_args[1] == "state":
 		shot_args = shot_args.slice(0, 2) + ["", "0"] + shot_args.slice(2)
 	_build_tag()
-	if DisplayServer.screen_get_scale() >= 2.5:
-		base_scale = .75
-	get_viewport().scaling_3d_scale = base_scale
-	scale_i = SCALES.find(base_scale)
-	res_scale = base_scale
+	_fit_base_scale()
+	get_viewport().size_changed.connect(_fit_base_scale)
 	_sync_dbg()
 	if shot_args.size() > 0 and shot_args[1] == "state":
 		grow_start = 1.0
@@ -635,6 +643,9 @@ func _build_ui() -> void:
 	bag.enter_code.connect(share.ask_code)
 	bag.cross.connect(crossing.start)
 	bag.sprouts.connect(crossing.open_pick)
+	# fejlesztői fiók (debug_drawer.gd): fejlesztői módban a jobb szélen ⚙, kicsúszó panel minden kapcsolóval; legfelül
+	dbg_drawer.host = self
+	layer.add_child(dbg_drawer)
 
 
 func _joy_center() -> Vector2:
@@ -730,6 +741,8 @@ func spawn(g: Dictionary, at: Vector3, rot: float, size_mul: float, det: float, 
 		lm.set_shader_parameter("base", Genes.hsl(g.leaf_h, g.leaf_s, g.leaf_l))
 		lm.set_shader_parameter("tip", Genes.hsl(g.leaf_tip_h, g.leaf_s * .9, g.leaf_l + .12))
 		pg.leaf_shape_params(lm)
+		if not dbg_leafcut:
+			lm.set_shader_parameter("leaf_cut", 0.0)
 		var li := MultiMeshInstance3D.new()
 		li.multimesh = pg.leaves_multimesh()
 		li.material_override = lm
@@ -739,6 +752,8 @@ func spawn(g: Dictionary, at: Vector3, rot: float, size_mul: float, det: float, 
 		var fm := ShaderMaterial.new()
 		fm.shader = FLOWER
 		pg.flower_shape_params(fm)
+		if not dbg_petal:
+			fm.set_shader_parameter("petal_cut", 0.0)
 		fm.set_shader_parameter("petal", Genes.hsl(g.petal_h, g.petal_s, g.petal_l))
 		fm.set_shader_parameter("petal_tip", Genes.hsl(g.petal_tip_h, g.petal_s * .9, minf(.92, g.petal_l + .12)))
 		fm.set_shader_parameter("throat", Genes.hsl(g.center_h, .7, .55))
@@ -972,6 +987,9 @@ func _latin(g: Dictionary) -> String:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# a nyitott fejlesztői fiók alatt a világ nem kap érintést
+	if dbg_drawer.covers(event):
+		return
 	# nyitott tábla, táska, csíraválasztás vagy elengedés-megerősítés alatt a világ nem reagál az érintésre
 	if board.visible or bag.visible or crossing.is_open() or herb.asking():
 		return
@@ -1111,6 +1129,10 @@ func _process(delta: float) -> void:
 		# debug (bármelyik elem a 6. után): fejlesztői mód (mérőszámok, apró gombsorok) a képen (M12)
 		if shot_frames == 1 and shot_args.size() > 6 and shot_args.slice(6).has("debug"):
 			hud.set_debug(true, false)
+		# drawer: fejlesztői mód és a fejlesztői fiók nyitva (debug_drawer.gd)
+		if shot_frames == 1 and shot_args.size() > 6 and shot_args.slice(6).has("drawer"):
+			hud.set_debug(true, false)
+			dbg_drawer.set_open(true)
 		if shot_frames == 1 and garden_mode == "planet" and shot_args.size() > 5:
 			if shot_args[5] == "plant":
 				plant_new()
@@ -1987,6 +2009,73 @@ func _update_tod(delta: float, snap: bool) -> void:
 		_tag_text()
 
 
+## Fejlesztői fiók (debug_drawer.gd): a kapcsolók állapota és állítása egy helyen.
+func dbg_get(k: String) -> bool:
+	match k:
+		"grass": return planet.grass_on
+		"shadow": return sun.shadow_enabled
+		"glow": return env.glow_enabled
+		"tilt": return tilt_ok
+		"aa": return get_viewport().msaa_3d != Viewport.MSAA_DISABLED
+		"soft": return soft_on
+		"leafcut": return dbg_leafcut
+		"petal": return dbg_petal
+		"fx": return seasons.visible
+		"hud": return hud.visible
+		"stars": return stars.visible
+		"auto": return auto_res
+		"hi": return hi_trees == HI_TREES
+	return false
+
+
+func dbg_set(k: String, on: bool) -> void:
+	match k:
+		"grass": planet.set_grass(on)
+		"shadow": sun.shadow_enabled = on
+		"glow": env.glow_enabled = on
+		"tilt":
+			tilt_ok = on
+			tilt_quad.visible = on and garden_mode == "planet" and view == "surface"
+		"aa": get_viewport().msaa_3d = Viewport.MSAA_2X if on else Viewport.MSAA_DISABLED
+		"soft": soft_on = on
+		"leafcut": _bench_cuts(on, dbg_petal)
+		"petal": _bench_cuts(dbg_leafcut, on)
+		"fx": seasons.visible = on
+		"hud": hud.visible = on
+		"stars": stars.visible = on
+		"auto":
+			auto_res = on
+			res_scale = base_scale
+			grass_q = 1.0
+			planet.set_grass_mult(1.0)
+			get_viewport().scaling_3d_scale = base_scale if on else SCALES[maxi(scale_i, 0)]
+		"hi":
+			hi_trees = HI_TREES if on else 1
+			_planet_lod()
+	_sync_dbg()
+
+
+## Mérés a fiókból: mode = "", "&beall", "&tartos", "&gyors".
+func dbg_bench(mode: String) -> void:
+	bench_mode = mode
+	start_bench()
+
+
+## Az alap belső 3D-felbontás az ablak képpontszámából: iPhone-on (sűrű kijelző) 75%, nagy ablakon annyi, hogy kb.
+## 2,6 millió képpontot rajzoljon (Mac, 5028×2544: 50%), a legkisebb önálló felbontás pedig kb. 1,6 millió képpontig
+## mehet le (ott 35%). Ablakméret-váltáskor újraszámolja; kézi felbontásnál csak az alapot jegyzi meg.
+func _fit_base_scale() -> void:
+	var ws := get_window().size
+	var px := maxf(float(ws.x * ws.y), 1.0)
+	var b := .75 if DisplayServer.screen_get_scale() >= 2.5 else 1.0
+	base_scale = snappedf(minf(b, clampf(sqrt(2.6e6 / px), .5, 1.0)), .05)
+	res_min = snappedf(clampf(sqrt(1.6e6 / px), .35, .5), .05)
+	scale_i = SCALES.find(base_scale)
+	if auto_res or scale_i < 0:
+		res_scale = base_scale
+		get_viewport().scaling_3d_scale = base_scale
+
+
 ## Önálló felbontás: valódi órával mért képkockaidő (mozgóátlag). 18,5 ms fölött 1,5 mp-ig → a felbontás 10 ponttal
 ## lejjebb (legfeljebb 50%); ha sokáig 60 fps közelében fut → 5 ponttal feljebb, legfeljebb az alapig. Ha a feljebb lépés
 ## után hamar vissza kell lépni, a következő próbáig kétszer annyit vár (legfeljebb 2 percet), így nem pulzál a kép.
@@ -2008,11 +2097,20 @@ func _auto_res() -> void:
 		res_hot = maxf(res_hot - sec * .5, 0.0)
 		res_ok = res_ok + sec if res_ema < 17.4 else 0.0
 	var t := now / 1000000.0
-	if res_hot > 1.5 and (res_scale > .5 + .001 or grass_q > .6 + .001):
+	# próbaidő a feljebb lépés után: ha nem marad tiszta 60 fps (55–57-en ragadna), visszalép, és később próbálja újra
+	if res_trial > 0.0:
+		res_trial -= sec
+		res_trial_bad = res_trial_bad + sec if res_ema > 17.3 else maxf(res_trial_bad - sec, 0.0)
+		if res_trial_bad > 1.0:
+			res_trial = 0.0
+			res_wait = minf(res_wait * 2.0, 120.0)
+			res_hot = 2.0
+	if res_hot > 1.5 and (res_scale > res_min + .001 or grass_q > .6 + .001):
 		if t - res_up_at < 20.0:
 			res_wait = minf(res_wait * 2.0, 120.0)
-		if res_scale > .5 + .001:
-			res_scale = maxf(.5, res_scale - .1)
+		res_trial = 0.0
+		if res_scale > res_min + .001:
+			res_scale = maxf(res_min, res_scale - (.05 if res_hot >= 2.0 else .1))
 			get_viewport().scaling_3d_scale = res_scale
 		else:
 			# a legkisebb felbontáson is lassú: a fű ritkul (a csomók puhán elhalványulnak, nem pattannak)
@@ -2030,6 +2128,8 @@ func _auto_res() -> void:
 			get_viewport().scaling_3d_scale = res_scale
 		res_up_at = t
 		res_ok = 0.0
+		res_trial = 8.0
+		res_trial_bad = 0.0
 		_sync_dbg()
 
 
@@ -3153,7 +3253,8 @@ func start_bench() -> void:
 	ui_col.visible = true
 	bench_rows.clear()
 	bench_steps = LOAD_STEPS
-	var q := str(JavaScriptBridge.eval("location.search", true)) if OS.has_feature("web") else ""
+	var q := (str(JavaScriptBridge.eval("location.search", true)) if OS.has_feature("web") else "") + bench_mode
+	bench_mode = ""
 	if q.contains("beall") or (bench_cli and OS.get_cmdline_user_args().has("--beall")):
 		bench_steps = BENCH_STEPS
 	# tartós mérés (?meres&tartos): ugyanaz a nézet sokszor egymás után – a melegedés miatti lassulás és az önálló
@@ -3214,6 +3315,8 @@ func _bench_cfg(cfg: Dictionary) -> void:
 ## Méréshez: a levél SDF-körvonala (M11) és a kerek szirom (puha stílus) ki-be – mindkettő discard-dal rajzol, ami
 ## az Apple GPU-n (rejtett felület eltávolítás) drága lehet. Kikapcsolva a részletes szinten a befoglaló burok látszik.
 func _bench_cuts(leaf: bool, petal: bool) -> void:
+	dbg_leafcut = leaf
+	dbg_petal = petal
 	for rec in plants:
 		var pg: PlantGen = rec.pg
 		for m in rec.mats:
@@ -3402,7 +3505,7 @@ func _lens(delta: float, snap: bool) -> void:
 	lens_mat.set_shader_parameter("legacy", 0.0)
 	lens_mat.set_shader_parameter("dof_mix", dof_mix)
 	# a lencse mintaszáma a felbontással: 60% fölött teljes, 50%-on (melegedés, önálló felbontás alja) fele annyi minta
-	lens_mat.set_shader_parameter("quality", clampf((get_viewport().scaling_3d_scale - .5) / .1, 0.0, 1.0))
+	lens_mat.set_shader_parameter("quality", clampf((get_viewport().scaling_3d_scale - res_min) / .1, 0.0, 1.0))
 	lens_mat.set_shader_parameter("focus", eye.distance_to(look))
 	lens_mat.set_shader_parameter("aperture", 1.6 if macro else 1.25)
 	lens_mat.set_shader_parameter("zone", .06 if macro else (maxf(float(trees[focus].w), 1.0) if surf else 0.0))
