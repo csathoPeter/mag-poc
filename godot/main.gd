@@ -1836,7 +1836,8 @@ func _planet_process(delta: float) -> void:
 		lod_timer = 0.0
 		_planet_lod()
 	# lebegő névtábla a kiválasztott fa fölött
-	var want := 1.0 if view == "surface" and focus >= 0 and trans_t > .5 and not macro and not herb.is_open() and not shaping.on else 0.0
+	var want := 1.0 if view == "surface" and focus >= 0 and trans_t > .5 and not macro and not herb.is_open() and not shaping.on \
+		and not share.is_open() else 0.0
 	tag_alpha = want if snap else lerpf(tag_alpha, want, 1.0 - exp(-delta * (3.0 if want > 0.0 else 8.0)))
 	if focus >= 0:
 		var t: Dictionary = trees[focus]
@@ -3536,3 +3537,14 @@ func _lens(delta: float, snap: bool) -> void:
 	grass_r = lerpf(grass_r, gr, kg)
 	grass_k = lerpf(grass_k, gk, kg)
 	planet.grass_view(cam.global_position, grass_pt, grass_r, grass_k)
+
+
+## A koppintás fényhulláma azonnal leáll (megosztás előtti képernyőképhez: a leszállás hulláma különben kék fényként
+## a kéregre kerül a képen).
+func stop_waves() -> void:
+	for t in trees:
+		if float(t.wave) >= 0.0:
+			t.wave = -1.0
+			for rec in t.lods:
+				for m in rec.mats:
+					m.set_shader_parameter("wave", -1.0)

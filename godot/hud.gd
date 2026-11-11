@@ -287,7 +287,7 @@ func _process(delta: float) -> void:
 	orb.queue_redraw()
 	# --- táska: bal lent (a csillagjel jobb lent, herbarium.gd)
 	_bump = maxf(_bump - delta * 1.1, 0.0)
-	# alakító módban rejtve: a lap gombjai ott vannak (M8)
+	# az alakító lap alul a teljes szélességet kitölti: alatta a batyu a „Levágom” gombra rajzolódott
 	pouch.visible = host.garden_mode == "planet" and not host.bench_on and not host.shaping.on
 	pouch.position = Vector2(10.0, vp.y - pouch.size.y - 14.0).floor()
 	pouch.queue_redraw()
