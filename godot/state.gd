@@ -150,9 +150,27 @@ func load_or_new(player_code := "") -> bool:
 		data = migrate(loaded)
 		day_offset = int(data.day_offset)
 		return false
+	_set_aside_broken()
 	new_game(player_code)
 	save()
 	return true
+
+
+## Ha van mentés, de egyik sem olvasható (sérült, félbe írt), nem írjuk felül csendben: félretesszük
+## („….serult-<időbélyeg>”), hogy a kert később még kimenthető legyen. Nem létező fájllal nem csinál semmit.
+func _set_aside_broken() -> void:
+	if not persist:
+		return
+	var stamp := str(int(Time.get_unix_time_from_system()))
+	for p in [path, path + BACKUP_SUFFIX]:
+		if p == "" or p == BACKUP_SUFFIX or not FileAccess.file_exists(p):
+			continue
+		var dest := "%s.serult-%s" % [p, stamp]
+		var err := DirAccess.rename_absolute(p, dest)
+		if err == OK:
+			push_warning("Olvashatatlan mentés félretéve: %s" % dest)
+		else:
+			push_warning("Olvashatatlan mentés, nem sikerült félretenni: %s (%s)" % [p, error_string(err)])
 
 
 ## Új játék: új játékoskód, első bolygó a kezdő fákkal (a játékoskódból determinisztikusan).

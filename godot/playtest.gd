@@ -215,6 +215,8 @@ func run() -> void:
 		await _until(func() -> bool: return float(host.tag_alpha) > .6, "a lebegő tábla")
 		await _click(host.shaping, "Alakítás")
 		_expect(host.shaping.on, "alakító mód")
+		await get_tree().process_frame
+		_expect(not host.hud.pouch.visible and not host.herb.chip.visible, "alakítás közben a batyu és a csillagjel rejtve (a lap gombjait ne takarja)")
 		_expect(not host.hud.orb.visible, "alakító módban a nap magja rejtve")
 		var t: Dictionary = host.trees[host.focus]
 		var b: int = host._shot_branch(t)
@@ -319,6 +321,22 @@ func run() -> void:
 		host.system.go(0)
 		await _settle("bolygóváltás (go)")
 	_check("bolygóváltás", {"active": 0})
+
+	# --- átfogó nézet (a kicsinyítés utolsó fokozata): minden bolygó látszik; az aktívra koppintva vissza közelre
+	host.orbit_zoom = PlanetSystem.ZOOM_ALL
+	await _frames(60)
+	_expect(host.system.overview() > .9, "az átfogó nézet kinyílt (%.2f)" % host.system.overview())
+	var seen := 0
+	for m in host.system.minis:
+		if (m.node as Node3D).visible:
+			seen += 1
+	_expect(seen == (game.data.planets as Array).size() - 1, "az átfogó nézetben minden bolygó látszik (%d)" % seen)
+	_touch(host.cam.unproject_position(host.planet.global_position))
+	await _frames(3)
+	_expect(float(host.orbit_zoom) >= 0.0 and host.view == "orbit", "koppintás az aktív bolygóra: vissza közelre")
+	await _frames(60)
+	_expect(host.system.overview() < .05, "az átfogó nézet bezárult")
+	_check("átfogó nézet", {"active": 0})
 
 	# --- megosztás: a saját fa mag-kódja barát magjaként (kétszer: másodszor nem jár)
 	var src: Dictionary = game.active_planet().trees[1]
@@ -463,6 +481,32 @@ func run() -> void:
 		host.retreat(host.show_saved_planet)
 		await _settle("v%d mentésből" % ver)
 		_check("v%d mentés felhozva" % ver, {"planets": (old.planets as Array).size(), "bag": (old.bag as Array).size(), "stars": want_stars})
+
+	# --- sérült mentés: nem íródik felül csendben, hanem félrekerül (a kert később kimenthető)
+	var junk := "{\"planets\": [ félbe írt mentés"
+	for p in [PATH, PATH + GameState.BACKUP_SUFFIX]:
+		var fj := FileAccess.open(p, FileAccess.WRITE)
+		fj.store_string(junk)
+		fj.close()
+	var keep_offset := GameState.day_offset
+	var g4 := GameState.new()
+	g4.path = PATH
+	_expect(g4.load_or_new("PROBA2"), "olvashatatlan mentésnél új játék indul")
+	# (az új játék a közös napeltolást nullázza; a szándékosan rossz JSON hibaüzenete nem hiba)
+	GameState.day_offset = keep_offset
+	_seen_errors = _log.errors.size()
+	var aside := 0
+	var dir_path := PATH.get_base_dir()
+	for fn in DirAccess.get_files_at(dir_path):
+		if fn.begins_with(PATH.get_file()) and fn.contains(".serult-"):
+			var full := dir_path.path_join(fn)
+			_expect(FileAccess.get_file_as_string(full) == junk, "a félretett mentés tartalma változatlan (%s)" % fn)
+			DirAccess.remove_absolute(full)
+			aside += 1
+	_expect(aside == 2, "a sérült mentés és a tartaléka is félretéve (%d)" % aside)
+	# (a jelenet a v1-es kertet mutatja: visszaírjuk, hogy az invariánsok rá vonatkozzanak)
+	game.save()
+	_check("sérült mentés félretéve, nem felülírva", {})
 
 	_finish()
 

@@ -570,7 +570,8 @@ func _process(delta: float) -> void:
 	# „Felnézek az égboltra”: ha semmi más nincs nyitva (csillag nélkül is: az üres égbolt elmondja, mi kerül oda)
 	var calm: bool = host.garden_mode == "planet" and host.saved_view and not is_open() and host.ui_col.visible and not host.fx.busy() \
 		and not host.hatching.active() and not host.stars.busy() and not host.bench_on
-	var show_chip: bool = calm and not host.macro and not host.shaping.on
+	# (az átfogó nézetben – minden bolygó egyszerre – nem)
+	var show_chip: bool = calm and not host.macro and not host.shaping.on and host.system.overview() < .5
 	chip.visible = show_chip
 	if show_chip:
 		chip.position = Vector2(vp.x - chip.size.x - 12.0, vp.y - chip.size.y - 22.0)
@@ -593,7 +594,12 @@ func _process(delta: float) -> void:
 	if not row.is_empty():
 		var tag: Label3D = host.tag
 		var cam: Camera3D = host.cam
-		var lines := tag.text.count("\n") + 1
+		# a tábla sorai a tördeléssel együtt (a hosszú sorok több sorba törnek, a gombok különben a szövegre kerültek)
+		var font: Font = tag.font if tag.font != null else ThemeDB.fallback_font
+		var lines := 0
+		for par in tag.text.split("\n"):
+			var tw := font.get_string_size(par, HORIZONTAL_ALIGNMENT_LEFT, -1, tag.font_size).x
+			lines += maxi(1, ceili(tw / (tag.width * .9)))
 		var half := tag.pixel_size * tag.font_size * 1.3 * lines * .5
 		var bottom := tag.global_position - cam.global_transform.basis.y * half
 		var sp := cam.unproject_position(bottom) if not cam.is_position_behind(bottom) else Vector2(vp.x * .5, vp.y - 120.0)
@@ -602,7 +608,15 @@ func _process(delta: float) -> void:
 			(b as Button).size = (b as Button).get_combined_minimum_size()
 			w += (b as Button).size.x
 		var x := floorf(clampf(sp.x - w * .5, 6.0, maxf(6.0, vp.x - w - 6.0)))
-		var y := floorf(clampf(sp.y + 10.0, vp.y * .35, vp.y - release_btn.size.y - 100.0))
+		var y_max := vp.y - release_btn.size.y - 100.0
+		# ha a tábla alja a gombsor alá lógna, a tábla feljebb csúszik (a gombsor a táska fölött marad)
+		var over := sp.y + 10.0 - y_max
+		if over > 0.0 and not cam.is_position_behind(bottom):
+			var dist := (tag.global_position - cam.global_position).length()
+			var per_px := 2.0 * dist * tan(deg_to_rad(cam.fov) * .5) / vp.y
+			tag.global_position += cam.global_transform.basis.y * (over * per_px)
+			sp.y -= over
+		var y := floorf(clampf(sp.y + 10.0, vp.y * .35, y_max))
 		var a := clampf((float(host.tag_alpha) - .5) * 2.0, 0.0, 1.0)
 		for b in row:
 			(b as Button).position = Vector2(x, y)
@@ -623,7 +637,7 @@ func _draw() -> void:
 		draw_rect(get_viewport_rect(), Color(.04, .02, .10, .42 * _ask.modulate.a))
 
 
-# ---------------------------------------------------------------- Érintés a csillagkép-nézetben
+# ---------------------------------------------------------------- Érintés felnézve (égbolt-nézet)
 
 ## Felnézve: az égre koppintva csillagot választ (a lapja nyílik); a lap mellett jobbra-balra húzva lapoz. (A lap és a
 ## „Vissza” gombjai maguk kezelik a koppintást.)

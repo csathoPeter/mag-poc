@@ -205,7 +205,11 @@ func busy() -> bool:
 # ---------------------------------------------------------------- Felépítés
 
 func _build_sheet() -> void:
-	_sheet.add_theme_stylebox_override("panel", BoardView.panel_style())
+	# a megosztás lapja gyakran egy másik lapon (táska, herbárium) vagy a fa tábláján nyílik: majdnem átlátszatlan,
+	# különben az alatta lévő szöveg átütött rajta
+	var sheet_sb := BoardView.panel_style()
+	sheet_sb.bg_color.a = .93
+	_sheet.add_theme_stylebox_override("panel", sheet_sb)
 	_sheet.mouse_filter = Control.MOUSE_FILTER_STOP
 	_sheet.visible = false
 	add_child(_sheet)
@@ -503,6 +507,7 @@ func share_planet() -> void:
 ## A játék képe a felület nélkül (a gombsor, a lebegő tábla és a gombok egy képkockára eltűnnek).
 func _capture_screen() -> Image:
 	_capturing = true
+	host.stop_waves()
 	var hide: Array = [host.ui_col, host.herb.release_btn, host.shaping.btn, tree_btn, home_btn, host.herb.chip, host.tag]
 	var was: Array = hide.map(func(n) -> bool: return bool(n.visible))
 	for n in hide:
