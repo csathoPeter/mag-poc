@@ -27,20 +27,23 @@ uniform float legacy = 0.0;
 // a legnagyobb elmosás sugara a kép magasságának arányában
 const float MAX_R = 0.024;
 const int TAPS = 20;
+// minőség (main.gd _lens, az önálló felbontásból): 1 = 20 minta, 0 = 10 minta (melegedéskor, a legkisebb felbontáson)
+uniform float quality = 1.0;
 
 void vertex() {
 	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
 }
 
+// Nézeti mélység a mélységpufferből. Szimmetrikus perspektívánál az inverz vetítés z és w sora csak a mélységtől függ,
+// így a teljes mátrixszorzás helyett két szorzás-összeadás is elég (mintánként olcsóbb; a kép ugyanaz).
 float view_z(vec2 uv, mat4 inv_proj) {
 	float d = texture(depth_tex, uv).r;
 #if CURRENT_RENDERER == RENDERER_COMPATIBILITY
-	vec3 ndc = vec3(uv, d) * 2.0 - 1.0;
+	float nz = d * 2.0 - 1.0;
 #else
-	vec3 ndc = vec3(uv * 2.0 - 1.0, d);
+	float nz = d;
 #endif
-	vec4 v = inv_proj * vec4(ndc, 1.0);
-	return -v.z / v.w;
+	return -(inv_proj[2][2] * nz + inv_proj[3][2]) / (inv_proj[2][3] * nz + inv_proj[3][3]);
 }
 
 // az elmosás mértéke (0..1) egy képpontban: a makett-sáv a képernyő helyéből, a mélységélesség a mélységből
@@ -72,7 +75,7 @@ void fragment() {
 		vec3 sum = c;
 		float wsum = 1.0;
 		// kis elmosáshoz kevesebb minta is elég
-		int taps = rc < 6.0 ? 8 : TAPS;
+		int taps = rc < 6.0 ? (quality < 0.5 ? 6 : 8) : int(mix(10.0, float(TAPS), quality));
 		for (int i = 0; i < taps; i++) {
 			float a = float(i) * 2.39996 + spin;
 			float rho = sqrt((float(i) + 0.5) / float(taps)) * rc;

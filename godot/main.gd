@@ -3388,6 +3388,8 @@ func _lens(delta: float, snap: bool) -> void:
 	dof_mix = lerpf(dof_mix, 1.0 if surf else 0.0, k)
 	lens_mat.set_shader_parameter("legacy", 0.0)
 	lens_mat.set_shader_parameter("dof_mix", dof_mix)
+	# a lencse mintaszáma a felbontással: 60% fölött teljes, 50%-on (melegedés, önálló felbontás alja) fele annyi minta
+	lens_mat.set_shader_parameter("quality", clampf((get_viewport().scaling_3d_scale - .5) / .1, 0.0, 1.0))
 	lens_mat.set_shader_parameter("focus", eye.distance_to(look))
 	lens_mat.set_shader_parameter("aperture", 1.6 if macro else 1.25)
 	lens_mat.set_shader_parameter("zone", .06 if macro else (maxf(float(trees[focus].w), 1.0) if surf else 0.0))
