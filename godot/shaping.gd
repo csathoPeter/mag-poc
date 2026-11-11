@@ -11,6 +11,10 @@ extends Node3D
 ##  - Húzás egy ágon: kötözés. Az ág tövétől nézve a fogás pontja az ujj felé fordul (legfeljebb 60°-kal); a cél a
 ##    mentésbe kerül, és az ág napok alatt hajlik arra (plant_gen.gd: BEND_DAYS). Amíg hajlik, kis fénylő zsinór köti a
 ##    célhoz (a zsinór napról napra rövidül). Ugyanazt az ágat újrakötve onnan hajlik tovább, ahol most tart.
+##    Hogy előre látszódjon, mi lesz (2026. 11. 11.): húzás közben az ág menta színű, halvány mása (a „cél”) ott áll,
+##    ahová a 6. napra hajlik (a korlátnál megáll), mellette felirat; elengedéskor a mása egy rövid időzített
+##    bemutatóban végigjárja a napokat (ma → holnap → … → 6 nap múlva). Kötött ágat kiválasztva a lapon napokra bontott
+##    sáv („2 napja kötözve · még 4 nap”), a fán a cél halvány mása.
 ##  - Visszavonás: a mai műveletek visszafelé visszavonhatók (kíméletes, büntetésmentes). A korábbi napokéi már a fa részei.
 ##  - A törzs (0. szint) nem vágható és nem köthető: rákoppintva egy halk tipp.
 ##  - Az alakítás nem öröklődik: az elengedett fa csillaga megőrzi a listát, de a magjából (visszahozás, gyűjtés,
@@ -31,6 +35,11 @@ const C_HI := Color(1.0, .86, .55)
 const C_CORD := Color(1.0, .8, .5)
 const C_CUT := Color(1.0, .78, .62)
 const C_STAR := Color(1.0, .88, .6)
+## A kötözés célja (az ág halvány mása ott, ahová hajlik): menta, hogy elváljon az arany kiemeléstől.
+const C_GHOST := Color(.55, 1.0, .84)
+## A kötözés utáni időzített bemutató hossza (mp), és amíg a végén megáll.
+const DEMO_LEN := 2.4
+const DEMO_HOLD := 1.4
 ## A lehullás hossza (mp), a zsinór pontjai, egyszerre legfeljebb ennyi zsinór.
 const FALL_LEN := 2.4
 const CORD_DOTS := 14
@@ -42,8 +51,9 @@ const MAX_DRAG := 60.0
 const MAX_TOTAL := 85.0
 ## Ennyi képpont alatt a húzás még koppintás.
 const DRAG_MIN := 18.0
-const HINT_IDLE := "Koppints egy ágra: kiemelem. Húzd el az ágat: odakötöm, és pár nap alatt arra hajlik.\nA fa mellé koppintva kilépsz."
-const HINT_SEL := "Kiemelve: ez az ág és ami rajta nő.\nKoppints rá még egyszer (vagy: Levágom). Húzd el: kötözés."
+const HINT_IDLE := "Koppints egy ágra: kiemelem. Fogj meg egy ágat, és húzd el: a halvány mása mutatja, hová hajlik 6 nap alatt.\nA fa mellé koppintva kilépsz."
+const HINT_SEL := "Kiemelve: ez az ág és ami rajta nő.\nKoppints rá még egyszer (vagy: Levágom). Fogd meg és húzd el: odakötöm."
+const HINT_DRAG := "A halvány mása ott, ahová hajlik. Engedd el: odakötöm.\nMa már enged egy kicsit, aztán napról napra hajlik, 6 nap alatt ér oda."
 const HINT_TRUNK := "A törzset nem vágom le és nem kötöm – az ágait igen."
 
 var host
@@ -72,6 +82,21 @@ var _title := Label.new()
 var _hint := Label.new()
 var _cut_btn: Button
 var _undo_btn: Button
+## A kiválasztott, kötött ág állapota a lapon: szöveg + napokra bontott sáv.
+var _status := Label.new()
+var _bar := Control.new()
+## A sávhoz: hány nap telt el a kötözés óta (-1 = nincs sáv).
+var _bar_days := -1
+## A kötözés célja: az ág (és ami rajta nő) halvány mása ott, ahová hajlik.
+var _ghost := MeshInstance3D.new()
+var _ghost_mat := ShaderMaterial.new()
+var _ghost_b := -1
+## Felirat a mása csúcsánál („6 nap alatt hajlik ide”, „holnap”…).
+var _tip := Label.new()
+## Az időzített bemutató a kötözés után: {"b", "from", "to", "t"} (üres = nincs).
+var _demo := {}
+## Képernyőképhez: a bemutató ennél a résznél (0–1) áll (-1 = fut).
+var demo_at := -1.0
 var _note := ""
 var _note_t := 0.0
 ## Még újraépítendő részletességi szintek: [fa, szint] (képkockánként egy).
@@ -87,6 +112,14 @@ func _ready() -> void:
 	_hi.top_level = true
 	_hi.visible = false
 	add_child(_hi)
+	_ghost_mat.shader = GLOW
+	_ghost_mat.render_priority = 6
+	_ghost_mat.set_shader_parameter("hi_col", C_GHOST)
+	_ghost.material_override = _ghost_mat
+	_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_ghost.top_level = true
+	_ghost.visible = false
+	add_child(_ghost)
 	_cords.multimesh = SeedFx._multimesh(SeedFx._quad(), CORDS * (CORD_DOTS + 2) + CORD_DOTS + 2, true)
 	_cords.material_override = SeedFx._mat(DOT, 7)
 	_cords.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -115,6 +148,15 @@ func _ready() -> void:
 	BoardView._style_label(_title, 16, BoardView.C_TEXT)
 	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_title)
+	BoardView._style_label(_status, 13, C_GHOST.lerp(Color.WHITE, .25))
+	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_status.visible = false
+	col.add_child(_status)
+	_bar.custom_minimum_size = Vector2(0, 8)
+	_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bar.visible = false
+	_bar.draw.connect(_draw_bar)
+	col.add_child(_bar)
 	BoardView._style_label(_hint, 12, BoardView.C_DIM)
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_hint)
@@ -126,6 +168,13 @@ func _ready() -> void:
 	BoardView.make_button(row, "Kész", stop, C_HI)
 	for b in [_cut_btn, _undo_btn]:
 		(b as Button).focus_mode = Control.FOCUS_NONE
+	BoardView._style_label(_tip, 13, C_GHOST.lerp(Color.WHITE, .35))
+	_tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tip.add_theme_constant_override("shadow_outline_size", 6)
+	_tip.add_theme_color_override("font_shadow_color", Color(.08, .05, .2, .75))
+	_tip.visible = false
+	root.add_child(_tip)
 
 
 # ---------------------------------------------------------------- Mód
@@ -167,7 +216,9 @@ func stop() -> void:
 	on = false
 	sel = -1
 	_grab = {}
+	_demo = {}
 	_set_hi(-1)
+	_hide_ghost()
 	_panel.visible = false
 	tree = {}
 	if host.focus >= 0:
@@ -180,7 +231,9 @@ func reset() -> void:
 	sel = -1
 	_grab = {}
 	tree = {}
+	_demo = {}
 	_set_hi(-1)
+	_hide_ghost()
 	_panel.visible = false
 	for f in _falls:
 		(f.node as Node3D).queue_free()
@@ -212,6 +265,7 @@ func press(index: int, pos: Vector2) -> bool:
 	if hit.is_empty() or not (_pg() as PlantGen).can_shape(int(hit.b)):
 		return false
 	var b := int(hit.b)
+	_demo = {}
 	_grab = {"index": index, "pos": pos, "cur": pos, "b": b, "at": hit.at, "u": hit.u, "was_sel": b == sel, "moved": false}
 	_set_hi(b)
 	return true
@@ -222,7 +276,11 @@ func drag(index: int, pos: Vector2) -> bool:
 		return false
 	_grab.cur = pos
 	if pos.distance_to(_grab.pos) > DRAG_MIN:
+		if not bool(_grab.moved):
+			_hint.text = HINT_DRAG
 		_grab.moved = true
+	if bool(_grab.moved):
+		_grab.plan = _plan(int(_grab.b), _grab.at, pos)
 	return true
 
 
@@ -231,6 +289,7 @@ func release(index: int, pos: Vector2) -> bool:
 		return false
 	var g := _grab
 	_grab = {}
+	_sync_panel()
 	var b := int(g.b)
 	if bool(g.moved) or pos.distance_to(g.pos) > DRAG_MIN:
 		tie(b, g.at, pos)
@@ -281,6 +340,8 @@ func _xf() -> Transform3D:
 func select(b: int) -> void:
 	if b >= 0 and b != sel:
 		Sound.fx("select")
+	if b != sel:
+		_demo = {}
 	sel = b
 	_set_hi(b)
 	_note = ""
@@ -301,42 +362,58 @@ func cut(b: int) -> void:
 	var w := _xf() * pg.br_pts[pg.br_k0[b]]
 	host.fx.burst(w, (_xf().basis * (pg.branch_point(b, .3) - pg.br_pts[pg.br_k0[b]])).normalized(), .7, C_CUT)
 	sel = -1
+	_demo = {}
 	_set_hi(-1)
 	_set_note("Levágtad. Ha meggondolod: Visszavonom (ma még lehet).")
 
 
-## Kötözés: a fogás pontja (at, a növény keretében) az ujj felé fordul az ág tövétől nézve. A cél az ág eredeti
-## keretében mentődik ("from" = ahol most tart, "to" = a cél), az ág napok alatt hajlik oda.
-func tie(b: int, at: Vector3, finger: Vector2) -> void:
+## A kötözés terve: hová fordul az ág, ha a fogás pontját (at, a növény keretében) az ujj felé húzzuk az ág tövétől
+## nézve. A cél az ág eredeti keretében ("cur" = ahol most tart, "to" = a cél); "clamped": a korlát megállította.
+## Üres, ha nincs értelmes irány. Húzás közben az előnézethez, elengedéskor a mentéshez.
+func _plan(b: int, at: Vector3, finger: Vector2) -> Dictionary:
 	var pg := _pg()
 	if not pg.can_shape(b) or not pg.branch_live(b):
-		return
+		return {}
 	var xf := _xf()
 	var cam: Camera3D = host.cam
 	var gw := xf * at
 	var plane := Plane(-cam.global_transform.basis.z, gw)
 	var hitw: Variant = plane.intersects_ray(cam.project_ray_origin(finger), cam.project_ray_normal(finger))
 	if hitw == null:
-		return
+		return {}
 	var f := xf.affine_inverse() * (hitw as Vector3)
 	var o := pg.br_pts[pg.br_k0[b]]
 	var v1 := (at - o).normalized()
 	var v2 := (f - o).normalized()
 	if v1.length() < .5 or v2.length() < .5 or v1.is_equal_approx(v2):
-		return
+		return {}
+	var clamped := false
 	var q := Quaternion(v1, v2)
-	var ang := q.get_angle()
-	if ang > deg_to_rad(MAX_DRAG):
+	if q.get_angle() > deg_to_rad(MAX_DRAG):
 		q = Quaternion(q.get_axis().normalized(), deg_to_rad(MAX_DRAG))
+		clamped = true
 	# a kirajzolt keretből (az ősök elfordulásával) az ág eredeti keretébe
 	var anc := pg.ancestors_basis(b)
 	var local := (anc.inverse() * Basis(q) * anc).get_rotation_quaternion()
-	var list := shape_of(tree)
-	var old := _tie_entry(list, b)
+	var old := _tie_entry(shape_of(tree), b)
 	var cur: Quaternion = PlantGen.tie_quat(old, GameState.today()) if not old.is_empty() else Quaternion.IDENTITY
 	var to := (local * cur).normalized()
 	if to.get_angle() > deg_to_rad(MAX_TOTAL):
 		to = Quaternion(to.get_axis().normalized(), deg_to_rad(MAX_TOTAL))
+		clamped = true
+	return {"cur": cur, "to": to, "old": old, "clamped": clamped}
+
+
+## Kötözés: a fogás pontja (at, a növény keretében) az ujj felé fordul az ág tövétől nézve. A cél az ág eredeti
+## keretében mentődik ("from" = ahol most tart, "to" = a cél), az ág napok alatt hajlik oda.
+func tie(b: int, at: Vector3, finger: Vector2) -> void:
+	var plan := _plan(b, at, finger)
+	if plan.is_empty():
+		return
+	var cur: Quaternion = plan.cur
+	var to: Quaternion = plan.to
+	var old: Dictionary = plan.old
+	var list := shape_of(tree)
 	var e := {"op": PlantGen.OP_TIE, "branch": b, "day": GameState.today(), "from": PlantGen.quat_arr(cur), "to": PlantGen.quat_arr(to)}
 	if not old.is_empty():
 		# a régi kötés a visszavonáshoz megmarad (a mentésben is), a helyére az új kerül
@@ -348,8 +425,12 @@ func tie(b: int, at: Vector3, finger: Vector2) -> void:
 	Sound.fx("tie")
 	sel = b
 	_set_hi(b)
-	_set_note(("Újrakötötted: innen hajlik tovább az új irány felé." if not old.is_empty() else "Odakötötted.") +
-		" Kb. %d nap alatt hajlik arra, addig a fénylő zsinór mutatja." % int(PlantGen.BEND_DAYS))
+	# a mása végigjárja a napokat: így látszik, mennyi idő alatt és hová hajlik
+	_demo = {"b": b, "from": cur, "to": to, "t": 0.0}
+	var n := int(PlantGen.BEND_DAYS)
+	_set_note(("Újrakötötted: innen hajlik tovább az új irány felé, %d nap alatt ér oda." % n if not old.is_empty() else
+		"Odakötötted. Ma már enged egy kicsit, aztán napról napra hajlik a halvány mása felé: %d nap múlva ott lesz." % n) +
+		" Addig a fénylő zsinór mutatja.")
 
 
 func _tie_entry(list: Array, b: int) -> Dictionary:
@@ -377,6 +458,7 @@ func undo() -> void:
 		rebuild(tree)
 		tree.wave = 0.0
 		sel = -1
+		_demo = {}
 		_set_hi(-1)
 		_set_note("Visszavontam: %s." % ("a levágott ág visszanőtt" if str(e.op) == PlantGen.OP_CUT else "a kötés lekerült"))
 		return
@@ -407,12 +489,159 @@ func _sync_panel() -> void:
 	if tree.is_empty():
 		return
 	_title.text = "Alakítás · %s" % Genes.latin_name((tree.g as Dictionary).dna)
-	_hint.text = _note if _note != "" else (HINT_SEL if sel >= 0 else HINT_IDLE)
+	if not _grab.is_empty() and bool(_grab.get("moved", false)):
+		_hint.text = HINT_DRAG
+	else:
+		_hint.text = _note if _note != "" else (HINT_SEL if sel >= 0 else HINT_IDLE)
+	_sync_status()
 	_cut_btn.disabled = sel < 0
 	_cut_btn.modulate.a = 1.0 if sel >= 0 else .4
 	var n := _today_ops()
 	_undo_btn.disabled = n == 0
 	_undo_btn.modulate.a = 1.0 if n > 0 else .4
+
+
+## A kiválasztott ág kötése a lapon: hány napja, mennyi van hátra, napokra bontott sáv.
+func _sync_status() -> void:
+	_bar_days = -1
+	var e := _tie_entry(shape_of(tree), sel) if sel >= 0 else {}
+	if e.is_empty():
+		_status.visible = false
+		_bar.visible = false
+		return
+	var day := GameState.today()
+	var d := day - int(e.get("day", day))
+	var n := int(PlantGen.BEND_DAYS)
+	_status.visible = true
+	if PlantGen.tie_done(e, day):
+		_status.text = "Kötözve volt: már odahajlott, ahová kötötted."
+		_bar.visible = false
+		return
+	var left := n - d
+	var since := "Ma kötötted" if d <= 0 else ("Tegnap kötötted" if d == 1 else "%d napja kötözve" % d)
+	var rest := "holnapra ott lesz, ahol a halvány mása" if left <= 1 else "még %d nap, és ott lesz, ahol a halvány mása" % left
+	_status.text = "%s · %s." % [since, rest]
+	_bar_days = d
+	_bar.visible = true
+	_bar.queue_redraw()
+
+
+## A sáv: BEND_DAYS szakasz, a letelt napok telve, a mai lüktet.
+func _draw_bar() -> void:
+	if _bar_days < 0:
+		return
+	var n := int(PlantGen.BEND_DAYS)
+	var gap := 4.0
+	var w := (_bar.size.x - gap * float(n - 1)) / float(n)
+	var pulse := .5 + .5 * sin(Time.get_ticks_msec() * .004)
+	for i in n:
+		var c: Color
+		if i < _bar_days:
+			c = Color(C_GHOST, .85)
+		elif i == _bar_days:
+			c = Color(C_GHOST, .35 + .35 * pulse)
+		else:
+			c = Color(1, 1, 1, .12)
+		_bar.draw_rect(Rect2(i * (w + gap), 0.0, w, _bar.size.y), c)
+
+
+# ---------------------------------------------------------------- A cél mása
+
+func _hide_ghost() -> void:
+	_ghost.visible = false
+	_tip.visible = false
+
+
+## A mása helye: a b. ág (a mai, kirajzolt állásából) q-ra fordítva (az ág eredeti keretében), a növény keretében.
+func _ghost_local(b: int, q: Quaternion) -> Transform3D:
+	var pg := _pg()
+	var o := pg.br_pts[pg.br_k0[b]]
+	var anc := pg.ancestors_basis(b)
+	var now: Quaternion = pg.bend_q.get(b, Quaternion.IDENTITY)
+	var d := anc * Basis(q) * Basis(now).inverse() * anc.inverse()
+	return Transform3D(d, o - d * o)
+
+
+static func _days_text(d: int) -> String:
+	if d <= 0:
+		return "ma"
+	if d == 1:
+		return "holnap"
+	return "%d nap múlva" % d
+
+
+## Képkockánként: húzás közben a terv, a kötözés után a bemutató, kiválasztott kötött ágon a cél.
+func _update_ghost(delta: float) -> void:
+	if not on or tree.is_empty():
+		_hide_ghost()
+		return
+	var b := -1
+	var q := Quaternion.IDENTITY
+	var text := ""
+	var n := PlantGen.BEND_DAYS
+	if not _grab.is_empty() and bool(_grab.moved):
+		var plan: Dictionary = _grab.get("plan", {})
+		if not plan.is_empty():
+			b = int(_grab.b)
+			q = plan.to
+			text = "Eddig hajlik – ennél jobban nem" if bool(plan.clamped) else "%d nap alatt hajlik ide" % int(n)
+	elif not _demo.is_empty() and int(_demo.b) == sel and sel >= 0:
+		if demo_at >= 0.0:
+			_demo.t = demo_at * (DEMO_LEN + DEMO_HOLD)
+		else:
+			_demo.t = float(_demo.t) + delta
+		var u := clampf(float(_demo.t) / DEMO_LEN, 0.0, 1.0)
+		# a napok egyenletesen telnek; a kötözés napján már enged egy kicsit (BEND_GIVE)
+		var d := u * n
+		var k := clampf((d + PlantGen.BEND_GIVE) / (n + PlantGen.BEND_GIVE), 0.0, 1.0)
+		b = sel
+		q = (_demo.from as Quaternion).slerp(_demo.to, k)
+		text = ("%d nap múlva: itt lesz" % int(n)) if u >= 1.0 else _days_text(int(d))
+		if float(_demo.t) > DEMO_LEN + DEMO_HOLD and demo_at < 0.0:
+			_demo = {}
+	elif sel >= 0:
+		var e := _tie_entry(shape_of(tree), sel)
+		var day := GameState.today()
+		if not e.is_empty() and not PlantGen.tie_done(e, day):
+			b = sel
+			q = PlantGen.quat_of(e.get("to"))
+			var left := int(e.day) + int(n) - day
+			text = "holnapra itt lesz" if left <= 1 else "%d nap múlva itt lesz" % left
+	var pg := _pg()
+	if b < 0 or b >= pg.branch_count() or not pg.branch_live(b):
+		_hide_ghost()
+		return
+	if b != _ghost_b or _ghost.mesh == null:
+		_ghost_b = b
+		_ghost.mesh = pg.subtree_wood_mesh(b)
+	var node_xf: Transform3D = (tree.high.node as Node3D).global_transform
+	var lx := _ghost_local(b, q)
+	_ghost.global_transform = node_xf * lx
+	var wm: ShaderMaterial = tree.high.mats[0]
+	for key in ["tree_xf", "tree_inv", "tree_scale", "max_path", "plant_h", "grow", "droop", "amp"]:
+		var v: Variant = wm.get_shader_parameter(key)
+		if v != null:
+			_ghost_mat.set_shader_parameter(key, v)
+	_ghost_mat.set_shader_parameter("shell", clampf(float(host.s_dist) * .0032, .011, .045))
+	_ghost_mat.set_shader_parameter("hi_amt", 1.1)
+	_ghost.visible = true
+	# a felirat a mása csúcsa fölött (a képen tartva)
+	var cam: Camera3D = host.cam
+	var tip := node_xf * (lx * pg.branch_point(b, 1.0))
+	if text == "" or cam.is_position_behind(tip):
+		_tip.visible = false
+		return
+	var vp := get_viewport().get_visible_rect().size
+	var sp := cam.unproject_position(tip)
+	_tip.text = text
+	_tip.reset_size()
+	var sz := _tip.size
+	var at := sp - Vector2(sz.x * .5, sz.y + 18.0)
+	# az ujj alól kicsit félre, hogy ne takarja
+	if not _grab.is_empty() and at.distance_to(_grab.cur as Vector2) < 70.0:
+		at.y -= 50.0
+	_tip.position = Vector2(clampf(at.x, 8.0, vp.x - sz.x - 8.0), clampf(at.y, 8.0, vp.y - sz.y - 8.0))
+	_tip.visible = true
 
 
 # ---------------------------------------------------------------- Újraépítés
@@ -430,6 +659,8 @@ func rebuild(t: Dictionary) -> void:
 	if t.has("care"):
 		t.care.glint = Tending._glint_flower(t.high.pg, str((t.g as Dictionary).code))
 		host.tending._flags(t)
+	if is_same(t, tree):
+		_ghost_b = -1
 	if is_same(t, tree) and _hi_b >= 0:
 		var b := _hi_b
 		_hi_b = -1
@@ -599,14 +830,13 @@ func _update_cords() -> void:
 	var day := GameState.today()
 	var calm: bool = _calm() and host.garden_mode == "planet"
 	if calm:
-		if not _grab.is_empty() and bool(_grab.moved) and not tree.is_empty():
+		if not _grab.is_empty() and bool(_grab.moved) and not tree.is_empty() and not (_grab.get("plan", {}) as Dictionary).is_empty():
+			# húzás közben a fogástól oda, ahová a cél viszi (a korlátnál megáll, nem követi tovább az ujjat)
 			var xf := _xf()
-			var cam: Camera3D = host.cam
-			var gw: Vector3 = xf * (_grab.at as Vector3)
-			var plane := Plane(-cam.global_transform.basis.z, gw)
-			var hw: Variant = plane.intersects_ray(cam.project_ray_origin(_grab.cur), cam.project_ray_normal(_grab.cur))
-			if hw != null:
-				n = _cord(mm, n, gw, hw as Vector3, 1.0, (tree.dir as Vector3))
+			var at: Vector3 = _grab.at
+			var gw: Vector3 = xf * at
+			var zw: Vector3 = xf * (_ghost_local(int(_grab.b), _grab.plan.to) * at)
+			n = _cord(mm, n, gw, zw, 1.0, (tree.dir as Vector3))
 		var count := 0
 		for t in host.trees:
 			if count >= CORDS:
@@ -675,6 +905,9 @@ func _process(delta: float) -> void:
 				_note = ""
 				_sync_panel()
 		_sync_hi()
+		if _bar.visible:
+			_bar.queue_redraw()
+	_update_ghost(delta)
 	if not _queue.is_empty():
 		var q: Array = _queue.pop_front()
 		_rebuild_lod(q[0], q[1])
