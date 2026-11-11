@@ -829,7 +829,7 @@ static func self_test() -> String:
 	t2.shaping.append({"op": PlantGen.OP_CUT, "branch": 4, "day": GameState.today()})
 	var gseed := gs._seed_of(t2)
 	var st := gs.release_tree(p, t)
-	var rseed := gs.recall_star(p, int(st.id))
+	var rseed := gs.recall_star(int(st.id))
 	var n1 := gs.sow_seed(rseed)
 	var n2 := gs.sow_seed(gseed)
 	var ok_inh := (st.shaping as Array).size() == 1 and (n1.shaping as Array).is_empty() and (n2.shaping as Array).is_empty() and str(n1.code) == str(t.code)

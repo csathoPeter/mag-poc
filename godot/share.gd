@@ -454,13 +454,13 @@ func share_seed(id: int) -> void:
 func share_star(id: int) -> void:
 	if _working:
 		return
-	var st: Dictionary = host.game.find_star(host.game.active_planet(), id)
+	var st: Dictionary = host.game.find_star(id)
 	if st.is_empty():
 		return
 	var code := ShareCode.for_tree(st)
 	_working = true
 	var img: Image = await _render_preview(st.dna, str(st.code))
-	_open_seed_sheet(st.dna, code, img, "Csillag a bolygóm egén: %s." % Genes.latin_name(st.dna))
+	_open_seed_sheet(st.dna, code, img, "Csillag az égboltomon: %s." % Genes.latin_name(st.dna))
 
 
 func _open_seed_sheet(dna: Array, code: String, photo: Image, text: String) -> void:

@@ -78,12 +78,19 @@ func run() -> void:
 	host._load_game(opts)
 	game = host.game
 	await _settle("indulás")
-	_check("új játék: 1 bolygó, 3 kezdő fa, üres táska", {"planets": 1, "trees0": 3, "bag": 0, "stars0": 0})
+	_check("új játék: 1 bolygó, 3 kezdő fa, üres táska", {"planets": 1, "trees0": 3, "bag": 0, "stars": 0})
 	# üres táska (csak a mai mag vár benne), 0 csillag: a csillagjel rejtve
 	await _press(host.hud.pouch)
 	_expect(host.bag.visible, "a batyura koppintva nyílik a táska")
 	await _close_bag()
-	_expect(not host.herb.chip.visible, "csillag nélkül nincs csillagjel")
+	# „Felnézek az égboltra” csillag nélkül is: az üres égbolt elmondja, mi kerül oda
+	_expect(host.herb.chip.visible, "a „Felnézek az égboltra” gomb látszik")
+	await _press(host.herb.chip)
+	await _frames(10)
+	_expect(host.herb.looking and host.stars.sky_on, "felnézve az égboltra")
+	await _click(host.herb, "Vissza a bolygóra")
+	await _settle("vissza a bolygóra")
+	_expect(not host.herb.looking and host.herb.chip.visible, "vissza a bolygóra: a gomb újra látszik")
 
 	# --- 1. nap: a nap magja a fénylő magra koppintva, kitöltés koppintásokkal, spirál, táska
 	await _solve_daily()
@@ -132,7 +139,7 @@ func run() -> void:
 	await _solve_daily()
 	var g1 := _bag_of("gyujtes")
 	var n1 := _bag_of("napi")
-	var stars_before: int = (game.active_planet().stars as Array).size()
+	var stars_before: int = (game.data.stars as Array).size()
 	var bag_before: int = (game.data.bag as Array).size()
 	if not g1.is_empty() and not n1.is_empty():
 		host.open_bag()
@@ -158,7 +165,7 @@ func run() -> void:
 		await _until(func() -> bool: return host.bag.visible, "a táska a spirál után")
 		await _close_bag()
 		await _settle("csíraválasztás")
-		_check("csíraválasztás: mag a táskába, két csillag", {"bag": bag_before - 1, "stars0": stars_before + 2})
+		_check("csíraválasztás: mag a táskába, két csillag", {"bag": bag_before - 1, "stars": stars_before + 2})
 		var kx := _bag_of("keresztezes")
 		_expect(str(kx.get("code", "")) == want_code, "a keresztezett mag a választott csíra kódjával")
 		_expect(game.pending_sprouts().is_empty(), "nincs több várakozó csíra")
@@ -172,7 +179,7 @@ func run() -> void:
 	# --- elengedés (közben koppintás: gyorsít) és visszahozás
 	var rel: Dictionary = _find_tree(func(t: Dictionary) -> bool: return int(t.hatch) <= GameState.today() and str(t.origin) == "kezdo")
 	var trees_before: int = (game.active_planet().trees as Array).size()
-	stars_before = (game.active_planet().stars as Array).size()
+	stars_before = (game.data.stars as Array).size()
 	if not rel.is_empty():
 		await _land(rel)
 		await _until(func() -> bool: return float(host.tag_alpha) > .6, "a lebegő tábla")
@@ -182,14 +189,22 @@ func run() -> void:
 		_touch(Vector2(200, 300))
 		await _until(func() -> bool: return not host.stars.busy(), "az elengedés vége")
 		await _until(func() -> bool: return host.herb.card_open(), "a csillag lapja")
-		_check("elengedés: a fa csillag lett", {"trees0": trees_before - 1, "stars0": stars_before + 1})
-		var st: Dictionary = game.find_star(game.active_planet(), host.herb.star_id)
+		_check("elengedés: a fa csillag lett", {"trees0": trees_before - 1, "stars": stars_before + 1})
+		var st: Dictionary = game.find_star(host.herb.star_id)
 		_expect(str(st.get("code", "")) == str(rel.code), "a csillag a fa kódjával")
+		_expect(str(st.get("planet", "")) == str(game.active_planet().code), "a csillag emlékszik a bolygójára")
+		# a lap bezárása: felnézve marad (az égbolt), aztán egy koppintás a csillagra újra nyitja
+		await _click(host.herb, "Bezár")
+		await _frames(30)
+		_expect(host.herb.looking and not host.herb.card_open(), "Bezár: felnézve marad, lap nélkül")
+		_touch(host.stars.screen_pos(int(st.id)))
+		await _frames(5)
+		_expect(host.herb.card_open() and host.herb.star_id == int(st.id), "koppintás a csillagra: a lapja")
 		bag_before = (game.data.bag as Array).size()
 		await _click(host.herb, "Visszahozom")
 		await _until(func() -> bool: return host.herb._flying.is_empty(), "a mag útja a táskába")
 		await _settle("visszahozás")
-		_check("visszahozás: mag a táskában, a csillag eltűnt", {"bag": bag_before + 1, "stars0": stars_before})
+		_check("visszahozás: mag a táskában, a csillag eltűnt", {"bag": bag_before + 1, "stars": stars_before})
 		var cs := _bag_of("csillag")
 		_expect(str(cs.get("code", "")) == str(rel.code), "a csillagról hozott mag a fa kódjával")
 
@@ -277,7 +292,8 @@ func run() -> void:
 	_expect((host.trees as Array).size() == 1, "a jelenetben 1 fa")
 	_check("csupasz bolygó kikelése", {"trees1": 1})
 
-	# --- az utolsó fa elengedése: fa nélküli bolygó, egy csillag
+	# --- az utolsó fa elengedése: fa nélküli bolygó, eggyel több csillag (a csillagok a játékoséi)
+	var stars_b: int = (game.data.stars as Array).size()
 	var last: Dictionary = game.data.planets[1].trees[0]
 	await _land(last)
 	await _until(func() -> bool: return float(host.tag_alpha) > .6, "a lebegő tábla")
@@ -287,7 +303,7 @@ func run() -> void:
 	await _frames(5)
 	host.herb.close()
 	await _settle("elengedés vége")
-	_check("fa nélküli bolygó", {"trees1": 0, "stars1": 1})
+	_check("fa nélküli bolygó", {"trees1": 0, "stars": stars_b + 1})
 	_expect((host.trees as Array).is_empty(), "a jelenetben nincs fa")
 	host.retreat(host.show_saved_planet)
 	await _settle("fa nélküli bolygó újra")
@@ -435,8 +451,9 @@ func run() -> void:
 	await _next_day()
 	_check("újratöltés után nap +1", {})
 
-	# --- régi mentések felhozása (migrate): a mostani kertből visszafelé lebutítva v3 és v1 formátumra
-	for ver in [3, 1]:
+	# --- régi mentések felhozása (migrate): a mostani kertből visszafelé lebutítva v6 (bolygónkénti csillagok), v3 és v1
+	# formátumra
+	for ver in [6, 3, 1]:
 		var old := _downgrade(GameState._plain(game.data), ver)
 		var f := FileAccess.open(PATH, FileAccess.WRITE)
 		f.store_string(JSON.stringify(old))
@@ -447,19 +464,23 @@ func run() -> void:
 		_expect(not g3.load_or_new(), "a v%d mentés betöltődik" % ver)
 		var ok := true
 		for p in g3.data.planets:
-			ok = ok and bool(p.born_seen) and not (p.founders as Array).is_empty()
-			for k in (p.stars as Array).size():
-				ok = ok and int(p.stars[k].seq) == k
-			ok = ok and int(p.next_star) == (p.stars as Array).size()
+			ok = ok and bool(p.born_seen) and not (p.founders as Array).is_empty() and not p.has("stars")
 			for t in p.trees:
-				ok = ok and (t.shaping as Array).is_empty() and (t.dir as Vector3).length() > .5
-		_expect(ok, "v%d: a hiányzó mezők pótolva (born_seen, alapító, csillag-sorszám, alakítás)" % ver)
+				ok = ok and (ver >= 6 or (t.shaping as Array).is_empty()) and (t.dir as Vector3).length() > .5
+		var gst: Array = g3.data.stars
+		for k in gst.size():
+			ok = ok and int(gst[k].seq) == k and str(gst[k].planet) != ""
+		ok = ok and int(g3.data.next_star) == gst.size()
+		_expect(ok, "v%d: a hiányzó mezők pótolva (born_seen, alapító, a csillagok egy listában, sorszámmal, bolygóval)" % ver)
+		var want_stars := 0
+		for p in old.planets:
+			want_stars += (p.get("stars", []) as Array).size()
 		g3.save()
 		host.game = g3
 		game = g3
 		host.retreat(host.show_saved_planet)
 		await _settle("v%d mentésből" % ver)
-		_check("v%d mentés felhozva" % ver, {"planets": (old.planets as Array).size(), "bag": (old.bag as Array).size()})
+		_check("v%d mentés felhozva" % ver, {"planets": (old.planets as Array).size(), "bag": (old.bag as Array).size(), "stars": want_stars})
 
 	# --- sérült mentés: nem íródik felül csendben, hanem félrekerül (a kert később kimenthető)
 	var junk := "{\"planets\": [ félbe írt mentés"
@@ -494,6 +515,22 @@ func run() -> void:
 static func _downgrade(d: Dictionary, ver: int) -> Dictionary:
 	var o: Dictionary = d.duplicate(true)
 	o.version = ver
+	# v7 előtt: a csillagok bolygónként (a "planet" mezőjük szerint), bolygónkénti sorszámmal
+	var by := {}
+	for p in o.planets:
+		p.stars = []
+		p.next_star = 0
+		by[str(p.code)] = p
+	for st in o.stars:
+		var p: Dictionary = by.get(str(st.get("planet", "")), o.planets[0])
+		st.erase("planet")
+		st.seq = int(p.next_star)
+		p.next_star = int(p.next_star) + 1
+		(p.stars as Array).append(st)
+	o.erase("stars")
+	o.erase("next_star")
+	if ver >= 6:
+		return o
 	for p in o.planets:
 		for k in ["born_seen", "next_star", "peak"]:
 			p.erase(k)
@@ -789,7 +826,8 @@ func _fail(what: String) -> void:
 	print("  HIBA: ", what)
 
 
-## Az invariánsok egy lépés után. want: "bag", "planets", "active", "treesN", "starsN" (N: a bolygó indexe).
+## Az invariánsok egy lépés után. want: "bag", "planets", "active", "treesN" (N: a bolygó indexe), "stars" (a játékos
+## csillagai).
 func _check(what: String, want: Dictionary) -> void:
 	_step += 1
 	var n0 := fails.size()
@@ -815,16 +853,12 @@ func _check(what: String, want: Dictionary) -> void:
 			dup += 1 if ids.has(int(t.id)) else 0
 			ids[int(t.id)] = true
 			top = maxi(top, int(t.id))
-		for s in p.stars:
-			dup += 1 if ids.has(int(s.id)) else 0
-			ids[int(s.id)] = true
-			top = maxi(top, int(s.id))
 		if (p.trees as Array).size() > GameState.PLANET_FULL:
 			_fail("túltöltött bolygó: %s (%d fa)" % [p.code, (p.trees as Array).size()])
 		for t in p.trees:
 			if (t.dir as Vector3).length() < .5:
 				_fail("fa irány nélkül: %s" % t.code)
-	for s in d.bag:
+	for s in d.stars + d.bag:
 		dup += 1 if ids.has(int(s.id)) else 0
 		ids[int(s.id)] = true
 		top = maxi(top, int(s.id))
@@ -854,9 +888,8 @@ func _check(what: String, want: Dictionary) -> void:
 		elif (k as String).begins_with("trees"):
 			var pi := int((k as String).trim_prefix("trees"))
 			v = (d.planets[pi].trees as Array).size() if pi < (d.planets as Array).size() else -1
-		elif (k as String).begins_with("stars"):
-			var pi := int((k as String).trim_prefix("stars"))
-			v = (d.planets[pi].stars as Array).size() if pi < (d.planets as Array).size() else -1
+		elif k == "stars":
+			v = (d.stars as Array).size()
 		if v != int(want[k]):
 			_fail("%s: %d, várt: %d" % [k, v, int(want[k])])
 	# hibaüzenetek a motorból
@@ -867,7 +900,7 @@ func _check(what: String, want: Dictionary) -> void:
 	print("LÉPÉS %d: %s – %s (nap %+d, %d bolygó, aktív %d, táska %d, fák %s, csillagok %s)" % [_step, what,
 		"rendben" if fails.size() == n0 else "HIBA", GameState.day_offset, (d.planets as Array).size(), int(d.active),
 		(d.bag as Array).size(), (d.planets as Array).map(func(p: Dictionary) -> int: return (p.trees as Array).size()),
-		(d.planets as Array).map(func(p: Dictionary) -> int: return (p.stars as Array).size())])
+		(d.stars as Array).size()])
 
 
 static func _no_hash(d: String) -> String:

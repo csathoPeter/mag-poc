@@ -128,7 +128,7 @@ func _ready() -> void:
 	_sphere.radial_segments = 20
 	_sphere.rings = 10
 	_ring_mesh = _make_ring(40)
-	# a 3D-kép fölött, a gombsor alatt (a csillagkép rajza után: a pára azt is betakarja)
+	# a 3D-kép fölött, a gombsor alatt (a csillagok rajza után: a pára azt is betakarja)
 	_layer.layer = 0
 	add_child(_layer)
 	_veil.set_anchors_preset(Control.PRESET_FULL_RECT)

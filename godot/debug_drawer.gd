@@ -6,7 +6,7 @@ extends Control
 ##    önálló felbontás és fűsűrűség, fps-grafikon az utolsó ~2 másodpercről;
 ##  - hozzáadás: fa, mag, csillag, új bolygó, bolygó feltöltése, nap +1, próba bolygó, mentés törlése;
 ##  - kapcsolók: fű, árnyék, ragyogás, lencse, élsimítás, puha stílus, levél-körvonal, kerek szirom, évszak-részecskék,
-##    felület, csillagkép, önálló felbontás, 4 részletes fa;
+##    felület, csillagok, önálló felbontás, 4 részletes fa;
 ##  - beállítások: felbontás, fűsűrűség, ég, napszak, évszak; mérések (terheléses, beállítások, tartós, gyors).
 ## A régi apró gombsorok (main.gd dbg_btn) megmaradtak a fiók mögött: a fiók gombjai azokat nyomják meg, így egy helyen
 ## van a logika. A panel alatt a világ nem kap érintést (main.gd _unhandled_input: covers()).
@@ -106,7 +106,7 @@ func _build() -> void:
 	g = _grid()
 	for t in [["fű", "grass"], ["árnyék", "shadow"], ["ragyogás", "glow"], ["lencse", "tilt"], ["élsimítás", "aa"],
 			["puha stílus", "soft"], ["levélforma", "leafcut"], ["kerek szirom", "petal"], ["részecskék", "fx"],
-			["felület", "hud"], ["csillagkép", "stars"], ["auto felbontás", "auto"], ["4 részletes fa", "hi"]]:
+			["felület", "hud"], ["csillagok", "stars"], ["auto felbontás", "auto"], ["4 részletes fa", "hi"]]:
 		_toggle(g, t[0], t[1])
 
 	_section("Beállítások")

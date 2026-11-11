@@ -1,21 +1,23 @@
 class_name SkyStars
 extends Node3D
-## Csillagok a bolygó egén (M6): az elengedett fák és a keresztezés el nem választott csírái csillagképet rajzolnak.
-##  - A csillagkép alakja determinisztikus: a csillagok helye a bolygókódból és a csillag sorszámából (seq) jön, egy
-##    lassan növő „ágas” mintával (minden új csillag egy korábbihoz kapcsolódik, a többitől távol). Egy csillag
-##    visszahozása nem mozdítja el a többit; a vonalak a legközelebbi megmaradt őshöz kötnek.
-##  - Hol látszik: a bolygó égboltja a kamera mögött lebeg, nagyon messze (mint a Hold az autóablakból): a kamera
-##    forgásakor puhán lemaradva követi, így bolygó-nézetben a bolygó fölött, a háttérben, leszállva a fa mögötti égen
-##    látszik. Telefonon (álló kép, keskeny látószög) egy rögzített égbolt-irány ritkán kerülne a képbe – ezért így.
-##  - Nappal halványan, éjjel fényesen; a csillag színe a fa virágszínéből. Olcsó: a helyek 3D-ben (a kamerától
-##    messze), a rajz 2D-ben (a 3D-kép fölött, a gombsor alatt, additív keveréssel: körök és vonalak, ≤64 csillag).
-##    A bolygó és a fák eltakarják (sugár–gömb próba). Így weben is biztosan ugyanaz: a WebGL-es próbán a képkockánként
-##    frissített MultiMesh-példányok nem rajzolódtak ki, a 2D rajz igen; és a lencse sem mossa el.
-##  - Csillagkép-nézet (herbárium, herbarium.gd): a kamera kicsit felé fordul (tilt), a csillagkép megnő, a kiválasztott
-##    csillag felé tolódik, gyűrű jelöli.
+## Csillagok az égbolton (M6; 2026. 11. 11. óta a játékoséi, nem a bolygóké): az elengedett fák és a keresztezés el nem
+## választott csírái. Nem csillagkép, nem gócpont: szétszórva ragyognak az égen.
+##  - A csillag helye determinisztikus: a játékoskódból és a csillag sorszámából (seq) egy pont az égbolt egységnyi
+##    négyzetén (R2 kis eltérésű sorozat, kis remegéssel): bármennyi csillag egyenletesen szóródik, és egy csillag
+##    visszahozása vagy egy új érkezése nem mozdítja el a többit. Nincsenek vonalak.
+##  - Hol látszik: az égbolt nagyon messze, a kamera mögött lebeg (mint a Hold az autóablakból): a kamera forgásakor
+##    puhán lemaradva követi. Bolygó-nézetben és leszállva az egész képet beborítja (a bolygó és a fák lombja eltakarja,
+##    ami mögöttük van), így mindig szétszórva látszik néhány.
+##  - „Felnézek az égboltra” (herbarium.gd): a kamera felfordul az ég felé (a bolygó lecsúszik a kép aljára), az ég
+##    elsötétül, és a csillagok a kép felső kétharmadába rendeződnek – mindegyik látszik, egy képernyőn. Koppintás egy
+##    csillagra: a lapja (gyűrű jelöli).
+##  - Nappal halványan, éjjel fényesen (felnézve mindig jól látszanak); a csillag színe a fa virágszínéből. Olcsó: a
+##    helyek 3D-ben (a kamerától messze), a rajz 2D-ben (a 3D-kép fölött, a gombsor alatt, additív keveréssel, ≤128
+##    csillag). Így weben is biztosan ugyanaz: a WebGL-es próbán a képkockánként frissített MultiMesh-példányok nem
+##    rajzolódtak ki, a 2D rajz igen; és a lencse sem mossa el.
 ##  - Elengedés: a fa fénnyel átjárva, a csúcsaitól kezdve fénypontokká oszlik, a fények összegyűlnek a koronája fölött,
-##    és egy fény lassan, csóvával felszáll az égre, ahol csillag lesz (release()). Visszahozás: a csillag felvillan és
-##    elhalványul (recall()); a mag útja a táskába a 2D rétegben (herbarium.gd).
+##    és egy fény lassan, csóvával felszáll az égre, ahol csillag lesz (release()); közben a kamera felnéz. Visszahozás:
+##    a csillag felvillan és elhalványul (recall()); a mag útja a táskába a 2D rétegben (herbarium.gd).
 ##
 ## A főjelenet (main.gd) tagjait használja, ezért a host típus nélküli: cam, planet, game, saved_view, garden_mode,
 ## night, trees, plants.
@@ -27,21 +29,22 @@ signal arrived(star_id: int)
 
 ## A csillagok távolsága a kamerától (a bolygó és a holdak mögött).
 const DIST := 150.0
-const MAX_STARS := 64
-## A csillagkép helye a kamera (lemaradva követett) keretében, érintősík-egységekben (tan szög; x jobbra, y fel):
-## közép és fél-szélesség/-magasság, és egy elrendezés-egység legnagyobb mérete. Kint/lent és a csillagkép-nézetben.
-const BOX_PASSIVE := Rect2(0.0, .255, .135, .075)
-const UNIT_PASSIVE := .0105
-const BOX_SKY := Rect2(0.0, .29, .155, .15)
-const UNIT_SKY := .021
-## A csillagkép-nézetben ennyivel fordul fel a kamera.
-const TILT_SKY := .16
-## Képpontban: a csillag (haló együtt) átmérője, a kiválasztott csillag gyűrűje, a vonal szélessége.
+## Ennyi csillag látszik legfeljebb (a sorszám szerinti első ennyi; a többi a mentésben megvan).
+const MAX_STARS := 128
+## Az égbolt egységnyi négyzete a képernyőn (a kép méretének arányában: bal felső sarok és méret). Szokásos nézetben az
+## egész kép (ami a bolygó vagy egy fa mögé esik, nem látszik), felnézve a kép felső része (alul a csillag lapja).
+const AREA_PASSIVE := Rect2(.05, .05, .90, .86)
+const AREA_SKY := Rect2(.08, .115, .84, .52)
+## Felnézéskor ennyit fordul fel a kamera (radián): a bolygó a kép aljára csúszik.
+const TILT_SKY := .42
+## Képpontban: a csillag (haló együtt) átmérője, a kiválasztott csillag gyűrűje.
 const PX_STAR := 26.0
 const PX_RING := 58.0
-const PX_LINE := 1.6
 ## A koppintás sugara (képpont): telefonon nagy érintési terület.
 const TAP_R := 46.0
+## Az R2 sorozat lépései (a „plasztikus szám” hatványainak reciproka) és a remegés (az egységnégyzetben).
+const R2_A := Vector2(.7548776662466927, .5698402909980532)
+const JITTER := .035
 
 ## Elengedés idővonala (mp): felragyogás, a fa a csúcsaitól fénnyé oszlik (UNGROW0–UNGROW1), a fények
 ## összegyűlnek, a fény felszáll (RISE0–RISE1), a csillag kigyullad, vége (LEN).
@@ -54,12 +57,13 @@ const MOTES := 42
 const TRAIL := 8
 
 var host
-## Csillagok: [{"id", "seq", "rec", "col", "fade" (0–1), "leave" (-1 vagy a távozás ideje), "pos" (elrendezés)}]
+## Csillagok: [{"id", "seq", "rec", "col", "fade" (0–1), "leave" (-1 vagy a távozás ideje), "pos" (helye az égbolt
+## egységnégyzetén)}]
 var list: Array = []
-## A csillagkép-nézet (herbárium) nyitva; a kiválasztott csillag azonosítója.
+## Felnézve (az égbolt-nézet nyitva); a kiválasztott csillag azonosítója (-1 = egyik sem, csak az égbolt).
 var sky_on := false
 var selected := -1
-## 0–1: átúszás a csillagkép-nézetbe; a kamera felfordulása (radián, a main.gd alkalmazza).
+## 0–1: átúszás a felnézésbe; a kamera felfordulása (radián, a main.gd alkalmazza).
 var sky_k := 0.0
 var tilt := 0.0
 ## Képernyőképhez: azonnal a végállapot (nincs átúszás).
@@ -73,22 +77,23 @@ var freeze_at := -1.0
 var speed := 1.0
 
 var _code := ""
-var _layout: Array = []
+## sorszám → hely az égbolt egységnégyzetén (a játékoskódból)
+var _spots := {}
 var _sky_q := Quaternion.IDENTITY
 var _sky_set := false
-var _fit_c := Vector2.ZERO
-var _fit_s := 0.0
-var _pan := Vector2.ZERO
-## a rajzréteg (a 3D fölött, a gombsor alatt) és a rajzlisták: csillagok, vonalak, gyűrű, az elengedés fényei
+## a rajzréteg (a 3D fölött, a gombsor alatt): az elsötétülő ég (felnézve) és a rajzlisták: csillagok, gyűrű, az
+## elengedés fényei
 var _layer := CanvasLayer.new()
+var _veil := Control.new()
 var _canvas := Control.new()
 var _dots: Array = []
-var _segs: Array = []
 var _rings: Array = []
 var _fx_dots: Array = []
 var _t := 0.0
-## a csillagok világbeli helye és képernyőhelye ebben a képkockában (id → Vector3 / Vector2)
+## a csillagok világbeli helye ebben a képkockában (id → Vector3)
 var _world := {}
+## ebben a képkockában a takaró gömbök (a bolygó és a látszó fák lombja): [[közép, sugár²]]
+var _occ: Array = []
 var _ring_t := -1.0
 var _ring_id := -1
 ## Weben (Compatibility) nincs HDR-ragyogás: ott a fénnyé váló fa erősebb önfényt kap, hogy ugyanúgy kifehéredjen.
@@ -101,6 +106,10 @@ func _ready() -> void:
 	# a gombsor (1. réteg) alatt, a 3D-kép fölött
 	_layer.layer = 0
 	add_child(_layer)
+	_veil.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_veil.draw.connect(_draw_veil)
+	_layer.add_child(_veil)
 	_canvas.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var cm := CanvasItemMaterial.new()
@@ -112,7 +121,8 @@ func _ready() -> void:
 
 # ---------------------------------------------------------------- Adat
 
-## A csillagok a mentett, aktív bolygóról (vagy semmi, ha nem a mentés látszik). A meglévők állapota (halványodás) megmarad.
+## A játékos csillagai (vagy semmi, ha nem a mentés látszik, pl. barát bolygója, próba). A meglévők állapota
+## (halványodás) megmarad.
 func sync() -> void:
 	var old := {}
 	for s in list:
@@ -121,19 +131,16 @@ func sync() -> void:
 	if host == null or not host.saved_view or host.game.data.is_empty():
 		_code = ""
 		return
-	var p: Dictionary = host.game.active_planet()
-	if str(p.code) != _code:
-		_code = str(p.code)
-		_layout.clear()
-		_fit_s = 0.0
-	var top := 0
-	for st in p.stars:
-		top = maxi(top, int(st.seq))
-	_ensure_layout(top)
-	for st in p.stars:
+	var code := str(host.game.data.player)
+	if code != _code:
+		_code = code
+		_spots.clear()
+	var all: Array = (host.game.data.stars as Array).duplicate()
+	all.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.seq) < int(b.seq))
+	for st in all:
 		var id := int(st.id)
 		var o: Dictionary = old.get(id, {})
-		list.append({"id": id, "seq": int(st.seq), "rec": st, "col": star_color(st), "pos": _layout[int(st.seq)],
+		list.append({"id": id, "seq": int(st.seq), "rec": st, "col": star_color(st), "pos": spot(int(st.seq)),
 			"fade": float(o.get("fade", 1.0 if old.is_empty() else 0.0)), "leave": -1.0})
 		if list.size() >= MAX_STARS:
 			break
@@ -165,69 +172,28 @@ func _find(id: int) -> Dictionary:
 	return {}
 
 
-## Az elrendezés: a 0. csillag középen; a következő egy korábbi mellé kerül (legtöbbször az előzőhöz, néha egy
-## régebbihez – így ágas, csillagkép-szerű alak nő), a többitől legalább MIN_GAP távolságra. Csak a bolygókódtól és a
-## sorszámtól függ (a jelenlévő csillagoktól nem), így a meglévők sosem mozdulnak el.
-const MIN_GAP := 4.4
+## A seq. csillag helye az égbolt egységnégyzetén: R2 sorozat (egymás utáni pontjai messze esnek egymástól, és
+## bármennyi pont egyenletesen tölti ki a négyzetet) a játékoskódból eltolva, kis remegéssel, körbefordítva. Csak a
+## játékoskódtól és a sorszámtól függ, így a meglévők sosem mozdulnak el.
+func spot(seq: int) -> Vector2:
+	if _spots.has(seq):
+		return _spots[seq]
+	var r := RandomNumberGenerator.new()
+	r.seed = hash(_code + "egbolt")
+	var o := Vector2(r.randf(), r.randf())
+	r.seed = hash(_code + "egbolt" + str(seq))
+	var p := o + R2_A * float(seq + 1) + Vector2(r.randf_range(-JITTER, JITTER), r.randf_range(-JITTER, JITTER))
+	p = Vector2(fposmod(p.x, 1.0), fposmod(p.y, 1.0))
+	_spots[seq] = p
+	return p
 
 
-func _ensure_layout(top: int) -> void:
-	while _layout.size() <= top:
-		var n := _layout.size()
-		if n == 0:
-			_layout.append({"p": Vector2.ZERO, "parent": -1, "dir": 0.0})
-			continue
-		var r := RandomNumberGenerator.new()
-		r.seed = hash(_code + "csillagkep" + str(n))
-		var parent := n - 1 if (r.randf() < .6 or n < 3) else r.randi() % (n - 1)
-		var pe: Dictionary = _layout[parent]
-		var base_a := float(pe.dir) if parent > 0 else r.randf() * TAU
-		var best := Vector2.ZERO
-		var best_a := 0.0
-		var best_d := -1.0
-		for k in 18:
-			var a := base_a + r.randf_range(-1.25, 1.25) * (1.0 + k * .12)
-			var c: Vector2 = (pe.p as Vector2) + Vector2.from_angle(a) * r.randf_range(5.0, 7.5)
-			var md := 99.0
-			for e in _layout:
-				md = minf(md, c.distance_to(e.p))
-			if md >= MIN_GAP:
-				best = c
-				best_a = a
-				best_d = md
-				break
-			if md > best_d:
-				best_d = md
-				best = c
-				best_a = a
-		_layout.append({"p": best, "parent": parent, "dir": best_a})
+# ---------------------------------------------------------------- Felnézés
 
-
-## A csillag vonala: a legközelebbi még égen lévő ősére, vagy ha nincs ilyen, a legközelebbi korábbi csillagra.
-func _link(s: Dictionary, present: Dictionary) -> int:
-	var seq := int(s.seq)
-	var p := int(_layout[seq].parent)
-	while p >= 0:
-		if present.has(p):
-			return p
-		p = int(_layout[p].parent)
-	var best := -1
-	var bd := 1e9
-	for q in present:
-		if int(q) < seq:
-			var d: float = (_layout[seq].p as Vector2).distance_to(_layout[int(q)].p)
-			if d < bd:
-				bd = d
-				best = int(q)
-	return best
-
-
-# ---------------------------------------------------------------- Csillagkép-nézet
-
-func open_sky(id: int) -> void:
+## Felnézés az égboltra (id: a kiválasztott csillag, -1 = csak az égbolt).
+func open_sky(id := -1) -> void:
 	sky_on = true
-	selected = id
-	_ring_t = 0.0
+	select(id)
 
 
 func close_sky() -> void:
@@ -247,7 +213,7 @@ func pick(pos: Vector2) -> int:
 	var bd := TAP_R * (1.25 if sky_on else 1.0)
 	for s in list:
 		var id := int(s.id)
-		if float(s.leave) >= 0.0 or id == hidden_id or not _world.has(id) or _occluded(_world[id]):
+		if float(s.leave) >= 0.0 or id == hidden_id or not _world.has(id) or (not sky_on and _occluded(_world[id])):
 			continue
 		var sp: Vector2 = host.cam.unproject_position(_world[id])
 		var d := sp.distance_to(pos)
@@ -271,23 +237,32 @@ func world_pos(id: int) -> Vector3:
 
 ## A bolygó vagy egy fa lombja takarja-e a csillagot (sugár–gömb próba a kamerától; a fa lombja egy gömb).
 func _occluded(w: Vector3) -> bool:
-	var planet: Planet = host.planet
 	var o: Vector3 = host.cam.global_position
 	var d := (w - o).normalized()
-	if _hits(o, d, planet.global_position, planet.radius * (1.0 + planet.h_max * .5)):
-		return true
-	for t in host.trees:
-		if bool(t.get("shown", false)) and _hits(o, d, host._tree_mid(t), maxf(float(t.w) * 1.05, float(t.h) * .32)):
+	for oc in _occ:
+		if _hits(o, d, oc[0], oc[1]):
 			return true
 	return false
 
 
-static func _hits(o: Vector3, d: Vector3, center: Vector3, r: float) -> bool:
+## A takaró gömbök ebben a képkockában (a bolygó, és a látszó fák lombja).
+func _gather_occluders() -> void:
+	_occ.clear()
+	var planet: Planet = host.planet
+	var pr := planet.radius * (1.0 + planet.h_max * .5)
+	_occ.append([planet.global_position, pr * pr])
+	for t in host.trees:
+		if bool(t.get("shown", false)):
+			var r := maxf(float(t.w) * 1.05, float(t.h) * .32)
+			_occ.append([host._tree_mid(t), r * r])
+
+
+static func _hits(o: Vector3, d: Vector3, center: Vector3, r2: float) -> bool:
 	var c := center - o
 	var tca := c.dot(d)
 	if tca < 0.0:
 		return false
-	return c.length_squared() - tca * tca < r * r
+	return c.length_squared() - tca * tca < r2
 
 
 ## Fut-e az elengedés (alatta a világ nem reagál; a koppintás gyorsít).
@@ -360,73 +335,56 @@ func _process(delta: float) -> void:
 	_t += delta
 	var on: bool = host != null and host.garden_mode == "planet" and host.saved_view
 	_canvas.visible = on
+	_veil.visible = on
 	if not on:
 		return
 	var cam: Camera3D = host.cam
-	var applied_tilt := tilt
 	var k := 1.0 if snap else 1.0 - exp(-delta * 2.0)
 	sky_k = lerpf(sky_k, 1.0 if sky_on else 0.0, k)
 	if absf(sky_k - (1.0 if sky_on else 0.0)) < .002:
 		sky_k = 1.0 if sky_on else 0.0
 	tilt = TILT_SKY * _smooth(sky_k)
-	# az égbolt kerete: a kamera kerete a felfordulás nélkül, puhán lemaradva (forgáskor az ég „mögötte marad”)
-	var b0 := cam.global_transform.basis.orthonormalized() * Basis(Vector3.RIGHT, -applied_tilt)
-	var q0 := b0.get_rotation_quaternion()
+	# az égbolt kerete: a kamera kerete, puhán lemaradva (forgáskor és felnézéskor az ég „mögötte marad”, aztán utoléri)
+	var q0 := cam.global_transform.basis.orthonormalized().get_rotation_quaternion()
 	if not _sky_set or snap:
 		_sky_q = q0
 		_sky_set = true
 	else:
 		_sky_q = _sky_q.slerp(q0, 1.0 - exp(-delta * 2.4)).normalized()
+	_gather_occluders()
 	if not rel.is_empty():
 		_step_release(delta)
 	# a visszahozott csillag elhalványulása után ki a listából
 	list = list.filter(func(s: Dictionary) -> bool: return float(s.leave) < 0.0 or _t - float(s.leave) < 1.5)
-	_place(delta, k)
+	_place(delta)
+	_veil.queue_redraw()
 	_canvas.queue_redraw()
 
 
-func _place(delta: float, k: float) -> void:
+## A csillagok helye ebben a képkockában: az égbolt egységnégyzete a képernyőn (szokásos nézetben az egész kép,
+## felnézve a felső része) → irány a lemaradó égbolt-keretben → világbeli pont messze a kamera mögött.
+func _place(delta: float) -> void:
 	var cam: Camera3D = host.cam
 	var vp: Vector2 = host.get_viewport().get_visible_rect().size
 	var night: float = clampf(float(host.night), 0.0, 1.0)
 	var e := _smooth(sky_k)
-	# a jelenlévő (nem rejtett, nem távozó) csillagok befoglaló doboza → méretezés a kerethez
-	var lo := Vector2(1e9, 1e9)
-	var hi := Vector2(-1e9, -1e9)
-	var present := {}
-	for s in list:
-		if float(s.leave) < 0.0:
-			present[int(s.seq)] = s
-			lo = lo.min(s.pos.p)
-			hi = hi.max(s.pos.p)
-	var box := Rect2(BOX_PASSIVE.position.lerp(BOX_SKY.position, e), BOX_PASSIVE.size.lerp(BOX_SKY.size, e))
-	var unit := lerpf(UNIT_PASSIVE, UNIT_SKY, e)
-	var want_s := unit
-	var want_c := Vector2.ZERO
-	if not present.is_empty():
-		var half := (hi - lo) * .5
-		want_c = (hi + lo) * .5
-		if half.x > .01:
-			want_s = minf(want_s, box.size.x / half.x)
-		if half.y > .01:
-			want_s = minf(want_s, box.size.y / half.y)
-	var kk := 1.0 if snap or _fit_s <= 0.0 else 1.0 - exp(-delta * 1.6)
-	_fit_s = lerpf(_fit_s, want_s, kk)
-	_fit_c = _fit_c.lerp(want_c, kk)
-	# a csillagkép-nézetben a kiválasztott csillag a kép közepe felé tolódik (a kamera „felé fordul”)
-	var want_pan := Vector2.ZERO
-	var sel := _find(selected)
-	if sky_on and not sel.is_empty():
-		want_pan = ((sel.pos.p as Vector2) - _fit_c) * _fit_s * .25
-	_pan = _pan.lerp(want_pan, k)
+	var area := Rect2(AREA_PASSIVE.position.lerp(AREA_SKY.position, e), AREA_PASSIVE.size.lerp(AREA_SKY.size, e))
+	var th := tan(deg_to_rad(cam.fov) * .5)
+	var aspect := vp.x / maxf(vp.y, 1.0)
 	var sky := Basis(_sky_q)
 	var eye := cam.global_position
 	_world.clear()
 	_dots.clear()
-	_segs.clear()
 	_rings.clear()
 	var shown := {}
-	var star_a := lerpf(.5, 1.75, night)
+	var n := 0
+	for s in list:
+		if float(s.leave) < 0.0:
+			n += 1
+	# sok csillagnál kicsit kisebbek, hogy felnézve se folyjanak össze
+	var size_k := clampf(sqrt(48.0 / maxf(float(n), 1.0)), .72, 1.0)
+	var passive_a := lerpf(.5, 1.75, night)
+	var star_a := lerpf(passive_a, maxf(passive_a, 1.6), e)
 	for s in list:
 		var id := int(s.id)
 		var fade := float(s.fade)
@@ -443,36 +401,21 @@ func _place(delta: float, k: float) -> void:
 		else:
 			fade = minf(1.0, fade + delta * 1.4)
 		s.fade = fade
-		var lp: Vector2 = box.position + ((s.pos.p as Vector2) - _fit_c) * _fit_s - _pan
-		var dir := (sky * Vector3(lp.x, lp.y, -1.0)).normalized()
+		var f: Vector2 = area.position + area.size * (s.pos as Vector2)
+		var dir := (sky * Vector3((f.x * 2.0 - 1.0) * th * aspect, (1.0 - f.y * 2.0) * th, -1.0)).normalized()
 		var w := eye + dir * DIST
 		_world[id] = w
-		if fade <= .001 or cam.is_position_behind(w) or _occluded(w):
+		# felnézve mind látszik (a bolygó ilyenkor a kép alján, a csillagok fölötte)
+		if fade <= .001 or cam.is_position_behind(w) or (e < .5 and _occluded(w)):
 			continue
 		var is_sel := id == selected and sky_on
-		var r := PX_STAR * .5 * (1.0 + .35 * e) * (1.25 if is_sel else 1.0) * (1.0 + 1.4 * flare)
+		var r := PX_STAR * .5 * size_k * lerpf(.85, 1.3, e) * (1.25 if is_sel else 1.0) * (1.0 + 1.4 * flare)
 		# lassú, halk pislákolás
 		var tw := 1.0 + .12 * sin(_t * 1.7 + float(s.seq) * 2.3)
 		var sp := cam.unproject_position(w)
 		shown[id] = sp
 		_dots.append([sp, r, s.col, star_a * fade * (1.0 + flare) * tw])
-	# vonalak: minden csillagtól a legközelebbi megmaradt őséig
-	var line_a := lerpf(.07, .42, night) * (1.0 + .3 * e)
-	for s in list:
-		if float(s.leave) >= 0.0 or float(s.fade) <= .001:
-			continue
-		var to := _link(s, present)
-		if to < 0:
-			continue
-		var o: Dictionary = present[to]
-		if float(o.fade) <= .001:
-			continue
-		# ha valamelyik vége takarva van (a bolygó vagy egy fa mögött), a vonal sem látszik
-		if not shown.has(int(s.id)) or not shown.has(int(o.id)):
-			continue
-		var c: Color = (s.col as Color).lerp(o.col, .5).lerp(Color(.92, .9, 1.0), .5)
-		_segs.append([shown[int(s.id)], shown[int(o.id)], c, line_a * minf(float(s.fade), float(o.fade)), PX_STAR * .5 * (1.0 + .35 * e) * .45])
-	# a kiválasztott csillag gyűrűje (a csillagkép-nézetben), és az érkezéskor szétfutó gyűrű
+	# a kiválasztott csillag gyűrűje (felnézve), és az érkezéskor szétfutó gyűrű
 	var ring_id := selected if sky_on else -1
 	if _ring_id >= 0 and _ring_t >= 0.0:
 		ring_id = _ring_id
@@ -573,20 +516,8 @@ func _fx_dot(cam: Camera3D, p: Vector3, size: float, px_unit: float, min_px: flo
 	_fx_dots.append([cam.unproject_position(p), r, col, a])
 
 
-## A rajz (additív): halvány haló, közép, fehéres mag; vonalak; gyűrűk. A mag a csillag színéből fehérbe hajlik.
+## A rajz (additív): halvány haló, közép, fehéres mag; gyűrűk. A mag a csillag színéből fehérbe hajlik.
 func _draw_sky() -> void:
-	for sg in _segs:
-		var a: Vector2 = sg[0]
-		var b: Vector2 = sg[1]
-		var gap: float = sg[4]
-		var d := b - a
-		if d.length() < gap * 2.2:
-			continue
-		var u := d.normalized()
-		var col: Color = sg[2]
-		var al: float = sg[3]
-		_canvas.draw_line(a + u * gap, b - u * gap, Color(col, minf(al * .35, 1.0)), PX_LINE * 3.0, true)
-		_canvas.draw_line(a + u * gap, b - u * gap, Color(col, minf(al, 1.0)), PX_LINE, true)
 	for dl in [_dots, _fx_dots]:
 		for d in dl:
 			_glow(d[0], d[1], d[2], d[3])
@@ -595,6 +526,23 @@ func _draw_sky() -> void:
 		var al: float = rg[3]
 		_canvas.draw_arc(rg[0], rg[1], 0.0, TAU, 56, Color(col, minf(al * .25, 1.0)), 7.0, true)
 		_canvas.draw_arc(rg[0], rg[1], 0.0, TAU, 56, Color(col, minf(al * .9, 1.0)), 2.0, true)
+
+
+## Felnézve az ég elsötétül (nappal erősebben): felül mély éjkék, lefelé halványuló – a csillagok nappal is ragyognak.
+func _draw_veil() -> void:
+	var e := _smooth(sky_k)
+	if e <= .001:
+		return
+	var night: float = clampf(float(host.night), 0.0, 1.0)
+	var a := e * lerpf(.72, .35, night)
+	var sz := _veil.size
+	var top := Color(.025, .02, .09, a)
+	var mid := Color(.04, .03, .12, a * .8)
+	var bot := Color(.05, .035, .14, 0.0)
+	_veil.draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(sz.x, 0), Vector2(sz.x, sz.y * .6), Vector2(0, sz.y * .6)]),
+		PackedColorArray([top, top, mid, mid]))
+	_veil.draw_polygon(PackedVector2Array([Vector2(0, sz.y * .6), Vector2(sz.x, sz.y * .6), Vector2(sz.x, sz.y), Vector2(0, sz.y)]),
+		PackedColorArray([mid, mid, bot, bot]))
 
 
 func _glow(p: Vector2, r: float, col: Color, a: float) -> void:

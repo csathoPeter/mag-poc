@@ -271,8 +271,9 @@ func _process(delta: float) -> void:
 	# --- a nap magja
 	var top_y := 18.0 + (dbg_box.size.y + 6.0 if dbg_box.size.y > 2.0 and (debug or stats.visible) else 0.0)
 	var planet_ok: bool = host.garden_mode == "planet" and not host.macro and not host.shaping.on
-	# az átfogó nézetben (minden bolygó egyszerre) a mag a szomszéd bolygókra lógna: ott elrejtőzik
-	var show_orb: bool = planet_ok and not _done and not host.bench_on and host.system.overview() < .5
+	# felnézve (az égbolt-nézetben) a nap magja nem takarja a csillagokat; az átfogó nézetben (minden bolygó egyszerre)
+	# a szomszéd bolygókra lógna: ott is elrejtőzik
+	var show_orb: bool = planet_ok and not _done and not host.bench_on and not host.herb.looking and host.system.overview() < .5
 	_orb_a = (1.0 if show_orb else 0.0) if shot else move_toward(_orb_a, 1.0 if show_orb else 0.0, delta / .8)
 	orb.visible = _orb_a > .01
 	orb.mouse_filter = Control.MOUSE_FILTER_STOP if _orb_a > .5 else Control.MOUSE_FILTER_IGNORE
@@ -286,7 +287,7 @@ func _process(delta: float) -> void:
 	orb.modulate.a = _orb_a
 	orb_call = maxf(orb_call - delta, 0.0)
 	orb.queue_redraw()
-	# --- táska: bal lent (a csillagjel jobb lent, herbarium.gd)
+	# --- táska: bal lent (a „Felnézek az égboltra” jobb lent, herbarium.gd)
 	_bump = maxf(_bump - delta * 1.1, 0.0)
 	# az alakító lap alul a teljes szélességet kitölti: alatta a batyu a „Levágom” gombra rajzolódott
 	pouch.visible = host.garden_mode == "planet" and not host.bench_on and not host.shaping.on
