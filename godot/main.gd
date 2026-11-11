@@ -123,6 +123,17 @@ var lod_force := false
 ## Képernyőképhez (--shot ...,lodK): a kiválasztott fa részletességi szintje rögzítve (-1 = automatikus).
 var shot_lod := -1
 var dbg_btn := {}
+## Önálló felbontás (2026. 11. 11.): iPhone-on tartós terhelésnél a telefon felmelegszik és visszafogja a GPU-t (a mérésen
+## ~1 perc után 60 → 40 → 20 fps, beállítástól függetlenül). Ilyenkor a belső 3D-felbontás lépésenként csökken (legfeljebb
+## 50%-ig), majd ha újra van tartalék, lassan visszanő az alapig. A fejlesztői felbontás-gomb kézire vált („auto” = ez).
+var auto_res := true
+var res_scale := 1.0
+var res_ema := 16.7
+var res_hot := 0.0
+var res_ok := 0.0
+var res_wait := 8.0
+var res_up_at := -100.0
+var res_last := 0
 ## Puha stílus be/ki (a fejlesztői „puha”/„régi” gomb, ?stilus=regi, a mérés „soft” kulcsa); _soft_globals() alkalmazza.
 var soft_on := true
 var _soft_last: Array = []
@@ -351,6 +362,7 @@ func _ready() -> void:
 		base_scale = .75
 	get_viewport().scaling_3d_scale = base_scale
 	scale_i = SCALES.find(base_scale)
+	res_scale = base_scale
 	_sync_dbg()
 	if shot_args.size() > 0 and shot_args[1] == "state":
 		grow_start = 1.0
@@ -518,8 +530,16 @@ func _build_ui() -> void:
 	# a gombok egy tagváltozó szótárában vannak, hogy a lambdák és a mérés is elérje őket
 	var btn := dbg_btn
 	btn.sc = _small_button(dbg, "100%", func() -> void:
-		scale_i = (scale_i + 1) % SCALES.size()
-		get_viewport().scaling_3d_scale = SCALES[scale_i]
+		# auto → 100% → 75% → 60% → 50% → auto
+		if auto_res:
+			auto_res = false
+			scale_i = 0
+		elif scale_i == SCALES.size() - 1:
+			auto_res = true
+			res_scale = base_scale
+		else:
+			scale_i += 1
+		get_viewport().scaling_3d_scale = res_scale if auto_res else SCALES[scale_i]
 		_sync_dbg())
 	btn.gr = _small_button(dbg, "fű be", func() -> void:
 		planet.set_grass(not planet.grass_on)
@@ -626,7 +646,7 @@ func _joy_move(p: Vector2) -> void:
 
 
 func _sync_dbg() -> void:
-	dbg_btn.sc.text = "%d%%" % roundi(get_viewport().scaling_3d_scale * 100.0)
+	dbg_btn.sc.text = ("auto %d%%" if auto_res else "%d%%") % roundi(get_viewport().scaling_3d_scale * 100.0)
 	dbg_btn.gr.text = "fű be" if planet.grass_on else "fű ki"
 	dbg_btn.ht.text = "fa %d" % hi_trees
 	dbg_btn.sk.text = SKY_MODES[sky_i]
@@ -1075,6 +1095,7 @@ func _process(delta: float) -> void:
 
 	if bench_on:
 		_bench_process(delta)
+	_auto_res()
 	_sync_ui_visible()
 
 	if shot_args.size() > 0 and queue.is_empty():
@@ -1961,6 +1982,43 @@ func _update_tod(delta: float, snap: bool) -> void:
 	env.ambient_light_energy = lerpf(1.2, 1.6, night)
 	if crossed:
 		_tag_text()
+
+
+## Önálló felbontás: valódi órával mért képkockaidő (mozgóátlag). 18,5 ms fölött 1,5 mp-ig → a felbontás 10 ponttal
+## lejjebb (legfeljebb 50%); ha sokáig 60 fps közelében fut → 5 ponttal feljebb, legfeljebb az alapig. Ha a feljebb lépés
+## után hamar vissza kell lépni, a következő próbáig kétszer annyit vár (legfeljebb 2 percet), így nem pulzál a kép.
+## Képernyőképnél és kézi felbontásnál nem dolgozik; a böngésző 60 fps-re korlátoz, a tartalékot csak próbálva látjuk.
+func _auto_res() -> void:
+	var now := Time.get_ticks_usec()
+	var dt := (now - res_last) / 1000.0 if res_last > 0 else 16.7
+	res_last = now
+	if not auto_res or not shot_args.is_empty():
+		return
+	# betöltés, shader-fordítás: egy-egy hosszú képkocka 100 ms-ra vágva csak röviden emeli az átlagot
+	dt = minf(dt, 100.0)
+	var sec := dt / 1000.0
+	res_ema = lerpf(res_ema, dt, .08)
+	if res_ema > 18.5:
+		res_hot += sec
+		res_ok = 0.0
+	else:
+		res_hot = maxf(res_hot - sec * .5, 0.0)
+		res_ok = res_ok + sec if res_ema < 17.4 else 0.0
+	var t := now / 1000000.0
+	if res_hot > 1.5 and res_scale > .5 + .001:
+		if t - res_up_at < 20.0:
+			res_wait = minf(res_wait * 2.0, 120.0)
+		res_scale = maxf(.5, res_scale - .1)
+		get_viewport().scaling_3d_scale = res_scale
+		res_hot = 0.0
+		res_ok = 0.0
+		_sync_dbg()
+	elif res_ok > res_wait and res_scale < base_scale - .001:
+		res_scale = minf(base_scale, res_scale + .05)
+		get_viewport().scaling_3d_scale = res_scale
+		res_up_at = t
+		res_ok = 0.0
+		_sync_dbg()
 
 
 ## Puha stílus (soft_light.gdshaderinc): az árnyék és a peremfény színe a bolygó légköréből és a napszakból.
@@ -3086,6 +3144,14 @@ func start_bench() -> void:
 	var q := str(JavaScriptBridge.eval("location.search", true)) if OS.has_feature("web") else ""
 	if q.contains("beall") or (bench_cli and OS.get_cmdline_user_args().has("--beall")):
 		bench_steps = BENCH_STEPS
+	# tartós mérés (?meres&tartos): ugyanaz a nézet sokszor egymás után – a melegedés miatti lassulás és az önálló
+	# felbontás próbája (előbb rögzített 75%-kal, aztán „auto”-val; az auto sorban a felbontás a sor végén)
+	if q.contains("tartos") or (bench_cli and OS.get_cmdline_user_args().has("--tartos")):
+		bench_steps = []
+		for i in 12:
+			bench_steps.append(["lent", "alap, %d." % (i + 1), {}])
+		for i in 12:
+			bench_steps.append(["lent", "auto, %d." % (i + 1), {"auto": true}])
 	# rövid próba a fejlesztéshez (?meres&gyors): fű ×2 lent, aztán 30 fa kint (bolygó-újraépítéssel)
 	if q.contains("gyors") or (bench_cli and OS.get_cmdline_user_args().has("--gyors")):
 		bench_steps = [LOAD_STEPS[3], LOAD_STEPS[8]]
@@ -3105,7 +3171,12 @@ func start_bench() -> void:
 
 
 func _bench_cfg(cfg: Dictionary) -> void:
-	get_viewport().scaling_3d_scale = cfg.get("scale", base_scale)
+	# a mérés rögzített felbontással mér; az „auto” sorban az önálló felbontás dolgozik (az alapról indulva)
+	var want_auto: bool = cfg.get("auto", not bench_on)
+	if not (want_auto and auto_res):
+		res_scale = base_scale
+	auto_res = want_auto
+	get_viewport().scaling_3d_scale = cfg.get("scale", res_scale if auto_res else base_scale)
 	planet.set_grass(cfg.get("grass", true))
 	hi_trees = cfg.get("hi", HI_TREES)
 	orbit_zoom = cfg.get("zoom", ORBIT_ZOOM)
@@ -3217,7 +3288,7 @@ func _bench_process(_delta: float) -> void:
 			total += d
 		var sorted := bench_dt.duplicate()
 		sorted.sort()
-		bench_rows.append({"view": step[0], "name": step[1], "fps": n / maxf(total, .001), "avg": total / maxi(n, 1) * 1000.0,
+		bench_rows.append({"view": step[0], "name": step[1] + (" → %d%%" % roundi(res_scale * 100.0) if auto_res else ""), "fps": n / maxf(total, .001), "avg": total / maxi(n, 1) * 1000.0,
 			"p95": sorted[mini(n - 1, int(n * .95))] * 1000.0, "cpu": bench_cpu / maxi(n, 1), "tris": bench_tris, "calls": bench_calls})
 		_bench_next()
 
