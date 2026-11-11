@@ -167,8 +167,11 @@ void vertex() {
 
 	uint key = hash_u(hash_u(uint(tile) + uint(seed) * 977u) + uint(k));
 	// a csomó helye a csempén belül (a lap paraméterterében egyenletesen)
-	float a = -1.0 + (float(ti) + rnd(key, 1u)) * stp;
-	float b = -1.0 + (float(tj) + rnd(key, 2u)) * stp;
+	// egyenletes szórás (kopasz foltok ellen): a csempén belül a k-adik csomó helye az R2 kis eltérésű sorozatból, enyhe rázással
+	// és csempénkénti eltolással. A sor bármely eleje egyenletesen fed, így ritka és sűrű fűnél sincs csomósodás, lyuk.
+	float tile_r = rnd(hash_u(uint(tile) + uint(seed) * 977u), 9u);
+	float a = -1.0 + (float(ti) + fract(tile_r + float(k) * 0.7548776662 + (rnd(key, 1u) - 0.5) * 0.18)) * stp;
+	float b = -1.0 + (float(tj) + fract(tile_r * 1.7 + float(k) * 0.5698402910 + (rnd(key, 2u) - 0.5) * 0.18)) * stp;
 	float ta = tan(a * PI * 0.25);
 	float tb = tan(b * PI * 0.25);
 	// sorrend szerinti sűrűség: ez a csomó ennél a sűrűségnél (csomó / egység²) jelenik meg
@@ -201,7 +204,7 @@ void vertex() {
 		float rnd1 = rnd(key, 5u);
 		float rnd2 = rnd(key, 6u);
 		float clump = smoothstep(0.2, 0.8, vnoise(dir * 9.0 + vec3(float(seed % 97))));
-		float hgt = blade_h * mix(0.55, 1.35, clump) * mix(0.75, 1.2, rnd(key, 4u)) * grow;
+		float hgt = blade_h * mix(0.85, 1.2, clump) * mix(0.75, 1.2, rnd(key, 4u)) * grow;
 		vec3 ref = abs(dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
 		vec3 e1 = normalize(cross(ref, dir));
 		vec3 e2 = cross(dir, e1);
