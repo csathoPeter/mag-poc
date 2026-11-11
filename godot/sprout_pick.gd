@@ -401,6 +401,7 @@ static func build_preview(g: Dictionary, det := .22) -> Dictionary:
 		lm.shader = LEAF
 		lm.set_shader_parameter("base", Genes.hsl(g.leaf_h, g.leaf_s, g.leaf_l))
 		lm.set_shader_parameter("tip", Genes.hsl(g.leaf_tip_h, g.leaf_s * .9, g.leaf_l + .12))
+		pg.leaf_shape_params(lm)
 		var li := MultiMeshInstance3D.new()
 		li.multimesh = pg.leaves_multimesh()
 		li.material_override = lm

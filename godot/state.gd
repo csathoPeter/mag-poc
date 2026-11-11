@@ -78,7 +78,7 @@ static func day_label(day: int) -> String:
 ##   mag: barát mag-kódja (`?mag=KOD`, M10: a mag a táskába kerül, „Kaptál egy magot”); bolygo: barát bolygójának linkje
 ##   (`?bolygo=…`, M10: vendégként nézhető, a mentés nem változik).
 static func launch_options() -> Dictionary:
-	var o := {"state": "", "player": "", "wipe": false, "day": null, "open": "", "mag": "", "bolygo": ""}
+	var o := {"state": "", "player": "", "wipe": false, "day": null, "open": "", "mag": "", "bolygo": "", "evszak": ""}
 	var pairs: Array = []
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--"):
@@ -112,6 +112,9 @@ static func launch_options() -> Dictionary:
 				o.mag = v.uri_decode()
 			"bolygo":
 				o.bolygo = v
+			"evszak":
+				# az évszak rögzítése teszteléshez (M11): tavasz, nyar, osz, tel; auto = a dátum szerint
+				o.evszak = v
 			"nap":
 				# a „+” az URL-ben szóközként is megérkezhet
 				o.day = v.replace("%2B", "").replace("+", "").strip_edges().to_int()

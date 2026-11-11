@@ -221,6 +221,8 @@ var herb := Herbarium.new()
 var system := PlanetSystem.new()
 # Alakítás (M8): metszés és kötözés leszállva a fánál (shaping.gd)
 var shaping := Shaping.new()
+## Évszakok (M11): globális shader-uniform a dátumból, évszakos részecskék és porszemek a kiválasztott fa körül.
+var seasons := Seasons.new()
 ## ?alakit: amint a fák kinőttek, leszállás az első fára és az alakító mód (teszteléshez)
 var want_shape := false
 ## Hang (M9): DNS-ből generált növényhangok, bolygó-ambient, effektek (sound.gd, sound_synth.gd)
@@ -289,6 +291,7 @@ func _ready() -> void:
 	add_child(system)
 	shaping.host = self
 	add_child(shaping)
+	seasons.host = self
 	system.swap.connect(_hop_swap)
 	system.arrived.connect(_on_hop_arrived)
 	system.born.connect(_on_planet_born)
@@ -309,6 +312,10 @@ func _ready() -> void:
 			shot_args = a.substr(7).split(",")
 		if a == "--bench":
 			bench_cli = true
+	# évszak (M11): ?evszak=… rögzíti; a próba-képek (--shot=…,planet / leaves, --bench) alapból nyár, összehasonlíthatók
+	Seasons.forced = Seasons.parse(opts.evszak)
+	seasons.neutral = bench_cli or (shot_args.size() > 1 and shot_args[1] != "state")
+	add_child(seasons)
 	# képernyőképnél és parancssori mérésnél nincs hang (nem számol, nem szól)
 	sound.enabled = shot_args.is_empty() and not bench_cli
 	# --shot=kép,state[,óra[,focusN|plant|zoomZ|macro]]: a mentésből induló kert (a többi bolygós lövéssel azonos helyeken)
@@ -330,6 +337,9 @@ func _ready() -> void:
 		if shot_args.size() > 4:
 			shot_hour = float(shot_args[4])
 		start_planet(shot_args[2], int(shot_args[3]))
+	elif shot_args.size() > 1 and shot_args[1] == "leaves":
+		# --shot=kép,leaves[,óra]: a 14 levélforma egymás mellett, a részletes szinten (M11)
+		_shot_leaves()
 	elif shot_args.size() > 0:
 		grow_start = float(shot_args[3])
 		var dna: Array = []
@@ -543,6 +553,10 @@ func _build_ui() -> void:
 	# teszt (M7): új, üres bolygó születik az aktív mellett (ha az aktív a legutolsó), akkor is, ha nem telt meg
 	btn.planet = _small_button(dbg3, "új bolygó", _debug_new_planet)
 	btn.wipe = _small_button(dbg3, "törlés", _wipe_tap)
+	# teszt (M11): az évszak körbe (dátum szerint → tavasz → nyár → ősz → tél); ?evszak=osz is
+	btn.season = _small_button(dbg3, "évszak", func() -> void:
+		seasons.cycle()
+		_sync_game_dbg())
 	# a játék állapota (bolygókód, a bolygók száma, a játék napja) külön apró sorban: így sosem tolja szélesebbre a gombsort
 	game_l.add_theme_font_size_override("font_size", 11)
 	game_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .6))
@@ -666,6 +680,7 @@ func spawn(g: Dictionary, at: Vector3, rot: float, size_mul: float, det: float, 
 		lm.shader = LEAF
 		lm.set_shader_parameter("base", Genes.hsl(g.leaf_h, g.leaf_s, g.leaf_l))
 		lm.set_shader_parameter("tip", Genes.hsl(g.leaf_tip_h, g.leaf_s * .9, g.leaf_l + .12))
+		pg.leaf_shape_params(lm)
 		var li := MultiMeshInstance3D.new()
 		li.multimesh = pg.leaves_multimesh()
 		li.material_override = lm
@@ -699,6 +714,55 @@ func spawn(g: Dictionary, at: Vector3, rot: float, size_mul: float, det: float, 
 	_set_tree_xf(rec)
 	plants.append(rec)
 	return rec
+
+
+## Képernyőkép a 14 levélformáról (a részletes szint mesh-e és shadere, a levélforma-gén szerint), feliratozva.
+func _shot_leaves() -> void:
+	clear_plants()
+	_leave_planet()
+	garden_mode = ""
+	tilt_quad.visible = false
+	joy.visible = false
+	var g0 := Genes.from_dna([0, 0, 3, 0, 0, 0], "levelek")
+	apply_sky(g0)
+	for n in flat_ground:
+		(n as Node3D).visible = false
+	for c in find_children("*", "CanvasLayer", true, false):
+		(c as CanvasLayer).visible = false
+	for k in 14:
+		var g := Genes.from_dna([0, 0, k, 0, 0, [0, 1, 3, 5][k % 4]], "levelek")
+		var pg := PlantGen.new()
+		pg.g = g
+		pg.detail = 1.0
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		mm.mesh = pg.leaf_mesh()
+		mm.instance_count = 1
+		var at := Vector3((k % 3 - 1) * 1.25, 2.55 - floori(k / 3.0) * 1.45, 0)
+		mm.set_instance_transform(0, Transform3D(Basis.from_scale(Vector3.ONE * 1.15), at))
+		mm.set_instance_custom_data(0, Color(0, .5, 1, 0))
+		var lm := ShaderMaterial.new()
+		lm.shader = LEAF
+		lm.set_shader_parameter("base", Genes.hsl(g.leaf_h, g.leaf_s, g.leaf_l))
+		lm.set_shader_parameter("tip", Genes.hsl(g.leaf_tip_h, g.leaf_s * .9, g.leaf_l + .12))
+		lm.set_shader_parameter("amp", 0.0)
+		pg.leaf_shape_params(lm)
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		mi.material_override = lm
+		plants_root.add_child(mi)
+		var l := Label3D.new()
+		l.text = Genes.LEAF[k][0]
+		l.font_size = 28
+		l.pixel_size = .006
+		l.position = at + Vector3(0, -.12, .05)
+		plants_root.add_child(l)
+	cam.fov = 38.0
+	target = Vector3(0, .25, 0)
+	dist = 12.4
+	yaw = 0.0
+	pitch = 0.0
 
 
 ## A fa saját kerete a shadereknek: a szél és a növekedés a fa "felfelé" irányához igazodik (a bolygón ferdén állnak).
@@ -986,6 +1050,11 @@ func _process(delta: float) -> void:
 
 	if shot_args.size() > 0 and queue.is_empty():
 		shot_frames += 1
+		# clean (bármelyik elem a 6. után): felület nélkül, a színek összehasonlításához (M11)
+		if shot_args.size() > 6 and shot_args.slice(6).has("clean"):
+			for c in find_children("*", "CanvasLayer", true, false):
+				(c as CanvasLayer).visible = false
+			tag.visible = false
 		if shot_frames == 1 and garden_mode == "planet" and shot_args.size() > 5:
 			if shot_args[5] == "plant":
 				plant_new()
@@ -1803,6 +1872,7 @@ func _update_tod(delta: float, snap: bool) -> void:
 	space_mat.set_shader_parameter("night", night)
 	space_mat.set_shader_parameter("dusk", dusk)
 	planet.set_night(night)
+	seasons.set_night(night)
 	for t in trees:
 		for rec in t.lods:
 			for m in rec.mats:
@@ -1922,7 +1992,7 @@ func _sync_game_dbg() -> void:
 	_sync_daily()
 	var where: String = (game.active_planet().code as String) if saved_view else ("vendég: %s" % str(guest.code) if not guest.is_empty() else "nem mentődik")
 	var n: int = (game.data.planets as Array).size() if not game.data.is_empty() else 0
-	game_l.text = "%s%s · %s" % [where, (" (%d/%d bolygó)" % [game.active_index() + 1, n]) if saved_view and n > 1 else "", GameState.day_label(GameState.today())]
+	game_l.text = "%s%s · %s · %s" % [where, (" (%d/%d bolygó)" % [game.active_index() + 1, n]) if saved_view and n > 1 else "", GameState.day_label(GameState.today()), seasons.label()]
 
 
 ## Ellenőrzéshez (--shot ...,state): a mentett állapot tömör lenyomata és a fák helye.

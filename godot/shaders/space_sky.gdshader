@@ -1,4 +1,5 @@
 shader_type sky;
+#include "res://shaders/color_space.gdshaderinc"
 // Az űr a bolygók körül: nappal álomszerű pasztell köd, alkonyatkor rózsaszín-lila, éjjel mélykék csillagokkal.
 // A színátmenet a fény irányához igazodik, nem a "fent"-hez, mert a bolygót bármerre lehet forgatni.
 uniform float night = 0.0;
@@ -60,14 +61,14 @@ void sky() {
 		n1 = fbm(d * 2.2);
 		n2 = fbm(d * 4.5 + n1 * 1.5);
 	}
-	vec3 day = mix(mix(day_b, day_c, smoothstep(0.35, 0.65, n1)), day_a, smoothstep(0.45, 1.0, l));
+	vec3 day = mix(mix(col_in(day_b), col_in(day_c), smoothstep(0.35, 0.65, n1)), col_in(day_a), smoothstep(0.45, 1.0, l));
 	day = mix(day, day * 1.05 + 0.05, smoothstep(0.5, 0.75, n2));
-	vec3 du = mix(dusk_b, dusk_a, pow(l, 1.4));
+	vec3 du = mix(col_in(dusk_b), col_in(dusk_a), pow(l, 1.4));
 	du = mix(du, du * 1.12 + 0.03, smoothstep(0.5, 0.78, n2));
-	vec3 ni = mix(night_b, night_a, smoothstep(0.3, 0.75, n1) * 0.8 + l * 0.25);
+	vec3 ni = mix(col_in(night_b), col_in(night_a), smoothstep(0.3, 0.75, n1) * 0.8 + l * 0.25);
 	ni += vec3(0.32, 0.14, 0.45) * smoothstep(0.52, 0.85, n2) * 0.3;
 	vec3 c = mix(mix(day, du, dusk), ni, night);
 	float s = stars(d, 170.0, 0.975) + stars(d, 60.0, 0.993) * 1.6;
 	c += vec3(0.95, 0.95, 1.0) * s * mix(0.08, 1.0, night);
-	COLOR = c;
+	COLOR = col_out(c);
 }

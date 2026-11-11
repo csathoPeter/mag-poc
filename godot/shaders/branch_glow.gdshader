@@ -24,5 +24,5 @@ void vertex() {
 void fragment() {
 	float f = 1.0 - abs(dot(normalize(NORMAL), normalize(VIEW)));
 	float pulse = 0.8 + 0.2 * sin(TIME * 3.2);
-	ALBEDO = hi_col * (0.2 + f * f * 0.9) * hi_amt * pulse;
+	ALBEDO = col_out(col_in(hi_col) * (0.2 + f * f * 0.9) * hi_amt * pulse);
 }

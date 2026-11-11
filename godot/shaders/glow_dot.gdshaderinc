@@ -1,3 +1,4 @@
+#include "res://shaders/color_space.gdshaderinc"
 // Fénylő pont a kamera felé fordított négyszögön (a „nagy pillanat” golyói, a mag, a kelésre váró magok jele).
 // Olcsó ragyogás: önvilágító mag + puha, additív haló, valódi bloom nélkül (weben is ugyanígy néz ki).
 // A MultiMesh példány színe (COLOR: szín és erősség az alfában) és saját adata (INSTANCE_CUSTOM):
@@ -31,5 +32,5 @@ void fragment() {
 	float a = mix(core + halo, ring, ring_v) * edge;
 	// a mag közepe fehérbe hajlik, a haló megtartja a pasztell színt
 	vec3 c = mix(col_v.rgb, vec3(1.0), core * 0.45 * (1.0 - ring_v));
-	ALBEDO = c * a * max(col_v.a, 0.0);
+	ALBEDO = col_out(c * a * max(col_v.a, 0.0));
 }

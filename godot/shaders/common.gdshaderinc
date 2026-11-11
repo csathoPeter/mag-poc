@@ -1,3 +1,5 @@
+#include "res://shaders/color_space.gdshaderinc"
+#include "res://shaders/season.gdshaderinc"
 uniform float grow = 1.0;
 uniform float amp = 0.09;
 uniform float plant_h = 5.0;

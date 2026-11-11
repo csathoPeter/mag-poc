@@ -1,4 +1,5 @@
 shader_type spatial;
+#include "res://shaders/color_space.gdshaderinc"
 uniform vec3 moss : source_color = vec3(0.4, 0.5, 0.25);
 varying vec3 world_v;
 
@@ -13,7 +14,7 @@ void vertex() { world_v = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 
 void fragment() {
 	float tex = n(world_v.xz * 1.1) * 0.5 + n(world_v.xz * 3.7) * 0.3 + n(world_v.xz * 11.0) * 0.2;
-	ALBEDO = moss * (0.62 + 0.62 * tex);
+	ALBEDO = col_out(col_in(moss) * (0.62 + 0.62 * tex));
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.05;
 }

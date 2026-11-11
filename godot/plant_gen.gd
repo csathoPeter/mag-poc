@@ -271,19 +271,34 @@ func wood_mesh() -> ArrayMesh:
 	return m
 
 
+## A levél félszélessége a hossz mentén (a levélforma-gén alapformája, karéjok nélkül).
+func _leaf_w(t: float) -> float:
+	return pow(maxf(sin(PI * pow(clampf(t, 0.0, 1.0), g.leaf_pow)), 0.0), .8) * g.leaf_w
+
+
+## A levél mesh-e. A részletes szinten (M11) csak egy befoglaló burok: a sorok szélessége a két szomszédos szakasz
+## legnagyobb szélessége, így a sokszög biztosan lefedi a valódi (íves) formát, amit a leaf.gdshader rajzol ki
+## (karéjok, fogak, levélkék, szív-bemetszés). A távolabbi szinteken a sokszög maga a forma, mint eddig.
+## UV.x: a hossz mentén (0–1), UV.y: előjeles oldaltávolság a legnagyobb félszélességhez (leaf_w) mérve.
+## Csak a kirajzolt alakot érinti: a levelek helye, iránya, mérete (a példány-puffer) nem változik.
 func leaf_mesh() -> ArrayMesh:
 	var rows := 6 if detail >= 1.0 else (3 if detail >= FAR else 2)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var lw: float = maxf(g.leaf_w, .001)
 	for i in rows + 1:
 		var t := float(i) / rows
-		var w: float = pow(maxf(sin(PI * pow(t, g.leaf_pow)), 0.0), .8) * g.leaf_w
-		if g.leaf_lobes > 0:
+		var w := _leaf_w(t)
+		if detail >= 1.0:
+			for k in 9:
+				w = maxf(w, _leaf_w(t + (k - 4) / 4.0 / rows))
+			w *= 1.04
+		elif g.leaf_lobes > 0:
 			w *= .76 + .24 * absf(sin(t * PI * g.leaf_lobes))
 		var z: float = g.leaf_curl * t * t
-		st.set_uv(Vector2(t, 1)); st.add_vertex(Vector3(-w, t, z + g.leaf_fold * w))
+		st.set_uv(Vector2(t, -w / lw)); st.add_vertex(Vector3(-w, t, z + g.leaf_fold * w))
 		st.set_uv(Vector2(t, 0)); st.add_vertex(Vector3(0, t, z))
-		st.set_uv(Vector2(t, 1)); st.add_vertex(Vector3(w, t, z + g.leaf_fold * w))
+		st.set_uv(Vector2(t, w / lw)); st.add_vertex(Vector3(w, t, z + g.leaf_fold * w))
 	for i in rows:
 		var a := i * 3
 		for s in 2:
@@ -293,6 +308,13 @@ func leaf_mesh() -> ArrayMesh:
 	var m := st.commit()
 	m.custom_aabb = local_aabb()
 	return m
+
+
+## A levél anyagának forma-paraméterei (M11): a részletes szinten a shader rajzolja a körvonalat (lásd leaf_mesh()).
+func leaf_shape_params(m: ShaderMaterial) -> void:
+	m.set_shader_parameter("leaf_cut", 1.0 if detail >= 1.0 else 0.0)
+	m.set_shader_parameter("leaf_pow", float(g.leaf_pow))
+	m.set_shader_parameter("leaf_kind", int((g.dna as Array)[2]))
 
 
 func flower_mesh() -> ArrayMesh:

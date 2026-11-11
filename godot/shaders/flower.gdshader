@@ -31,6 +31,9 @@ void vertex() {
 	// elnyíláskor a virágok egy része már lehullott (példányonként rögzített sorrendben)
 	float keep = step(bloom_drop, fract(float(INSTANCE_ID) * 0.6180339 + 0.21));
 	g *= bloom_size * keep * (1.0 - 0.3 * pk);
+	// évszak (M11): tavasszal teltebb, nagyobb virágok; ősszel kevesebb, télen még kevesebb és kisebb
+	float s_keep = step(season.z * 0.18 + season.w * 0.5, fract(float(INSTANCE_ID) * 0.7548777 + 0.37));
+	g *= s_keep * (1.0 + 0.16 * season.x - 0.18 * season.w);
 	vec3 p = VERTEX - o;
 	float along = dot(p, axis);
 	p = axis * along + (p - axis * along) * mix(0.32, 1.0, open);
@@ -49,20 +52,21 @@ void vertex() {
 
 void fragment() {
 	if (kind_v > 0.5) {
-		ALBEDO = stamen;
+		ALBEDO = col_out(col_in(stamen));
 		ROUGHNESS = 0.8;
 	} else {
-		vec3 c = mix(throat, mix(petal, petal_tip, smoothstep(0.25, 1.0, UV.x)), smoothstep(0.0, 0.34, UV.x)) * tint_v;
+		vec3 c = mix(col_in(throat), mix(col_in(petal), col_in(petal_tip), smoothstep(0.25, 1.0, UV.x)), smoothstep(0.0, 0.34, UV.x)) * tint_v;
 		c *= 0.94 + 0.1 * sin(UV.y * 22.0);
 		// bimbóban a szirmok töve zöldes, hervadáskor fakó, barnás krém
 		c = mix(c, vec3(0.32, 0.46, 0.22), bud_v * 0.5 * (1.0 - UV.x * 0.6));
 		c = mix(c, vec3(dot(c, vec3(0.33))) * vec3(1.05, 0.92, 0.74), fade_v * 0.7);
-		ALBEDO = thirsty_col(c, thirst * 0.3);
+		vec3 alb = thirsty_col(c, thirst * 0.3);
+		ALBEDO = col_out(alb);
 		ROUGHNESS = 0.5;
 		SPECULAR = 0.3;
-		BACKLIGHT = ALBEDO * 1.1;
+		BACKLIGHT = alb * (1.1 * backlight_k());
 	}
-	EMISSION = glow_col * (glow_amt * (part_on(0.0) * (smoothstep(0.1, 0.9, UV.x) * 3.2 + 0.9) + 0.12) + touch_wave(u_v) * 1.2);
+	EMISSION = col_out(col_in(glow_col) * (glow_amt * (part_on(0.0) * (smoothstep(0.1, 0.9, UV.x) * 3.2 + 0.9) + 0.12) + touch_wave(u_v) * 1.2));
 #ifdef FALL
 	if (fall_gone(FRAGCOORD.xy)) {
 		discard;

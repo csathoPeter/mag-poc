@@ -4,6 +4,7 @@ shader_type spatial;
 // Születéskor fehéren izzó fénygömbből bomlik ki (bloom). Átlátszatlan (az átlátszó tárgyakat a lencse-utófeldolgozás
 // lefedné), kicsinyítéskor rendezett pontrácsos áttűnéssel tűnik elő (fade).
 render_mode cull_back, shadows_disabled, fog_disabled;
+#include "res://shaders/color_space.gdshaderinc"
 uniform vec3 rock : source_color = vec3(0.6, 0.55, 0.6);
 uniform vec3 grass : source_color = vec3(0.5, 0.7, 0.5);
 uniform vec3 atmo : source_color = vec3(0.8, 0.7, 0.9);
@@ -52,7 +53,10 @@ void fragment() {
 	vec3 o = vec3(seed, seed * 1.7, seed * 0.6);
 	float h = vnoise(n * 2.4 + o) * 0.65 + vnoise(n * 5.3 + o * 1.3) * 0.35;
 	float g = mix(0.55, smoothstep(0.38, 0.6, h), patches);
-	vec3 c = mix(rock * (0.82 + 0.3 * h), grass * (0.8 + 0.3 * vnoise(n * 11.0 + o)), g);
+	vec3 rock_l = col_in(rock);
+	vec3 grass_l = col_in(grass);
+	vec3 atmo_l = col_in(atmo);
+	vec3 c = mix(rock_l * (0.82 + 0.3 * h), grass_l * (0.8 + 0.3 * vnoise(n * 11.0 + o)), g);
 	vec3 e = vec3(0.0);
 	for (int i = 0; i < 16; i++) {
 		if (i >= dot_n) {
@@ -72,8 +76,8 @@ void fragment() {
 		}
 	}
 	float fr = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-	ALBEDO = mix(mix(c, atmo, fr * 0.45), vec3(1.0, 0.98, 0.94), bloom);
+	ALBEDO = col_out(mix(mix(c, atmo_l, fr * 0.45), vec3(1.0, 0.98, 0.94), bloom));
 	ROUGHNESS = 0.92;
 	SPECULAR = 0.12;
-	EMISSION = atmo * fr * mix(0.3, 0.22, night) + e + vec3(1.0, 0.96, 0.9) * bloom * 2.2 + grass * night * 0.05;
+	EMISSION = col_out(atmo_l * fr * mix(0.3, 0.22, night) + e + vec3(1.0, 0.96, 0.9) * bloom * 2.2 + grass_l * night * 0.05);
 }

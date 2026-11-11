@@ -114,6 +114,12 @@ A herbárium és a tenyésztési célok csak halk háttérelemek, nem kényszer�
 
 Kikelés másnap, a nap magja, múló virágzás (ilyenkor gyűjthető mag), lassan hajló kötözött ágak, valódi évszakok, barát magja kóddal (M10, lásd „Megosztás és barát magja”). **Napi legfeljebb egy értesítés** (pl. „Kikelt a tegnapi magod”). Kihagyott nap után semmi nem vész el.
 
+**Valódi évszakok (M11, `godot/seasons.gd`):** a valódi dátum (a teszt-eltolással: `GameState.today()`) szerint, északi féltekén. Csak hangulat: nem büntet, nem változtat a játékon, a DNS-ből adódó színek felismerhetők maradnak.
+- **Mikor:** tavasz márc. 5-től, nyár jún. 1-től, ősz szept. 10-től, tél dec. 5-től; a határok körül ±15 nap alatt napról napra úsznak át (napváltáskor a képen is lassan). A súlyok (tavasz, nyár, ősz, tél) egy globális shader-uniformban (`season`, `shaders/season.gdshaderinc`), így minden fa, levél, virág és a bolygó felszíne anyagonkénti könyvelés nélkül követi.
+- **Tavasz:** világosabb, üdébb lomb, kicsit nagyobb virágok, a fa körül szálló szirmok (a virág színében), sok pollen. **Nyár:** a semleges, telt kép (ez volt eddig). **Ősz:** a lomb levelenként arany / narancs / rozsdás árnyalat felé húz (16–46%-ban, a fényerő marad), a levelek ~12%-a lehullott, a fa körül hulló, pörgő levelek; a felszíntakaró melegebb, okkeres. **Tél:** a levelek ~40%-a lehullott, a lomb kissé fakóbb, a levélszél és a felfelé néző lemez deres, az ágak tetején hó, a virágok fele hiányzik, a többi kisebb; a talaj deres, fehéres, apró dér-csillanásokkal; lassan szállingózó hó (éjjel halványan dereng).
+- **Olcsó:** a színek és a ritkulás a meglévő shaderekben (a lehullott levél nulla méretű, a háromszögszám nem változik); a részecskék egyetlen 72 példányos MultiMesh, a porszemek egy 30-as, mindkettő egyszer feltöltve, a mozgás időből a shaderben (`shaders/season_fx.gdshader`, `motes.gdshader`), csak leszállva, a kiválasztott fa körül. A fű (más munkamenet területe) nem követi az évszakot.
+- **Teszt:** `?evszak=tavasz|nyar|osz|tel` (`auto` = a dátum), az apró gombsor „…” sorában „évszak” (körbe), a kis állapotsor kiírja (pl. „· ősz”). A `--shot=…,planet,…` és a `--bench` alapból nyár (összehasonlítható képek), a `state` lövés a dátumot követi; `--evszak=…` mindkettőt felülírja.
+
 ### Megosztás és barát magja (M10)
 
 Szerver nincs: minden a kódban / linkben utazik (`godot/share_code.gd` a kódolás, `godot/share.gd` a felület).
@@ -208,7 +214,7 @@ Ihletők: az Avatar filmekből az élő, magától világító, érintésre felr
 
 - Minden átúszik, rugalmas, csillapított mozgással: a kamera, a feliratok és a szél is. Nincs ugrás vagy hirtelen vágás.
 - A növények lassan lélegeznek a szélben, a levelek és virágok külön-külön rezdülnek.
-- Lebegő porszemek és spórák (nappal pollen, éjjel szentjánosbogár-szerű fénypontok).
+- Lebegő porszemek és spórák (nappal pollen, éjjel szentjánosbogár-szerű fénypontok). (M11: a bolygó körüli 240 pont mellett leszállva a kiválasztott fa körül még 30: nappal meleg, aranyos pollen, éjjel a fa virágszínében lassan fel-felvillanó fények; a mennyiségük az évszakkal változik.)
 
 ### Felület: a világ része (diegetikus)
 
@@ -237,6 +243,8 @@ Ihletők: az Avatar filmekből az élő, magától világító, érintésre felr
 ### Technikai irány
 
 - **A színeket a shaderekben „festjük”** (színátmenetek, perem-izzás, köd), nem drága utómunkával, így a webes Compatibility renderer és az olcsó Android is ugyanazt mutatja.
+- **Webes színek (M11):** a Godot 4.7 Compatibility renderere (web) az `ALBEDO`-t, az `EMISSION`-t és az ég `COLOR`-ját **sRGB-nek** veszi (a shader után linearizálja), a `source_color` uniformot átalakítás nélkül adja; a Mobile renderer mindezt lineárisnak. A mi shadereink lineárisan számolnak (szorzás, keverés), ezért weben minden sötétebb, kontrasztosabb volt: fekete kéreg, fakó-sárgás és lapos lomb, alig látszó éjszakai köd, foltos talaj. Javítás: `shaders/color_space.gdshaderinc` – `col_in()` a `source_color` uniformokra, `col_out()` a kimenetre (natívan mindkettő üres, weben sRGB↔lineáris). Ezen felül weben: a közvetlen fényre a renderer nem alkalmazza az `AO_LIGHT_AFFECT`-et (`ao_direct()`: az albedót sötétítjük vele), az átsütő fény (`BACKLIGHT`) pedig sokkal erősebb (×0,3, méréssel). Natív Mobile és Compatibility képeken mérve (nappal, alkony, éjjel, makró, levél-tábla) a két renderer most néhány árnyalaton belül egyezik. Kivétel: a fű (`planet_grass.gdshader`, más munkamenet területe) – ott ugyanez a két függvény kell. Az alfával kevert spirál-kötések (`glow_bar`) és a fátyol (`veil`) maradtak: azokat weben már szemre hangolták (a keverés weben sRGB-ben történik).
+- **Levélforma (M11):** a részletes szinten a levél körvonalát a shader rajzolja a levélforma-génből (karéjos, csipkés fogak, tölgyes karéjok, ujjas, tollas levélkék, szív-bemetszés, csúcsos hegy), fő- és oldalerekkel; a mesh csak egy befoglaló burok (ugyanannyi csúcs és háromszög, mint eddig). A távolabbi szinteken a sokszög marad. A példány-puffer (hely, irány, méret) nem változott, a `--shapetest` lenyomatai ugyanazok. Képen: `--shot=kép,leaves` (a 14 forma egymás mellett).
 - A ragyogás olcsón készül: önvilágító szín + additív halo-sprite-ok. Valódi glow (bloom) csak ha iPhone-on mérve belefér.
 - **Felbontás:** a webes build a telefon teljes pixelsűrűségén renderel (iPhone 15: 1179×2556, kb. 3 millió pixel). Az álomszerű, tiltshiftes képen a csökkentett belső 3D-felbontás alig látszik; a mérés után döntünk az alapértékről.
 - **Fák részletessége (3 szint, azonos vázzal):** részletes (a kiválasztott mindig, plusz a legközelebbiek 22 egységen belül, összesen legfeljebb 4), egyszerűsített (kívülről mindenhol, leszállva a kiválasztott fa közelében), távoli (~2,5k háromszög, leszállva a háttérben, ahol a tiltshift úgyis elmossa). Árnyékot csak az egyszerűsített szint vet, részletes fánál csak-árnyékként – így a részletes fát nem kell kétszer kirajzolni.
@@ -311,6 +319,7 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [x] Öntözés, lekonyulás, virágzási ciklus (bimbó, virágzás, elnyílás), maggyűjtés virágzó fáról (M4)
 - [x] Keresztezés (M5): táska → keresztezett tábla (szülők génjei, legközelebbi szabályos DNS, 1/2/M, szabad sorok a szülők génjeivel) → három csíra 3D-előnézettel → egy mag (spirál), kettő csillag; rejtett virágszín; maghozás tempója (napi 1–3)
 - [x] Herbárium (M6: a csillagkép egyben herbárium – lap, lapozás, visszahozás)
+- [x] Látvány (M11): levélforma a levélforma-génből (shaderben rajzolt körvonal, erezet), webes színek (sRGB/lineáris javítás a Compatibility rendererhez), valódi évszakok, pollen és szentjánosbogarak leszállva; a képkockánként frissített MultiMesh weben is mozog (a fej nélküli próba SwiftShader-hibája volt)
 - [ ] Mérés olcsó Androidon
 - [ ] iOS-build Mac nélkül (GitHub Actions macOS + TestFlight, Apple Developer-tagság kell)
 - [ ] IAP próba (borravaló)
