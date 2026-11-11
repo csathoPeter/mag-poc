@@ -607,6 +607,8 @@ func _build_ui() -> void:
 	btn.try = _small_button(dbg3, "próba", _toggle_try)
 	# régi, azonnali ültetés véletlen DNS-sel (próbához); a valódi út: a nap magja → táska → Elvetem
 	btn.plant = _small_button(dbg3, "ültess", plant_new)
+	# teszt (ritka módosítás): kikelt fa a következő ritka módosítással (körbe mind a 12)
+	btn.rare = _small_button(dbg3, "ritka fa", plant_rare)
 	# teszt (M7): új, üres bolygó születik az aktív mellett (ha az aktív a legutolsó), akkor is, ha nem telt meg
 	btn.planet = _small_button(dbg3, "új bolygó", _debug_new_planet)
 	btn.wipe = _small_button(dbg3, "törlés", _wipe_tap)
@@ -768,8 +770,9 @@ func spawn(g: Dictionary, at: Vector3, rot: float, size_mul: float, det: float, 
 		fi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		node.add_child(fi)
 		mats.append(fm)
+	Genes.rare_params(g, wm, mats[1] if pg.leaf_p.size() > 0 else null, mats[mats.size() - 1] if pg.flo_p.size() > 0 else null)
 	var top := maxf(pg.bb_max.y, 1.6)
-	var s := 5.0 / top * size_mul
+	var s := 5.0 / top * size_mul * float(g.get("scale", 1.0))
 	node.scale = Vector3.ONE * s
 	node.position = at
 	node.rotation.y = rot
@@ -1059,7 +1062,7 @@ func _process(delta: float) -> void:
 	if queue.size() > 0 and not retreating:
 		var t0 := Time.get_ticks_usec()
 		var item: Dictionary = queue.pop_front()
-		var gg := Genes.from_dna(item.dna, item.code)
+		var gg := Genes.from_dna(item.dna, item.code, int(item.get("rare", 0)))
 		if item.has("dir"):
 			_spawn_on_planet(item, gg)
 		else:
@@ -1341,8 +1344,17 @@ func start_planet(code: String, count: int) -> void:
 	for i in count:
 		var dir := planet.pick_spot(i, dirs)
 		dirs.append(dir)
-		queue.append({"dna": planet_dnas[i], "code": "%s-%d" % [code, i], "dir": dir, "rot": r.randf() * TAU, "size": r.randf_range(.5, .72)})
+		queue.append({"dna": planet_dnas[i], "code": "%s-%d" % [code, i], "dir": dir, "rot": r.randf() * TAU, "size": r.randf_range(.5, .72),
+			"rare": _shot_rare()})
 	_sync_game_dbg()
+
+
+## Képernyőképhez (--ritkafa=K): a próba-bolygó minden fája ezt a ritka módosítást kapja (0 = nincs).
+static func _shot_rare() -> int:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--ritkafa="):
+			return Genes.rare_valid(a.trim_prefix("--ritkafa=").to_int())
+	return 0
 
 
 ## A mentett, aktív bolygó: a kikelt fák a mentett helyükön, a bolygó a kódjából és a fák DNS-éből áll össze
@@ -1410,7 +1422,8 @@ func show_guest_planet(g: Dictionary) -> void:
 	stars.sync()
 	system.sync()
 	for t in g.trees:
-		queue.append({"dna": t.dna, "code": t.code, "dir": t.dir, "rot": t.rot, "size": t.size, "shape": (t.shaping as Array).duplicate(true), "sid": -1})
+		queue.append({"dna": t.dna, "code": t.code, "dir": t.dir, "rot": t.rot, "size": t.size, "shape": (t.shaping as Array).duplicate(true), "sid": -1,
+			"rare": int(t.get("rare", 0))})
 	_planet_texts()
 	_sync_game_dbg()
 
@@ -1432,7 +1445,8 @@ func _refresh_marks(fresh := -1) -> void:
 
 func _tree_item(t: Dictionary, focus_it: bool) -> Dictionary:
 	# shape: a mentett fa alakítási listája (ugyanaz a tömb, így az alakítás egyből a rekordba kerül)
-	return {"dna": t.dna, "code": t.code, "dir": t.dir, "rot": t.rot, "size": t.size, "sid": t.id, "focus": focus_it, "shape": t.shaping}
+	return {"dna": t.dna, "code": t.code, "dir": t.dir, "rot": t.rot, "size": t.size, "sid": t.id, "focus": focus_it, "shape": t.shaping,
+		"rare": int(t.get("rare", 0))}
 
 
 func _enter_planet(code: String, dnas: Array, founders: Array, bare := false) -> void:
@@ -1495,7 +1509,8 @@ func _planet_texts() -> void:
 ## Új fa a bolygón: a bolygó-DNS változik, a bolygó lassan nő, a kamera odarepül a csírához.
 ## Teszt-ültetés (apró „ültess” gomb, --shot ...,plant): véletlen DNS, és azonnal kikel. A mentett bolygón el is menti.
 ## A valódi út: a nap magja → magos táska → Elvetem (holnap kel ki).
-func plant_new() -> void:
+## rare: ritka módosítás (Genes.RARE; a fejlesztői „ritka fa” gomb sorban mindet kipróbálja).
+func plant_new(rare := 0) -> void:
 	if garden_mode != "planet" or queue.size() > 0 or retreating:
 		return
 	if trees.size() >= GameState.PLANET_FULL or (saved_view and game.is_full(game.active_planet())):
@@ -1505,6 +1520,7 @@ func plant_new() -> void:
 	if saved_view:
 		var p := game.active_planet()
 		var st := game.new_tree(p, dna, "ultetes")
+		st.rare = Genes.rare_valid(rare)
 		st.hatch = GameState.today()
 		st.revealed = true
 		game.place_tree(p, st)
@@ -1528,8 +1544,23 @@ func plant_new() -> void:
 	for t in trees:
 		dirs.append(t.dir)
 	var i := trees.size()
-	queue.append({"dna": dna, "code": "%s-%d" % [planet.code, i], "dir": planet.pick_spot(i, dirs), "rot": randf() * TAU, "size": randf_range(.5, .72), "focus": true})
+	queue.append({"dna": dna, "code": "%s-%d" % [planet.code, i], "dir": planet.pick_spot(i, dirs), "rot": randf() * TAU, "size": randf_range(.5, .72), "focus": true,
+		"rare": Genes.rare_valid(rare)})
 	_planet_texts()
+
+
+## Fejlesztői „ritka fa”: egy kikelt fa a következő ritka módosítással (körbe 1–12), hogy mindegyik megnézhető legyen.
+var dbg_rare_next := 1
+
+
+func plant_rare() -> void:
+	var k := dbg_rare_next
+	var before := trees.size()
+	plant_new(k)
+	if trees.size() == before and queue.is_empty():
+		return
+	# a leszállt fa tábláján látszik, melyik módosítás ez („ritka: …”)
+	dbg_rare_next = k % (Genes.RARE.size() - 1) + 1
 
 
 func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
@@ -1552,7 +1583,7 @@ func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
 	var pg: PlantGen = high.pg
 	var w := maxf(pg.bb_max.x - pg.bb_min.x, pg.bb_max.z - pg.bb_min.z) * float(high.s) * .5
 	var t := {"dir": item.dir, "rot": item.rot, "low": low, "high": high, "far": far, "lods": [high, low, far], "lod": 2, "shown": true, "high_on": false, "front": true,
-		"g": gg, "glow": Genes.glow(item.dna), "wave": -1.0, "h": 5.0 * float(item.size), "w": w, "sid": int(item.get("sid", -1)),
+		"g": gg, "glow": Genes.glow(item.dna, int(item.get("rare", 0))), "wave": -1.0, "h": 5.0 * float(item.size) * float(gg.get("scale", 1.0)), "w": w, "sid": int(item.get("sid", -1)),
 		"shape": shape, "shape_day": day}
 	trees.append(t)
 	_place_tree(t)
@@ -1561,7 +1592,7 @@ func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
 		for m in rec.mats:
 			m.set_shader_parameter("glow_col", col)
 			m.set_shader_parameter("glow_part", float(t.glow.part))
-			m.set_shader_parameter("glow_amt", float(t.glow.strength) * maxf(night, 0.0))
+			m.set_shader_parameter("glow_amt", glow_amt_of(t.glow, night))
 	# gondozás: lekonyulás, virágzási szakasz, a ma leszedett virág (a mentett fa rekordjából)
 	tending.attach(t)
 	if item.get("reveal", false):
@@ -1573,6 +1604,11 @@ func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
 				m.set_shader_parameter("grow", 0.0)
 	if item.get("focus", false):
 		_focus(trees.size() - 1)
+
+
+## Az éjszakai fény erőssége (a rejtett tulajdonság × éjszaka; a „holdfény” ritka módosítás nappal is dereng).
+static func glow_amt_of(gl: Dictionary, n: float) -> float:
+	return float(gl.strength) * maxf(maxf(n, 0.0), float(gl.get("day", 0.0)))
 
 
 func _cast_shadow(rec: Dictionary, mode: GeometryInstance3D.ShadowCastingSetting) -> void:
@@ -1635,7 +1671,9 @@ func _unfocus() -> void:
 func _tree_title(t: Dictionary) -> String:
 	var g: Dictionary = t.g
 	var dna: Array = g.dna
-	return "%s\n%s termet · %s levél · %s virág" % [_latin(g), g.form, Genes.LEAF[dna[2]][0], Genes.FLOWER[dna[0]][0]]
+	var rk := int(g.get("rare", 0))
+	var rare := ("\nritka: %s" % Genes.rare_label(rk)) if rk > 0 else ""
+	return "%s\n%s termet · %s levél · %s virág%s" % [_latin(g), g.form, Genes.LEAF[dna[2]][0], Genes.FLOWER[dna[0]][0], rare]
 
 
 func _tag_text() -> void:
@@ -2030,7 +2068,7 @@ func _update_tod(delta: float, snap: bool) -> void:
 	for t in trees:
 		for rec in t.lods:
 			for m in rec.mats:
-				m.set_shader_parameter("glow_amt", float(t.glow.strength) * night)
+				m.set_shader_parameter("glow_amt", glow_amt_of(t.glow, night))
 	var c := Color(1.0, .95, .88).lerp(Color(1.0, .72, .64), dusk).lerp(Color(.55, .66, 1.0), night)
 	sun.light_color = c
 	sun.light_energy = lerpf(lerpf(1.7, 1.3, dusk), 1.0, night)
@@ -2383,8 +2421,8 @@ func open_daily_day(day: int) -> void:
 	board_day = day
 	var saved: Array = [] if game.data.is_empty() else game.daily_progress(day)
 	var today := GameState.today()
-	var when := "mindenkinek ugyanez a tábla" if day == today else "kihagyott nap, még elérhető"
-	board.open(DnaBoard.daily(day), "A nap magja", "%s · %s" % [GameState.day_label(day), when], saved)
+	var when := "a te mai táblád" if day == today else "kihagyott nap, még elérhető"
+	board.open(game.daily_puzzle(day), "A nap magja", "%s · %s" % [GameState.day_label(day), when], saved)
 	ui_col.visible = false
 	guide.did("daily")
 
@@ -2454,7 +2492,7 @@ func _on_board_done(dna: Array, animate := true) -> void:
 		var r := bag_btn.get_global_rect()
 		var to := r.get_center() if r.size.x > 1.0 else Vector2(vp.x * .62, 130.0)
 		board.fade_out()
-		fx.play_helix(cells, vals, board.cell, to)
+		fx.play_helix(cells, vals, board.cell, to, not game.data.is_empty() and board_day >= 0 and game.daily_rare(board_day) > 0)
 	else:
 		board.close()
 	helix_seed = -1
@@ -3232,7 +3270,7 @@ func _shot_system(mode: String) -> void:
 		game.debug_fill(game.active_planet(), GameState.PLANET_FULL)
 		for q in ps:
 			q.born_seen = true
-		game.finish_daily(GameState.today(), DnaBoard.daily(GameState.today()).target)
+		game.finish_daily(GameState.today(), game.daily_puzzle(GameState.today()).target)
 		game.save()
 		show_saved_planet()
 		orbit_zoom = PlanetSystem.ZOOM_REF

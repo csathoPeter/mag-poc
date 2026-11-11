@@ -300,7 +300,7 @@ func _show(id: int, msg: String) -> void:
 			idx = k + 1
 	_head.text = "A csillagaid · %d / %d" % [idx, ord.size()]
 	_name.text = Genes.latin_name(st.dna)
-	_traits.text = Genes.traits_text(st.dna)
+	_traits.text = Genes.traits_text(st.dna, int(st.get("rare", 0)))
 	_origin.text = origin_text(st)
 	_dates.text = dates_text(st)
 	_msg.text = msg
@@ -359,7 +359,7 @@ func _layout() -> void:
 
 func _build_plant(st: Dictionary) -> void:
 	_drop_plant()
-	var g := Genes.from_dna(st.dna, str(st.code))
+	var g := Genes.from_dna(st.dna, str(st.code), int(st.get("rare", 0)))
 	_plant = SproutPick.build_preview(g)
 	_world.add_child(_plant.node)
 	_grow_t = GROW_LEN if snap else 0.0

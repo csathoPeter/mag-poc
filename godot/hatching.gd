@@ -126,6 +126,12 @@ func _step(i: int) -> void:
 		host.tag.text = _caption(tr)
 		# az új fa először szólal meg a saját hangján
 		Sound.tree_of(tr, "hatch", .4)
+		var rk := int((tr.g as Dictionary).get("rare", 0))
+		if rk > 0:
+			# ritka mag volt: most derül ki (a fa felragyog, csillag-csengés)
+			Sound.fx("kindle", 1.0, 0.0, .5)
+			var d2: Vector3 = tr.dir
+			host.fx.burst(planet.surface_point(d2) + d2 * .3, d2, 4.5)
 	if t >= DUR and freeze_at < 0.0:
 		for rec in tr.lods:
 			rec.erase("hold")
@@ -143,4 +149,7 @@ func _caption(tr: Dictionary) -> String:
 		days = maxi(1, GameState.today() - int(st.planted))
 	var head := "Kikelt a tegnapi magod:" if days == 1 else "Kikelt a %d napja elvetett magod:" % days
 	var found := ("\nŐ %s alapítója: a bolygó felveszi a jellegét." % host.planet.planet_name()) if _founding else ""
+	var rk := int((tr.g as Dictionary).get("rare", 0))
+	if rk > 0:
+		head = "Ritka mag volt! %s: %s.\n%s" % [Genes.rare_label(rk), Genes.RARE[rk].desc, head]
 	return "%s\n%s%s" % [head, host._tree_title(tr), found]

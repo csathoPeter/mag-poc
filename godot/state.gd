@@ -129,6 +129,9 @@ static func launch_options() -> Dictionary:
 			"debug":
 				# fejlesztői mód (M12): mérőszámok és teszt-gombsorok; ?debug=0 kikapcsolja (mentve)
 				o.debug = v != "0" and v != "ki"
+			"ritka":
+				# teszthez: a nap magja ezt a ritka módosítást kapja (Genes.RARE sorszáma, 1–12; nem mentődik)
+				force_rare = clampi(v.to_int(), 0, Genes.RARE.size() - 1) if v != "" else 1
 			"nap":
 				# a „+” az URL-ben szóközként is megérkezhet
 				o.day = v.replace("%2B", "").replace("+", "").strip_edges().to_int()
@@ -479,6 +482,8 @@ func _fill_tree(t: Dictionary) -> Dictionary:
 		"name": str(t.get("name", "")),
 		# lappangó virágszín (M5, rejtett gén; -1 = a virágszínéhez tartozó alapérték, lásd Breeding.LATENT)
 		"hidden": clampi(int(t.get("hidden", -1)), -1, 13),
+		# ritka módosítás (Genes.RARE sorszáma, 0 = nincs): a DNS-tábláról nem jöhet ki, a nap magjába sorsolódik
+		"rare": Genes.rare_valid(int(t.get("rare", 0))),
 	}
 
 
@@ -566,7 +571,7 @@ func recall_star(id: int) -> Dictionary:
 		return {}
 	data.stars.erase(st)
 	return new_seed((st.dna as Array).duplicate(), "csillag", {"parents": (st.parents as Array).duplicate(true), "code": str(st.code),
-		"hidden": int(st.hidden), "star_origin": str(st.origin), "star_day": int(st.released)})
+		"hidden": int(st.hidden), "star_origin": str(st.origin), "star_day": int(st.released), "rare": int(st.get("rare", 0))})
 
 
 func _take_star() -> int:
@@ -653,6 +658,8 @@ func _fill_seed(s: Dictionary) -> Dictionary:
 		"share": str(s.get("share", "")),
 		"share_day": int(s.get("share_day", -1)),
 		"from": str(s.get("from", "")),
+		# ritka módosítás (Genes.RARE, 0 = nincs; a nap magjánál kikeléskor derül ki)
+		"rare": Genes.rare_valid(int(s.get("rare", 0))),
 	}
 
 
@@ -681,6 +688,7 @@ func sow_seed(seed: Dictionary) -> Dictionary:
 	var t := new_tree(p, (seed.dna as Array).duplicate(), str(seed.origin), str(seed.code))
 	t.parents = (seed.parents as Array).duplicate(true)
 	t.hidden = int(seed.hidden)
+	t.rare = int(seed.get("rare", 0))
 	place_tree(p, t)
 	if (p.founders as Array).is_empty():
 		p.founders = [(seed.dna as Array).duplicate()]
@@ -698,13 +706,14 @@ func has_gift(code: String) -> bool:
 
 ## Barát magja a táskába (eredet „barat”): DNS, rejtett szín, növénykód (a kódból kapottnál „MAG-…”, a barát
 ## bolygójáról kértnél a fa saját kódja), a mag-kód. Üres, ha ezt a kódot már megkaptad.
-func receive_seed(code: String, dna: Array, hidden: int, tree_code: String, share_day := -1, from := "") -> Dictionary:
+func receive_seed(code: String, dna: Array, hidden: int, tree_code: String, share_day := -1, from := "", rare := 0) -> Dictionary:
 	if code == "" or has_gift(code):
 		return {}
 	var got: Array = data.flags.get("got", [])
 	got.append(code)
 	data.flags.got = got
-	return new_seed(dna.duplicate(), "barat", {"code": tree_code, "hidden": hidden, "share": code, "share_day": share_day, "from": from})
+	return new_seed(dna.duplicate(), "barat", {"code": tree_code, "hidden": hidden, "share": code, "share_day": share_day, "from": from,
+		"rare": Genes.rare_valid(rare)})
 
 
 # ---------------------------------------------------------------- Gondozás (a szabályok: care.gd)
@@ -727,7 +736,7 @@ func gather_seed(t: Dictionary, at: Vector3) -> Dictionary:
 func _seed_of(t: Dictionary) -> Dictionary:
 	var dna: Array = (t.dna as Array).duplicate()
 	return new_seed(dna, "gyujtes", {"parents": [dna.duplicate()], "tree": int(t.id), "name": "%s magja" % Genes.latin_name(dna),
-		"hidden": Breeding.latent(t)})
+		"hidden": Breeding.latent(t), "rare": int(t.get("rare", 0))})
 
 
 ## A kert a maghozás tempójához (Care.can_gather): a játékos összes bolygójának kikelt fái (M8: közös, így több
@@ -771,6 +780,7 @@ func _fill_cross(c: Variant) -> Dictionary:
 	for x in d.get("sprouts", []):
 		var o: Dictionary = x
 		sp.append({"dna": _dna(o.get("dna")), "hidden": clampi(int(o.get("hidden", -1)), -1, 13), "shows_hidden": bool(o.get("shows_hidden", false)),
+			"rare": Genes.rare_valid(int(o.get("rare", 0))),
 			"code": str(o.get("code", "")), "marks": (o.get("marks", []) as Array).map(func(m: Variant) -> String: return str(m)), "name": str(o.get("name", ""))})
 	if sp.size() != Breeding.SPROUTS:
 		return {}
@@ -826,13 +836,14 @@ func choose_sprout(k: int) -> Dictionary:
 		return {}
 	var sp: Array = c.sprouts
 	var ch: Dictionary = sp[k]
-	var s := new_seed((ch.dna as Array).duplicate(), "keresztezes", {"parents": (c.parents as Array).duplicate(true), "code": ch.code, "hidden": int(ch.hidden)})
+	var s := new_seed((ch.dna as Array).duplicate(), "keresztezes", {"parents": (c.parents as Array).duplicate(true), "code": ch.code, "hidden": int(ch.hidden),
+		"rare": int(ch.get("rare", 0))})
 	for i in sp.size():
 		if i == k:
 			continue
 		var o: Dictionary = sp[i]
 		add_star({"dna": (o.dna as Array).duplicate(), "code": o.code, "origin": "csira", "parents": (c.parents as Array).duplicate(true),
-			"hidden": int(o.hidden), "name": str(o.name)})
+			"hidden": int(o.hidden), "name": str(o.name), "rare": int(o.get("rare", 0))})
 	data.cross = {}
 	return s
 
@@ -874,8 +885,20 @@ func daily_done(day: int) -> bool:
 	return bool(_daily(day).get("done", false))
 
 
+## A nap feladványa ennek a játékosnak (minden játékosnak más; DnaBoard.daily).
+func daily_puzzle(day: int) -> Dictionary:
+	return DnaBoard.daily(day, str(data.get("player", "")))
+
+
+## A feladványsor változata a félkész rácsban: a 2026. 11. 11. előtti (mindenkinek közös) feladvány félkész rácsa már
+## nem illik a játékos saját táblájára, ezért elvész (a kész napok megmaradnak).
+const DAILY_GEN := 2
+
+
 ## A félig kitöltött rács (6×6, -1 = üres), vagy üres tömb, ha még nem kezdte el.
 func daily_progress(day: int) -> Array:
+	if int(_daily(day).get("gen", 1)) != DAILY_GEN:
+		return []
 	var flat: Variant = _daily(day).get("grid")
 	if not (flat is Array) or (flat as Array).size() != 36:
 		return []
@@ -895,7 +918,7 @@ func set_daily_progress(day: int, grid: Array) -> void:
 	for r in grid:
 		for v in r:
 			flat.append(int(v))
-	data.daily[str(day)] = {"grid": flat}
+	data.daily[str(day)] = {"grid": flat, "gen": DAILY_GEN}
 
 
 ## A kész nap választott DNS-e (a megosztáshoz, M10), vagy üres tömb.
@@ -905,10 +928,24 @@ func daily_dna(day: int) -> Array:
 
 
 ## Kész a nap feladványa: a mag a táskába kerül (eredet: „napi”, a feladvány napjával), és a nap késznek számít.
+## A mag ritka módosítást is kaphat (daily_rare; kikeléskor derül ki).
 func finish_daily(day: int, dna: Array) -> Dictionary:
 	data.daily[str(day)] = {"done": true, "dna": dna.duplicate(), "solved": today()}
 	prune_daily()
-	return new_seed(dna, "napi", {"day": day})
+	return new_seed(dna, "napi", {"day": day, "rare": daily_rare(day)})
+
+
+## Teszthez (?ritka=N, --ritka=N): a következő nap magjai ezt a ritka módosítást kapják (nem mentődik). -1 = sorsolás.
+static var force_rare := -1
+
+
+## A nap magjának ritka módosítása: játékosonként és naponként külön sorsolva, százalékos eséllyel (Genes.RARE_TIERS),
+## determinisztikusan (újratöltve, újra megoldva is ugyanaz; a választott DNS-től független). 0 = nincs.
+func daily_rare(day: int) -> int:
+	if force_rare >= 0:
+		return Genes.rare_valid(force_rare)
+	var rng := DnaBoard.Rng.new(Care.str_hash("%s#ritka#%d" % [str(data.get("player", "")), day]))
+	return Genes.roll_rare(rng.randf(), rng.randf())
 
 
 ## A még megfejtetlen napok, a maival kezdve, legfeljebb DAILY_BACK nappal visszamenőleg (de nem a játék kezdete elé).

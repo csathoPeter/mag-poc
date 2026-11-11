@@ -518,7 +518,7 @@ func _step_release(delta: float) -> void:
 				var sm := m as ShaderMaterial
 				sm.set_shader_parameter("grow", 1.0 - pow(1.0 - g, 1.7))
 				sm.set_shader_parameter("glow_col", col)
-				sm.set_shader_parameter("glow_amt", lerpf(float(t.glow.strength) * maxf(float(host.night), 0.0), _glow_peak, glow))
+				sm.set_shader_parameter("glow_amt", lerpf(host.glow_amt_of(t.glow, float(host.night)), _glow_peak, glow))
 				# fényhullámok futnak fel a fán, újra és újra
 				sm.set_shader_parameter("wave", fmod(tt, 1.7))
 		if tt >= R_UNGROW1 + .1:

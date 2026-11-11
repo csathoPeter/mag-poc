@@ -3,6 +3,8 @@ render_mode world_vertex_coords, cull_back;
 #include "res://shaders/common.gdshaderinc"
 #include "res://shaders/soft_light.gdshaderinc"
 varying float path_v;
+// Ritka módosítás (genes.gd rare_params): 1 aranykéreg (fémesebb fény, a bordákon lassan végigfutó csillanás).
+uniform int wood_fx = 0;
 
 void vertex() {
 	vec3 c = (MODEL_MATRIX * vec4(CUSTOM0.xyz, 1.0)).xyz;
@@ -32,11 +34,15 @@ void fragment() {
 	vec3 alb_l = ao_direct(alb, AO, 0.5);
 	ALBEDO = col_out(alb_l);
 	soft_fix = soft_fix_of(alb_l, ALBEDO);
-	ROUGHNESS = 0.92;
+	ROUGHNESS = wood_fx == 1 ? 0.38 : 0.92;
 	AO_LIGHT_AFFECT = 0.5;
 	float lines = smoothstep(0.8, 1.0, fine) * ridge;
 	EMISSION = col_out(col_in(glow_col) * (glow_amt * part_on(2.0) * (lines * 4.0 + 0.15) + touch_wave(path_v / max_path) * 1.3)
 		+ soft_rim(NORMAL, VIEW, 0.06) * alb);
+	if (wood_fx == 1) {
+		float glint = pow(max(sin(path_v * 2.4 - TIME * 1.1 + a), 0.0), 18.0) * ridge;
+		EMISSION += col_out(vec3(1.0, 0.78, 0.36) * (glint * 0.9 + 0.06));
+	}
 #ifdef FALL
 	if (fall_gone(FRAGCOORD.xy)) {
 		discard;

@@ -93,10 +93,26 @@ func run() -> void:
 	await _frames(2)
 	_expect(host.stars.cosmos() < .05 and not host.cosmos.visible, "vissza a bolygóhoz: a kozmosz bezárult")
 
-	# --- 1. nap: a nap magja a fénylő magra koppintva, kitöltés koppintásokkal, spirál, táska
+	# --- ritka módosítás: a nap magjába játékosonként és naponként, százalékos eséllyel sorsolódik (determinisztikus)
+	var rare_hits := 0
+	var rare_same := true
+	for d in 4000:
+		var rk := game.daily_rare(20000 + d)
+		rare_same = rare_same and rk == game.daily_rare(20000 + d)
+		if rk > 0:
+			rare_hits += 1
+	_expect(rare_same, "a nap ritka módosítása determinisztikus")
+	_expect(rare_hits > 4000 * .11 and rare_hits < 4000 * .18, "a nap magja ~14,5%%-ban ritka (%d / 4000)" % rare_hits)
+	_expect(str(game.daily_puzzle(GameState.today()).target) == str(DnaBoard.daily(GameState.today(), str(game.data.player)).target)
+		and game.daily_puzzle(GameState.today()).clue != DnaBoard.daily(GameState.today(), "MASIK1").clue, "a nap feladványa játékosonként más")
+
+	# --- 1. nap: a nap magja a fénylő magra koppintva, kitöltés koppintásokkal, spirál, táska (a próbához ritka: telt virág)
+	GameState.force_rare = Genes.RARE_DOUBLE
 	await _solve_daily()
+	GameState.force_rare = -1
 	_check("a nap magja megfejtve: mag a táskában", {"bag": 1, "trees0": 3})
 	var napi := _bag_of("napi")
+	_expect(int(napi.get("rare", 0)) == Genes.RARE_DOUBLE, "a nap magja ritka (telt virág)")
 	if not napi.is_empty():
 		await _bag_click(int(napi.id), "Elvetem")
 		await _settle("elvetés")
@@ -106,6 +122,12 @@ func run() -> void:
 	await _next_day()
 	var sown: Dictionary = game.active_planet().trees.back()
 	_expect(bool(sown.revealed) and int(sown.hatch) <= GameState.today(), "a tegnapi mag kikelt és látszott (revealed)")
+	_expect(int(sown.get("rare", 0)) == Genes.RARE_DOUBLE, "a kikelt fa ritka (telt virág)")
+	var shown_rare := false
+	for t in host.trees:
+		if str(t.g.code) == str(sown.code):
+			shown_rare = int(t.g.get("rare", 0)) == Genes.RARE_DOUBLE and int(t.g.layers) == 3
+	_expect(shown_rare, "a jelenetben a fa telt virágú (3 szirom-sor)")
 	_check("nap +1: kikelés", {"trees0": 4})
 
 	# --- öntözés: két nap múlva a kezdő fák szomjasak
@@ -132,6 +154,7 @@ func run() -> void:
 		var before := (game.data.bag as Array).size()
 		await _gather(bearer)
 		_check("maggyűjtés", {"bag": before + 1})
+		_expect(int(_bag_of("gyujtes").get("rare", -1)) == int(bearer.get("rare", 0)), "a gyűjtött mag a fa ritka módosításával")
 		# naponta fánként egy: még egy koppintás nem hoz újat
 		await _gather(bearer)
 		_check("maggyűjtés másodszor ugyanaznap: nincs új mag", {"bag": before + 1})
@@ -418,7 +441,7 @@ func run() -> void:
 	# --- a mentésben kész, de be nem fejezett tábla (a lap a kész pillanatban zárult be): megnyitva befejeződik
 	var today := GameState.today()
 	bag_before = (game.data.bag as Array).size()
-	game.set_daily_progress(today, DnaBoard.grid_from_dna(DnaBoard.daily(today).target))
+	game.set_daily_progress(today, DnaBoard.grid_from_dna(game.daily_puzzle(today).target))
 	game.save()
 	host.open_daily()
 	await _until(func() -> bool: return host.bag.visible, "a kész tábla befejeződik")

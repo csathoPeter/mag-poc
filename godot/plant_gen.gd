@@ -149,6 +149,9 @@ func _branch(p0: Vector3, d0: Vector3, length: float, rad: float, lvl: int, path
 	var rs := PackedFloat32Array()
 	var ps := PackedFloat32Array()
 	var trop: float = g["t%d" % lvl]
+	# ritka módosítás (csavart törzs): a törzs és a fő ágak csigavonalban csavarodnak (nincs benne véletlenszám, így
+	# a többi ág, levél, virág sorrendje ugyanaz marad)
+	var twist: float = float(g.get("twist", 0.0)) * (1.0 if lvl == 0 else (.45 if lvl == 1 else 0.0))
 	for i in segs + 1:
 		var t := float(i) / segs
 		var rr := maxf(rad * lerpf(1.0, g.taper, t), .007)
@@ -163,6 +166,9 @@ func _branch(p0: Vector3, d0: Vector3, length: float, rad: float, lvl: int, path
 		d += bn * cos(phase * 1.7 + t * freq * 5.1) * g.wobble * step
 		d.y += trop * step
 		d += wind_v * g.wind * step * (.4 + .6 * lvl)
+		if twist > 0.0:
+			var tw := t * TAU * 2.6 + phase
+			d += (nn * cos(tw) + bn * sin(tw)) * twist * step * 1.6
 		d = d.normalized()
 		nn = (nn - d * nn.dot(d)).normalized()
 		p += d * step
@@ -388,9 +394,13 @@ func flower_mesh() -> ArrayMesh:
 	var np: int = g.petals
 	for i in np:
 		add_petal.call(float(i) / np * TAU, g.petal_len, g.petal_w * g.petal_len * .62, deg_to_rad(g.petal_cup))
-	if g.layers == 2 and detail >= FAR:
+	if g.layers >= 2 and detail >= FAR:
 		for i in np:
 			add_petal.call((i + .5) / np * TAU, g.petal_len * .68, g.petal_w * g.petal_len * .46, deg_to_rad(g.petal_cup + 18.0))
+	if g.layers >= 3 and detail >= FAR:
+		# ritka módosítás (telt virág): harmadik, belső szirom-sor
+		for i in np:
+			add_petal.call((i + .25) / np * TAU, g.petal_len * .52, g.petal_w * g.petal_len * .42, deg_to_rad(g.petal_cup + 30.0))
 	if detail < FAR:
 		# távolról a porzó nem látszik
 		st.generate_normals()

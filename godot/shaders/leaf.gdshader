@@ -15,6 +15,9 @@ uniform int leaf_kind = 3;
 uniform vec3 crown_c = vec3(0.0, 3.0, 0.0);
 uniform vec3 crown_e = vec3(2.0);
 uniform float crown_on = 0.0;
+// Ritka módosítás (genes.gd rare_params): 1 tarka levél (krémfehér szegély), 2 ezüstlomb (ezüstös fény), 3 csillámlomb
+// (apró, villanó fények a leveleken).
+uniform int leaf_fx = 0;
 varying vec3 crown_w;
 varying float crown_k;
 varying float tint_v;
@@ -116,6 +119,12 @@ void fragment() {
 	float edge = leaf_cut * smoothstep(0.75, 1.0, s / max(w, 1e-3)) * (1.0 - smoothstep(0.2, 0.6, fwidth(s) * 40.0));
 	vec3 alb = mix(a, a * 1.5 + 0.012, rib * 0.6 + vein * 0.22 + edge * 0.12);
 	alb = season_leaf(alb, tint_v, s / max(w, 1e-3), up_v);
+	if (leaf_fx == 1) {
+		float rim_m = smoothstep(0.56, 0.7, s / max(w, 1e-3)) * (1.0 - rib);
+		alb = mix(alb, vec3(0.74, 0.72, 0.46) * (0.9 + tint_v * 0.15), rim_m * 0.9);
+	} else if (leaf_fx == 2) {
+		alb = mix(alb, vec3(dot(alb, vec3(0.3, 0.5, 0.2))) * vec3(0.9, 0.98, 1.1), 0.5);
+	}
 	alb = thirsty_col(alb, thirst * 0.55);
 	vec3 alb_l = ao_direct(alb, ao_v, 0.45);
 	ALBEDO = col_out(alb_l);
@@ -128,6 +137,17 @@ void fragment() {
 	// peremfény: a korona széle a légkör és a saját színe keverékével dereng (a körvonal helyett)
 	EMISSION = col_out(col_in(glow_col) * (glow_amt * (part_on(1.0) * (rib * 2.2 + vein * 3.5 + 0.25) + 0.06) + touch_wave(u_v) * 0.9)
 		+ soft_rim(NORMAL, VIEW, 0.3 * crown_on) * alb);
+	if (leaf_fx == 2) {
+		// ezüst: a levél lapja a fény felé fordulva csillan, a széle dereng
+		ROUGHNESS = 0.3;
+		float fr = pow(1.0 - abs(dot(NORMAL, VIEW)), 3.0);
+		EMISSION += col_out(vec3(0.55, 0.6, 0.68) * (fr * 0.35 + 0.05 + 0.25 * pow(max(sin(TIME * 0.9 + tint_v * 40.0), 0.0), 12.0)));
+	} else if (leaf_fx == 3) {
+		// csillám: levelenként ritkán felvillanó fény a levél közepén (nappal és éjjel is)
+		float tw = pow(max(sin(TIME * 1.6 + tint_v * 97.0 + ao_v * 13.0), 0.0), 36.0);
+		float spot = 1.0 - smoothstep(0.0, 0.55, s / max(w, 1e-3));
+		EMISSION += col_out(vec3(1.0, 0.9, 0.62) * (tw * 3.2 * spot + 0.05));
+	}
 #ifdef FALL
 	if (fall_gone(FRAGCOORD.xy)) {
 		discard;

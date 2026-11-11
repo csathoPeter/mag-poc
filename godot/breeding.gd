@@ -78,6 +78,13 @@ static func sprouts(a: Dictionary, b: Dictionary, solved: Array, code_prefix: St
 		if int(a_dna[y]) != int(b_dna[y]):
 			diff.append(y)
 	var out: Array = []
+	# ritka módosítás (genes.gd RARE): ha valamelyik szülő hordozza, csíránként fele eséllyel öröklődik (ha mindkettő, a
+	# kettő közül sorsolva); külön véletlen-sorozatból, így a csírák DNS-e ugyanaz, mint a ritkaság bevezetése előtt
+	var rare_rng := DnaBoard.Rng.new(cross_key(a, b) ^ 0x51A4E5C3)
+	var rares: Array = []
+	for x in [int(a.get("rare", 0)), int(b.get("rare", 0))]:
+		if Genes.rare_valid(x) > 0:
+			rares.append(x)
 	for k in SPROUTS:
 		# mit ad tovább a két szülő a virágszínből: a láthatót vagy a lappangót (fele-fele)
 		var pa := la if rng.below(2) == 0 else int(a_dna[0])
@@ -118,8 +125,11 @@ static func sprouts(a: Dictionary, b: Dictionary, solved: Array, code_prefix: St
 			hid = pb
 		else:
 			hid = int(LATENT[int(dna[0])])
+		var rare := 0
+		if not rares.is_empty() and rare_rng.below(2) == 0:
+			rare = int(rares[rare_rng.below(rares.size())])
 		out.append({"dna": dna, "hidden": hid, "shows_hidden": shows, "code": "%s-%d" % [code_prefix, k],
-			"marks": marks(dna, a_dna, b_dna), "name": Genes.latin_name(dna)})
+			"marks": marks(dna, a_dna, b_dna), "name": Genes.latin_name(dna), "rare": rare})
 	return out
 
 
@@ -141,6 +151,8 @@ static func self_test(pairs: int) -> String:
 	var shows_any := 0
 	var free_parent := 0
 	var p_ms := 0.0
+	var rare_n := 0
+	var rare_got := 0
 	var s_ms := 0.0
 	for i in pairs:
 		var a := {"id": i * 2 + 1, "dna": DnaBoard.board_dna(rng.below(count)), "hidden": -1}
@@ -167,6 +179,16 @@ static func self_test(pairs: int) -> String:
 		var c1 := Time.get_ticks_usec()
 		var sp := sprouts(a, b, p.target, "T%d" % i)
 		s_ms += (Time.get_ticks_usec() - c1) / 1000.0
+		# ritka módosítás: ha az egyik szülő hordozza, a csírák kb. fele örökli; a DNS ugyanaz, mint nélküle
+		var ar := a.duplicate()
+		ar.rare = 1 + i % (Genes.RARE.size() - 1)
+		var spr := sprouts(ar, b, p.target, "T%d" % i)
+		for k in SPROUTS:
+			rare_n += 1
+			if spr[k].dna != sp[k].dna or int(sp[k].rare) != 0:
+				bad += 1
+			if int(spr[k].rare) == int(ar.rare):
+				rare_got += 1
 		if sp != sprouts(a, b, p.target, "T%d" % i) or p.clue != puzzle(a, b).clue:
 			bad += 1
 			lines.append("  nem determinisztikus: %d. pár" % i)
@@ -191,6 +213,7 @@ static func self_test(pairs: int) -> String:
 	lines.append("párok: %d, szabálytalan/nem determinisztikus: %d, egyforma csírák: %d" % [pairs, bad, dups])
 	lines.append("mutáció a táblán: átlag %.2f mező; M-jel csíránként átlag %.2f gén" % [float(muts) / pairs, float(marks_m) / (pairs * SPROUTS)])
 	lines.append("szabad sor a másik szülő génjével: %.0f%% (párok átlaga, max 2 sor)" % [100.0 * free_parent / (pairs * 2.0)])
+	lines.append("ritka módosítás öröklődik (egyik szülő hordozza): a csírák %.0f%%-ában" % (100.0 * rare_got / maxf(1.0, rare_n)))
 	lines.append("rejtett szín előbújt: a keresztezések %.0f%%-ában; két kék szülő (%d pár): fehér csíra %.0f%%" % [100.0 * shows_any / pairs, blue_pairs, 100.0 * blue_white / maxf(1.0, blue_pairs)])
 	lines.append("idő: feladvány átlag %.1f ms, három csíra átlag %.1f ms" % [p_ms / pairs, s_ms / pairs])
 	# a maghozás tempója: N kikelt fa (3 kezdő fa, a többi naponta egy-egy kikelt mag), 90 nap

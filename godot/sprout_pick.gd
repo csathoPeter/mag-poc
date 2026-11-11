@@ -270,6 +270,16 @@ func _build_cards() -> void:
 		hid.text = ("Előbújt a rejtett szín: %s!" % Genes.FLOWER[int(dna[0])][0]) if bool(sp.shows_hidden) else ""
 		hid.visible = hid.text != ""
 		col.add_child(hid)
+		var rk := int(sp.get("rare", 0))
+		if rk > 0:
+			# ritka módosítás (öröklődött az egyik szülőtől)
+			var rl := Label.new()
+			BoardView._style_label(rl, 10, Genes.rare_color(rk))
+			rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			rl.custom_minimum_size = Vector2(cw - 12.0, 0)
+			rl.text = Genes.rare_label(rk)
+			col.add_child(rl)
 		var grid := Control.new()
 		var gw := 6.0 * MINI_CELL + 5.0 * MINI_GAP
 		grid.custom_minimum_size = Vector2(gw, gw)
@@ -350,7 +360,7 @@ func _build_plants() -> void:
 	_plants.clear()
 	for k in (cross.sprouts as Array).size():
 		var sp: Dictionary = cross.sprouts[k]
-		var g := Genes.from_dna(sp.dna, str(sp.code))
+		var g := Genes.from_dna(sp.dna, str(sp.code), int(sp.get("rare", 0)))
 		_plants.append(_make_plant(g, k))
 
 
@@ -420,6 +430,7 @@ static func build_preview(g: Dictionary, det := .22) -> Dictionary:
 		fi.material_override = fm
 		node.add_child(fi)
 		mats.append(fm)
+	Genes.rare_params(g, wm, mats[1] if pg.leaf_p.size() > 0 else null, mats[mats.size() - 1] if pg.flo_p.size() > 0 else null)
 	var top := maxf(pg.bb_max.y, 1.6)
 	var wid := maxf(pg.bb_max.x - pg.bb_min.x, pg.bb_max.z - pg.bb_min.z)
 	var s := minf(1.12 / top, 1.0 / maxf(wid, .1))

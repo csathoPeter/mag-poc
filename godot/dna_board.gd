@@ -449,9 +449,10 @@ static func solves_fixed(clue: Array, target: Array, free: Array) -> bool:
 	return true
 
 
-## A nap feladványa (napsorszám → mindenkinek ugyanaz). A cél-DNS véletlen szabályos tábla a nap magjából.
-static func daily(day: int) -> Dictionary:
-	var rng := day_rng(day)
+## A nap feladványa a napsorszámból és a játékoskódból: minden játékosnak más (2026. 11. 11. óta; üres player =
+## a régi, közös feladványsor, az önellenőrzéshez). A cél-DNS véletlen szabályos tábla a nap magjából.
+static func daily(day: int, player := "") -> Dictionary:
+	var rng := day_rng(day, 0 if player == "" else 1 + Care.str_hash(player))
 	var dna := random_board(rng)
 	var p := make_puzzle(dna, rng)
 	p.day = day
@@ -501,11 +502,13 @@ static func self_test(first_day: int, days: int) -> String:
 	var seen := {}
 	for d in range(first_day, first_day + days):
 		var g0 := Time.get_ticks_usec()
-		var p := daily(d)
+		# a játékosonkénti feladványsor (minden 3. nap a régi, közös)
+		var who := "" if d % 3 == 0 else "J%d" % (d % 11)
+		var p := daily(d, who)
 		var gms := (Time.get_ticks_usec() - g0) / 1000.0
 		gen_ms += gms
 		max_gen = maxf(max_gen, gms)
-		var again := daily(d)
+		var again := daily(d, who)
 		if again.clue != p.clue or again.target != p.target:
 			broken += 1
 			lines.append("  nem determinisztikus: nap %d" % d)

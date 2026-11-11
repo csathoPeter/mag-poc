@@ -6,8 +6,10 @@ extends RefCounted
 ## „XXXX-XXXX-XXX”. 10 adatjel (31^10 ≈ 8,2·10^14) + 1 ellenőrző jegy. Az adat egy szám:
 ##   V = (farok · 15 + rejtett szín + 1) · 14^6 + DNS (hat gén, 14-es számrendszerben)
 ## A farok: 0–4095 = a nap magja, a 2026. 01. 01. utáni napsorszámmal (mindenkinek, aki aznap ugyanazt a DNS-t
-## választotta, ugyanaz a kód – mint a Wordle); 4096–8191 tartalék; 8192-től „alak-kulcs” (~7,2 millió féle): a
-## megosztott fa vagy mag kódjából (FNV-hash), így ugyanaz a mag/fa mindig ugyanazt a kódot adja.
+## választotta, ugyanaz a kód – mint a Wordle); 4096–8191 ritka módosítású mag (2026. 11. 11.): 4096 + (ritka − 1) · 256
+## + 0–255 (a napi magnál a nap, máskor az alak-kulcs alsó 8 bitje; a napot és a teljes alak-kulcsot ilyenkor nem
+## hordozza – a kódból kelő fa alakja úgyis a kódból jön); 8192-től „alak-kulcs” (~7,2 millió féle): a megosztott fa
+## vagy mag kódjából (FNV-hash), így ugyanaz a mag/fa mindig ugyanazt a kódot adja. A régi kódok változatlanok.
 ## A számjegyeket láncolt eltolással keverjük (a DNS kis változása is az egész kódot átírja), az ellenőrző jegy:
 ## Σ (i+1)·jel_i ≡ 0 (mod 31) – a 31 prím, a súlyok különbözők, így minden egyjegyű elírást és minden két jel
 ## felcserélését felismeri.
@@ -21,7 +23,8 @@ extends RefCounted
 ##
 ## BOLYGÓ-LINK (?bolygo=…): base64url bájtsor. 1. változat:
 ##   [1] verzió · bolygókód (hossz + UTF-8) · peak · alapítók (darab + 3 bájt/DNS) · fák száma, fánként:
-##   DNS (3 bájt, 4 bit/gén) · jelzők (alsó 4 bit: rejtett szín + 1; 16: saját kód; 32: alakítás; 64: kézi forgás/méret)
+##   DNS (3 bájt, 4 bit/gén) · jelzők (alsó 4 bit: rejtett szín + 1; 16: saját kód; 32: alakítás; 64: kézi forgás/méret;
+##   128: ritka módosítás – utána 1 bájt, a sorszáma)
 ##   · kód (alapból „<bolygókód>-<hely>”: csak a hely sorszáma, varint; saját kódnál a szöveg) · irány (3 bájt,
 ##   oktaéderes 12+12 bit) · [forgás, méret 1-1 bájt, ha nem a kódból jön] · [alakítás: darab, és műveletenként
 ##   fajta, ág, hány napja, kötözésnél két kvaternió 4-4 előjeles bájton] · a végén 2 bájt ellenőrző összeg.
@@ -38,6 +41,8 @@ const HID_N := 15
 const DAY_EPOCH := 20454
 const DAY_N := 4096
 const SHAPE_FROM := 8192
+## Ritka módosítású magok a farokban: DAY_N + (ritka − 1) · RARE_SUB + al-kulcs.
+const RARE_SUB := 256
 ## A kódból kapott mag növénykódjának előtagja.
 const TREE_PREFIX := "MAG-"
 ## A keverés kulcsa (jelenként) és szorzója.
@@ -81,10 +86,14 @@ static func dna_of_index(x: int) -> Array:
 
 
 ## Mag-kód a részeiből. day: a nap magjának napja (-1 = nem napi); shape: alak-kulcs (bármilyen nemnegatív egész,
-## a tartományba hajtjuk). Kiírva „XXXX-XXXX-XXX”.
-static func encode(dna: Array, hidden: int, day := -1, shape := 0) -> String:
+## a tartományba hajtjuk); rare: ritka módosítás (Genes.RARE, 0 = nincs). Kiírva „XXXX-XXXX-XXX”.
+static func encode(dna: Array, hidden: int, day := -1, shape := 0, rare := 0) -> String:
 	var tail := 0
-	if day >= DAY_EPOCH and day < DAY_EPOCH + DAY_N:
+	rare = Genes.rare_valid(rare)
+	if rare > 0:
+		var sub := posmod(day - DAY_EPOCH, RARE_SUB) if day >= DAY_EPOCH else posmod(shape, RARE_SUB)
+		tail = DAY_N + (rare - 1) * RARE_SUB + sub
+	elif day >= DAY_EPOCH and day < DAY_EPOCH + DAY_N:
 		tail = day - DAY_EPOCH
 	else:
 		tail = SHAPE_FROM + posmod(shape, shape_n())
@@ -146,7 +155,7 @@ static func normalize(text: String) -> String:
 
 
 ## Mag-kód → {"ok", "err" (hibánál, magyarul), "code" (szép alak), "raw", "dna", "hidden", "day" (-1, ha nem napi),
-## "shape" (-1, ha napi)}.
+## "shape" (-1, ha napi), "rare" (0, ha nincs; ilyenkor day = -1 és shape = az al-kulcs)}.
 static func decode(text: String) -> Dictionary:
 	var raw := normalize(text)
 	if raw.length() != CODE_LEN:
@@ -179,10 +188,15 @@ static func decode(text: String) -> Dictionary:
 	v /= DNA_N
 	var hidden := v % HID_N - 1
 	var tail := v / HID_N
+	var rare := 0
 	if tail >= DAY_N and tail < SHAPE_FROM:
-		return {"ok": false, "err": "Ezt a kódot egy újabb játékváltozat készítette."}
-	var out := {"ok": true, "code": pretty(raw), "raw": raw, "dna": dna, "hidden": hidden, "day": -1, "shape": -1}
-	if tail < DAY_N:
+		rare = (tail - DAY_N) / RARE_SUB + 1
+		if rare >= Genes.RARE.size():
+			return {"ok": false, "err": "Ezt a kódot egy újabb játékváltozat készítette."}
+	var out := {"ok": true, "code": pretty(raw), "raw": raw, "dna": dna, "hidden": hidden, "day": -1, "shape": -1, "rare": rare}
+	if rare > 0:
+		out.shape = (tail - DAY_N) % RARE_SUB
+	elif tail < DAY_N:
 		out.day = DAY_EPOCH + tail
 	else:
 		out.shape = tail - SHAPE_FROM
@@ -214,7 +228,7 @@ static func for_tree(t: Dictionary) -> String:
 	var own := code_of_tree_code(str(t.get("code", "")))
 	if own != "":
 		return own
-	return encode(t.dna, int(t.get("hidden", -1)), -1, str_hash(str(t.get("code", ""))))
+	return encode(t.dna, int(t.get("hidden", -1)), -1, str_hash(str(t.get("code", ""))), int(t.get("rare", 0)))
 
 
 ## Egy mag mag-kódja (a táskából). A barát magja a kapott kódját adja; a nap magja napi kódot (mindenkinél, aki
@@ -227,11 +241,11 @@ static func for_seed(s: Dictionary, player: String) -> String:
 	if own != "":
 		return own
 	if str(s.get("origin", "")) == "napi":
-		return encode(s.dna, int(s.get("hidden", -1)), int(s.get("day", -1)), 0)
+		return encode(s.dna, int(s.get("hidden", -1)), int(s.get("day", -1)), 0, int(s.get("rare", 0)))
 	var key := str(s.get("code", ""))
 	if key == "":
 		key = "%s#%d#%s" % [player, int(s.get("id", 0)), str(s.dna)]
-	return encode(s.dna, int(s.get("hidden", -1)), -1, str_hash(key))
+	return encode(s.dna, int(s.get("hidden", -1)), -1, str_hash(key), int(s.get("rare", 0)))
 
 
 ## A megosztás linkje a játék címével (weben a valódi cím, így a fejlesztői build /fejlesztes/ útvonala is marad).
@@ -258,14 +272,14 @@ static func planet_url(link: String) -> String:
 ## Rövid szöveg a kész napi táblához: dátum, fajnév, 6×6-os emoji-rács spoiler nélkül (⬜ a feladvány adta mező,
 ## 🟩 amit kikövetkeztettél – az értéke nem látszik –, 🟨/🟪 a szabad sorokban a választásod: A=T / G≡C), a szabad
 ## sorokban választott változatok neve, és a link (a tábla nyílik vele).
-static func daily_text(day: int, dna: Array) -> String:
+static func daily_text(day: int, dna: Array, player := "") -> String:
 	var lines: Array = ["Mag · %s · %s" % [GameState.day_label(day), Genes.latin_name(dna)]]
-	for row in daily_cells(day, dna):
+	for row in daily_cells(day, dna, player):
 		var s := ""
 		for c in row:
 			s += ["⬜", "🟩", "🟨", "🟪"][int(c)]
 		lines.append(s)
-	var puz := DnaBoard.daily(day)
+	var puz := DnaBoard.daily(day, player)
 	var picks: Array = []
 	for y in puz.free:
 		picks.append("%s: %s" % [(Genes.GENE_NAMES[int(y)] as String).to_lower(), Genes.allele_name(int(y), int(dna[int(y)]))])
@@ -275,8 +289,8 @@ static func daily_text(day: int, dna: Array) -> String:
 
 
 ## A rács mezőnként: 0 = a feladvány adta, 1 = kikövetkeztetett, 2 / 3 = szabad sor, A=T / G≡C.
-static func daily_cells(day: int, dna: Array) -> Array:
-	var puz := DnaBoard.daily(day)
+static func daily_cells(day: int, dna: Array, player := "") -> Array:
+	var puz := DnaBoard.daily(day, player)
 	var grid := DnaBoard.grid_from_dna(dna)
 	var out: Array = []
 	for y in DnaBoard.N:
@@ -321,8 +335,13 @@ static func encode_planet(p: Dictionary, trees: Array, today: int) -> String:
 		var manual := absf(float(t.rot) - derived.x) > 1e-4 or absf(float(t.size) - derived.y) > 1e-4
 		if manual:
 			flags |= 64
+		var rare := Genes.rare_valid(int(t.get("rare", 0)))
+		if rare > 0:
+			flags |= 128
 		_put_dna(b, t.dna)
 		b.append(flags)
+		if rare > 0:
+			b.append(rare)
 		if own:
 			_put_str(b, code)
 		else:
@@ -380,6 +399,7 @@ static func decode_planet(text: String, today: int) -> Dictionary:
 	for i in n:
 		var dna := _get_dna(r)
 		var flags := _get_byte(r)
+		var rare := Genes.rare_valid(_get_byte(r)) if flags & 128 else 0
 		var code := ""
 		var slot := -1
 		if flags & 16:
@@ -401,7 +421,7 @@ static func decode_planet(text: String, today: int) -> Dictionary:
 					e.from = PlantGen.quat_arr(_get_quat(r))
 					e.to = PlantGen.quat_arr(_get_quat(r))
 				shaping.append(e)
-		trees.append({"dna": dna, "hidden": (flags & 15) - 1, "code": code, "slot": slot, "dir": dir, "rot": rs.x, "size": rs.y, "shaping": shaping})
+		trees.append({"dna": dna, "hidden": (flags & 15) - 1, "code": code, "slot": slot, "dir": dir, "rot": rs.x, "size": rs.y, "shaping": shaping, "rare": rare})
 	if bool(r.bad) or int(r.i) != body.size():
 		return {"ok": false, "err": "A bolygó linkje hibás."}
 	return {"ok": true, "code": pcode, "peak": peak, "founders": founders, "trees": trees}
@@ -566,6 +586,29 @@ static func self_test(n := 4000) -> String:
 		seen[c] = key
 	lines.append("körbejárás: %d kód, hibás %d, ütköző %d" % [n, bad_rt, dup])
 	ok = ok and bad_rt == 0 and dup == 0
+	# --- ritka módosítás (külön véletlen-sorozattal, hogy a fenti próba ugyanaz maradjon)
+	var rr := RandomNumberGenerator.new()
+	rr.seed = 1111
+	var bad_rare := 0
+	for i in 1200:
+		var dna: Array = []
+		for k in 6:
+			dna.append(rr.randi() % 14)
+		var hid := rr.randi_range(-1, 13)
+		var rare := 1 + i % (Genes.RARE.size() - 1)
+		var daily := i % 3 == 0
+		var day := DAY_EPOCH + rr.randi_range(0, DAY_N - 1) if daily else -1
+		var shape := rr.randi_range(0, shape_n() - 1)
+		var c := encode(dna, hid, day, shape, rare)
+		var d := decode(c)
+		var sub := posmod(day - DAY_EPOCH, RARE_SUB) if daily else posmod(shape, RARE_SUB)
+		if not bool(d.ok) or d.dna != dna or int(d.hidden) != hid or int(d.rare) != rare or int(d.shape) != sub or int(d.day) != -1:
+			bad_rare += 1
+		if c == encode(dna, hid, day, shape, 0):
+			bad_rare += 1
+	var no_rare := int(decode(encode([1, 2, 3, 4, 5, 6], 3, -1, 99)).rare) == 0 and int(decode(encode([1, 2, 3, 4, 5, 6], 3, DAY_EPOCH + 5, 0)).rare) == 0
+	lines.append("ritka módosítás a kódban: 1200 kód, hibás %d; ritka nélkül 0: %s" % [bad_rare, "igen" if no_rare else "NEM"])
+	ok = ok and bad_rare == 0 and no_rare
 	# --- elírások
 	var miss_sub := 0
 	var miss_swap := 0
@@ -642,7 +685,7 @@ static func self_test(n := 4000) -> String:
 			var manual := rng.randf() < .1
 			var t := {"dna": dna, "hidden": rng.randi_range(-1, 13), "code": code, "slot": slot,
 				"dir": Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized(), "rot": rng.randf() * TAU if manual else rs.x,
-				"size": rng.randf_range(.5, .72) if manual else rs.y, "shaping": []}
+				"size": rng.randf_range(.5, .72) if manual else rs.y, "shaping": [], "rare": (i * 7 + rep) % Genes.RARE.size() if (i + rep) % 5 == 0 else 0}
 			if rng.randf() < .15:
 				t.shaping.append({"op": PlantGen.OP_CUT, "branch": rng.randi_range(1, 300), "day": today - 2})
 				var q := Quaternion(Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized(), rng.randf_range(.1, .8))
@@ -657,7 +700,7 @@ static func self_test(n := 4000) -> String:
 				var a: Dictionary = ts[i]
 				var bt: Dictionary = g.trees[i]
 				var rot_d := absf(wrapf(float(a.rot) - float(bt.rot), -PI, PI))
-				same = same and bt.dna == a.dna and int(bt.hidden) == int(a.hidden) and str(bt.code) == str(a.code) \
+				same = same and bt.dna == a.dna and int(bt.hidden) == int(a.hidden) and str(bt.code) == str(a.code) and int(bt.rare) == int(a.rare) \
 					and (bt.dir as Vector3).distance_to(a.dir) < .002 and rot_d < .013 and absf(float(bt.size) - float(a.size)) < .004 \
 					and (bt.shaping as Array).size() == (a.shaping as Array).size()
 				for k in (a.shaping as Array).size():

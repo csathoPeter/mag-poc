@@ -17,6 +17,10 @@ uniform vec4 pick = vec4(0.0);
 // Kerek szirom (puha stílus): a részletes szinten (petal_cut = 1) a körvonalat a shader rajzolja (plant_gen.petal_half),
 // a mesh csak befoglaló burok; UV.y a legnagyobb félszélességhez mért oldaltávolság.
 uniform float petal_cut = 0.0;
+// Ritka módosítás (genes.gd rare_params): 1 szivárványvirág (virágonként más árnyalat, a szirom mentén is átúszik),
+// 2 fénylő virágok (nappal is halványan világítanak).
+uniform int flower_fx = 0;
+varying float inst_v;
 varying float kind_v;
 varying float fade_v;
 varying float bud_v;
@@ -52,6 +56,14 @@ void vertex() {
 	kind_v = COLOR.r;
 	tint_v = INSTANCE_CUSTOM.y;
 	u_v = (INSTANCE_CUSTOM.x - 0.74) / 0.14;
+	inst_v = fract(float(INSTANCE_ID) * 0.6180339 + 0.11);
+}
+
+// Színárnyalat-forgatás a szürke tengely körül (a fényesség nagyjából marad).
+vec3 hue_turn(vec3 c, float a) {
+	const vec3 k = vec3(0.57735);
+	float ca = cos(a);
+	return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);
 }
 
 void fragment() {
@@ -65,6 +77,13 @@ void fragment() {
 		ROUGHNESS = 0.8;
 	} else {
 		vec3 c = mix(col_in(throat), mix(col_in(petal), col_in(petal_tip), smoothstep(0.25, 1.0, UV.x)), smoothstep(0.0, 0.34, UV.x)) * tint_v;
+		if (flower_fx == 1) {
+			// szivárvány: virágonként más szín (a fehér és a halvány virág is színes lesz), a szirom mentén átúszik
+			float hh = inst_v + UV.x * 0.3;
+			vec3 rb = 0.5 + 0.5 * cos(6.2832 * (hh + vec3(0.0, 0.33, 0.67)));
+			float lum = dot(c, vec3(0.3, 0.5, 0.2));
+			c = mix(c, rb * rb * (0.35 + lum * 0.9), 0.85 * smoothstep(0.05, 0.3, UV.x));
+		}
 		// a régi csíkok a durva rácson cikcakkosak voltak; puha stílusban a szirom széle felé enyhén világosodik
 		c *= mix(0.94 + 0.1 * sin(UV.y * 22.0), 0.95 + 0.08 * UV.y * UV.x, soft_k);
 		// bimbóban a szirmok töve zöldes, hervadáskor fakó, barnás krém
@@ -76,7 +95,13 @@ void fragment() {
 		ROUGHNESS = 0.5;
 		BACKLIGHT = alb * (1.1 * backlight_k());
 	}
-	EMISSION = col_out(col_in(glow_col) * (glow_amt * (part_on(0.0) * (smoothstep(0.1, 0.9, UV.x) * 3.2 + 0.9) + 0.12) + touch_wave(u_v) * 1.2));
+	vec3 em = col_in(glow_col) * (glow_amt * (part_on(0.0) * (smoothstep(0.1, 0.9, UV.x) * 3.2 + 0.9) + 0.12) + touch_wave(u_v) * 1.2);
+	if (flower_fx == 2 && kind_v < 0.5) {
+		// fénylő virág: a szirom a saját színében dereng, lassan lélegezve
+		vec3 pc = mix(col_in(petal), col_in(petal_tip), UV.x);
+		em += pc * (0.55 + 0.25 * sin(TIME * 1.3 + inst_v * 6.2832)) * (1.0 - fade_v) * (1.0 - bud_v * 0.7);
+	}
+	EMISSION = col_out(em);
 #ifdef FALL
 	if (fall_gone(FRAGCOORD.xy)) {
 		discard;

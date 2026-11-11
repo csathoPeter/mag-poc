@@ -44,7 +44,10 @@ static func random_dna() -> Array:
 	return dna
 
 
-static func from_dna(dna: Array, code: String) -> Dictionary:
+## rare: ritka módosítás (RARE sorszáma, 0 = nincs). A DNS-tábláról nem jöhet ki: a nap magjába sorsolódik (roll_rare),
+## és részben öröklődik. Csak a véletlenszámok UTÁN hat, így a fa váza ugyanaz marad, mint módosítás nélkül
+## (kivéve, ha maga a módosítás a váz: csavart törzs).
+static func from_dna(dna: Array, code: String, rare := 0) -> Dictionary:
 	var r := RandomNumberGenerator.new()
 	r.seed = hash(code + str(dna))
 	var ter: Array = TERMET[dna[3]]
@@ -75,7 +78,120 @@ static func from_dna(dna: Array, code: String) -> Dictionary:
 	g.bark = hsl(b[1], b[2], b[3]).srgb_to_linear()
 	g.wind_dir = r.randf() * TAU
 	g.sky = r.randi() % SKIES.size()
+	g.rare = rare if rare > 0 and rare < RARE.size() else 0
+	if g.rare > 0:
+		_apply_rare(g)
 	return g
+
+
+# ---------------------------------------------------------------- Ritka módosítások
+
+## A ritkaság fokozatai és esélyük a nap magjában (egymást kizáróan; összesen 14,5%). Minden nap, minden játékosnál
+## külön sorsolódik (roll_rare), nem a napok sorrendje szerint.
+const RARE_TIERS := [
+	{"name": "ritka", "chance": .10, "col": Color(.62, .9, .78)},
+	{"name": "nagyon ritka", "chance": .035, "col": Color(.72, .74, 1.0)},
+	{"name": "legendás", "chance": .01, "col": Color(1.0, .84, .45)},
+]
+
+## A ritka módosítások (a 0. üres). kind: melyik részt érinti; fx: a shader-ág (leaf_fx / flower_fx / wood_fx).
+const RARE := [
+	{"name": "", "tier": -1, "kind": ""},
+	{"name": "kétszínű lomb", "tier": 0, "kind": "lomb", "desc": "a levelek csúcsa egészen más színű"},
+	{"name": "óriás virágok", "tier": 0, "kind": "virág", "desc": "a virágai kétszer akkorák"},
+	{"name": "óriás termet", "tier": 0, "kind": "termet", "desc": "jóval nagyobbra nő a társainál"},
+	{"name": "fénylő virágok", "tier": 0, "kind": "fény", "desc": "a virágai nappal is halványan világítanak"},
+	{"name": "tarka levél", "tier": 1, "kind": "lomb", "desc": "a levelek széle krémfehér"},
+	{"name": "telt virág", "tier": 1, "kind": "virág", "desc": "háromsoros, telt virágok"},
+	{"name": "csavart törzs", "tier": 1, "kind": "törzs", "desc": "a törzse csigavonalban csavarodik"},
+	{"name": "holdfény", "tier": 1, "kind": "fény", "desc": "minden éjjel teljes fénnyel világít, nappal is dereng"},
+	{"name": "ezüstlomb", "tier": 2, "kind": "lomb", "desc": "ezüstösen csillogó levelek"},
+	{"name": "szivárványvirág", "tier": 2, "kind": "virág", "desc": "minden virága más színben játszik"},
+	{"name": "aranykéreg", "tier": 2, "kind": "törzs", "desc": "aranyló, csillanó kéreg"},
+	{"name": "csillámlomb", "tier": 2, "kind": "fény", "desc": "a levelein apró fények csillannak"},
+]
+const RARE_TWO_TONE := 1
+const RARE_BIG_FLOWERS := 2
+const RARE_GIANT := 3
+const RARE_GLOW_FLOWERS := 4
+const RARE_VARIEGATED := 5
+const RARE_DOUBLE := 6
+const RARE_TWISTED := 7
+const RARE_MOONLIGHT := 8
+const RARE_SILVER := 9
+const RARE_RAINBOW := 10
+const RARE_GOLD := 11
+const RARE_SPARKLE := 12
+
+
+## Ritka módosítás két egyenletes véletlen számból (0–1): u a fokozatot, v a fokozaton belüli fajtát választja.
+## 0 = nincs (az esetek ~85,5%-ában).
+static func roll_rare(u: float, v: float) -> int:
+	var acc := 0.0
+	for tier in range(RARE_TIERS.size() - 1, -1, -1):
+		acc += float(RARE_TIERS[tier].chance)
+		if u < acc:
+			var list := rare_of_tier(tier)
+			return int(list[mini(int(v * list.size()), list.size() - 1)])
+	return 0
+
+
+static func rare_of_tier(tier: int) -> Array:
+	var out: Array = []
+	for i in range(1, RARE.size()):
+		if int(RARE[i].tier) == tier:
+			out.append(i)
+	return out
+
+
+static func rare_valid(k: int) -> int:
+	return k if k > 0 and k < RARE.size() else 0
+
+
+## „aranykéreg (legendás)” (üres, ha nincs).
+static func rare_label(k: int) -> String:
+	if rare_valid(k) == 0:
+		return ""
+	return "%s (%s)" % [RARE[k].name, RARE_TIERS[int(RARE[k].tier)].name]
+
+
+static func rare_color(k: int) -> Color:
+	if rare_valid(k) == 0:
+		return Color.WHITE
+	return RARE_TIERS[int(RARE[k].tier)].col
+
+
+## A módosítás a genomon (a véletlenszámok után, így a többi tulajdonság ugyanaz marad).
+static func _apply_rare(g: Dictionary) -> void:
+	match int(g.rare):
+		RARE_TWO_TONE:
+			g.leaf_tip_h = fposmod(float(g.leaf_h) + .42, 1.0)
+			g.leaf_s = maxf(float(g.leaf_s), .55)
+		RARE_BIG_FLOWERS:
+			g.flower_size = float(g.flower_size) * 1.8
+		RARE_GIANT:
+			g.scale = 1.38
+		RARE_DOUBLE:
+			g.layers = 3
+			g.petals = maxi(int(g.petals), 6)
+		RARE_TWISTED:
+			g.twist = 1.0
+		RARE_SILVER:
+			g.leaf_h = .55; g.leaf_tip_h = .5; g.leaf_s = .12; g.leaf_l = .56
+		RARE_GOLD:
+			g.bark = hsl(.115, .78, .5).srgb_to_linear()
+
+
+## A ritka módosítás shader-paraméterei a fa anyagain (bármelyik lehet null). A kert, a csíraválasztó, a herbárium
+## és a megosztás képe is ezt hívja, így mindenhol ugyanúgy látszik.
+static func rare_params(g: Dictionary, wm: ShaderMaterial, lm: ShaderMaterial, fm: ShaderMaterial) -> void:
+	var k := int(g.get("rare", 0))
+	if wm != null:
+		wm.set_shader_parameter("wood_fx", 1 if k == RARE_GOLD else 0)
+	if lm != null:
+		lm.set_shader_parameter("leaf_fx", 1 if k == RARE_VARIEGATED else 2 if k == RARE_SILVER else 3 if k == RARE_SPARKLE else 0)
+	if fm != null:
+		fm.set_shader_parameter("flower_fx", 1 if k == RARE_RAINBOW else 2 if k == RARE_GLOW_FLOWERS else 0)
 
 
 static func describe(g: Dictionary) -> String:
@@ -107,7 +223,8 @@ static func rows() -> Array:
 
 ## Rejtett éjszakai fény a tábla két átlójából: az erősség a G≡C-k számából, hogy melyik rész világít, az átlók eltéréseiből.
 ## Csak éjjel derül ki, és öröklődik, mert a sorokból (génekből) jön.
-static func glow(dna: Array) -> Dictionary:
+## rare: a „holdfény” módosítás teljes erővel világít, és nappal is dereng (day: a nappali alsó határ).
+static func glow(dna: Array, rare := 0) -> Dictionary:
 	var rs := rows()
 	var gc := 0
 	var key := 0
@@ -117,7 +234,9 @@ static func glow(dna: Array) -> Dictionary:
 		key += i * (int(row[i]) ^ int(row[5 - i]))
 	var parts := ["virágai", "levélerei", "kérge"]
 	var part := key % 3
-	return {"strength": clampf((gc - 3) / 6.0, 0.0, 1.0), "part": part, "part_name": parts[part]}
+	if rare == RARE_MOONLIGHT:
+		return {"strength": 1.0, "part": part, "part_name": parts[part], "day": .3}
+	return {"strength": clampf((gc - 3) / 6.0, 0.0, 1.0), "part": part, "part_name": parts[part], "day": 0.0}
 
 
 ## Egy gén egy változatának neve (a táblás felület és a magos táska mutatja), pl. allele_name(0, 2) = „rózsa”.
@@ -172,5 +291,9 @@ static func latin_name(dna: Array) -> String:
 
 
 ## Rövid leírás a fő tulajdonságokból (magos táska, tábla vége).
-static func traits_text(dna: Array) -> String:
-	return "%s · %s levél · %s virág · %s lomb" % [TERMET[dna[3]][1], LEAF[dna[2]][0], FLOWER[dna[0]][0], FOLIAGE[dna[5]][0]]
+## rare: a ritka módosítás is (a végén, pl. „· legendás · aranykéreg”); a még ki nem kelt nap magjánál ne add át.
+static func traits_text(dna: Array, rare := 0) -> String:
+	var s := "%s · %s levél · %s virág · %s lomb" % [TERMET[dna[3]][1], LEAF[dna[2]][0], FLOWER[dna[0]][0], FOLIAGE[dna[5]][0]]
+	if rare_valid(rare) > 0:
+		s += " · " + rare_label(rare)
+	return s

@@ -402,10 +402,10 @@ func _build_preview_world() -> void:
 	_pv_cam.look_at(Vector3(0, 0, 0), Vector3.UP)
 
 
-func _preview_plant(dna: Array, code: String, det: float) -> void:
+func _preview_plant(dna: Array, code: String, det: float, rare := 0) -> void:
 	if not _pv_plant.is_empty():
 		(_pv_plant.node as Node3D).queue_free()
-	_pv_plant = SproutPick.build_preview(Genes.from_dna(dna, code), det)
+	_pv_plant = SproutPick.build_preview(Genes.from_dna(dna, code, rare), det)
 	_pv_world.add_child(_pv_plant.node)
 	_pose_preview(1.0)
 
@@ -425,11 +425,11 @@ func share_focused() -> void:
 	var t: Dictionary = host.trees[host.focus]
 	var rec: Dictionary = host.game.find_tree(int(t.sid)) if int(t.sid) >= 0 else {}
 	if rec.is_empty():
-		rec = {"dna": t.g.dna, "code": t.g.code, "hidden": -1}
+		rec = {"dna": t.g.dna, "code": t.g.code, "hidden": -1, "rare": int(t.g.get("rare", 0))}
 	var code := ShareCode.for_tree(rec)
 	_working = true
 	var img: Image = await _capture_screen()
-	_open_seed_sheet(rec.dna, code, img, "Egy fa a kertemből: %s." % Genes.latin_name(rec.dna))
+	_open_seed_sheet(rec.dna, code, img, "Egy fa a kertemből: %s." % Genes.latin_name(rec.dna), int(rec.get("rare", 0)))
 
 
 ## Egy mag a táskából: a kódból kelő fa 3D-előnézete + a mag-kód.
@@ -441,13 +441,15 @@ func share_seed(id: int) -> void:
 		return
 	var code := ShareCode.for_seed(s, str(host.game.data.player))
 	_working = true
-	var img: Image = await _render_preview(s.dna, ShareCode.tree_code(code))
+	# a még ki nem kelt nap magjának ritkasága titok (kikeléskor derül ki): a kódban benne van, a képen nem látszik
+	var rare := 0 if str(s.origin) == "napi" else int(s.get("rare", 0))
+	var img: Image = await _render_preview(s.dna, ShareCode.tree_code(code), rare)
 	var what := "Mag a táskámból"
 	if str(s.origin) == "napi":
 		what = "A nap magja (%s)" % GameState.day_label(int(s.day))
 	elif str(s.origin) == "barat":
 		what = "Egy mag, amit kaptam"
-	_open_seed_sheet(s.dna, code, img, "%s: %s." % [what, Genes.latin_name(s.dna)])
+	_open_seed_sheet(s.dna, code, img, "%s: %s." % [what, Genes.latin_name(s.dna)], rare)
 
 
 ## Egy csillag a herbárium lapjáról: a csillag fájának előnézete + a mag-kódja.
@@ -459,13 +461,13 @@ func share_star(id: int) -> void:
 		return
 	var code := ShareCode.for_tree(st)
 	_working = true
-	var img: Image = await _render_preview(st.dna, str(st.code))
-	_open_seed_sheet(st.dna, code, img, "Az egyik csillagom: %s." % Genes.latin_name(st.dna))
+	var img: Image = await _render_preview(st.dna, str(st.code), int(st.get("rare", 0)))
+	_open_seed_sheet(st.dna, code, img, "Az egyik csillagom: %s." % Genes.latin_name(st.dna), int(st.get("rare", 0)))
 
 
-func _open_seed_sheet(dna: Array, code: String, photo: Image, text: String) -> void:
+func _open_seed_sheet(dna: Array, code: String, photo: Image, text: String, rare := 0) -> void:
 	var name := Genes.latin_name(dna)
-	var framed: Image = await _compose(photo, name, Genes.traits_text(dna), "Mag-kód: %s" % code)
+	var framed: Image = await _compose(photo, name, Genes.traits_text(dna, rare), "Mag-kód: %s" % code)
 	var url := ShareCode.seed_url(code)
 	_payload = {"title": "Mag · %s" % name, "text": "%s Vesd el te is: a kód %s" % [text, code], "url": url, "image": framed,
 		"file": "mag-%s.jpg" % ShareCode.normalize(code).to_lower(), "code": code}
@@ -480,9 +482,10 @@ func share_daily(day: int) -> void:
 	var dna: Array = host.game.daily_dna(day)
 	if dna.is_empty():
 		return
-	var text := ShareCode.daily_text(day, dna)
+	var player := str(host.game.data.player)
+	var text := ShareCode.daily_text(day, dna, player)
 	var url := ShareCode.base_url() + "?tabla"
-	_payload = {"title": "Mag · a nap magja", "text": text, "url": url, "image": null, "file": "", "cells": ShareCode.daily_cells(day, dna), "code": ""}
+	_payload = {"title": "Mag · a nap magja", "text": text, "url": url, "image": null, "file": "", "cells": ShareCode.daily_cells(day, dna, player), "code": ""}
 	var picks := text.get_slice("\n", 7) if text.count("\n") >= 7 else ""
 	_show_sheet("A nap magja · %s\n%s" % [GameState.day_label(day), Genes.latin_name(dna)], null, "", picks)
 
@@ -523,8 +526,8 @@ func _capture_screen() -> Image:
 
 
 ## A fa 3D-előnézete (részletes szinten, kinőve) egy négyzetes képbe, átlátszó háttérrel.
-func _render_preview(dna: Array, code: String) -> Image:
-	_preview_plant(dna, code, 1.0)
+func _render_preview(dna: Array, code: String, rare := 0) -> Image:
+	_preview_plant(dna, code, 1.0, rare)
 	_pv_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
@@ -712,12 +715,12 @@ func receive_code(text: String, from_url: bool) -> void:
 		_gift_open({}, "Ez a mag már nálad van", Genes.latin_name(d.dna), "Ezt a kódot (%s) már megkaptad. Nézd meg a táskában, vagy keresd a bolygódon." % code, "")
 		return
 	var day := int(d.day)
-	var seed := game.receive_seed(code, d.dna, int(d.hidden), ShareCode.tree_code(code), day)
+	var seed := game.receive_seed(code, d.dna, int(d.hidden), ShareCode.tree_code(code), day, "", int(d.rare))
 	game.save()
 	var from := "Egy barátodtól · %s" % code
 	if day >= 0:
 		from = "A %s napi magja, egy barátodtól · %s" % [GameState.day_label(day), code]
-	_gift_open(seed, "Kaptál egy magot", Genes.latin_name(d.dna), Genes.traits_text(d.dna), from)
+	_gift_open(seed, "Kaptál egy magot", Genes.latin_name(d.dna), Genes.traits_text(d.dna, int(d.rare)), from)
 
 
 ## Vendégként a barát bolygóján: „Magot kérek” a kiválasztott fáról (pontosan az a fa nő ki belőle, a kódjával).
@@ -737,9 +740,9 @@ func ask_seed() -> void:
 	if game.has_gift(code):
 		_gift_open({}, "Erről a fáról már kaptál magot", Genes.latin_name(gt.dna), "Nézd meg a táskádban.", "")
 		return
-	var seed := game.receive_seed(code, gt.dna, int(gt.hidden), str(gt.code), -1, pname)
+	var seed := game.receive_seed(code, gt.dna, int(gt.hidden), str(gt.code), -1, pname, int(gt.get("rare", 0)))
 	game.save()
-	_gift_open(seed, "Kaptál egy magot", Genes.latin_name(gt.dna), Genes.traits_text(gt.dna), "%s bolygójáról, egy barátodtól" % pname)
+	_gift_open(seed, "Kaptál egy magot", Genes.latin_name(gt.dna), Genes.traits_text(gt.dna, int(gt.get("rare", 0))), "%s bolygójáról, egy barátodtól" % pname)
 
 
 ## „Kaptál egy magot” (vagy egy rövid üzenet, ha seed üres): a mag fényként lehull, a lapon kinő a fája.
@@ -762,7 +765,7 @@ func _gift_open(seed: Dictionary, title: String, name: String, body: String, fro
 		BoardView.make_button(_g_btns, "Bezár", func() -> void: _gift_close(Callable()), BoardView.C_DIM)
 		_g_t = G_LEN
 	else:
-		_preview_plant(seed.dna, str(seed.code), .22)
+		_preview_plant(seed.dna, str(seed.code), .22, int(seed.get("rare", 0)))
 		_g_pic.texture = _pv_vp.get_texture()
 		_pv_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		_g_col = Genes.allele_color(0, int(seed.dna[0])).lerp(Color.WHITE, .25)

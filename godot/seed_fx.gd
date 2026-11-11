@@ -80,6 +80,10 @@ var _ring_p := Vector3.ZERO
 var _ring_n := Vector3.UP
 var _ring_size := 2.4
 var _ring_col := C_SEED
+## A spirálból húzódó mag színe: ritka napon (a nap magja ritka módosítást kapott) gyöngyházfehér – az egyetlen
+## előjel; hogy mi az, csak kikeléskor derül ki.
+const C_SEED_RARE := Color(.86, .92, 1.0)
+var _seed_col := C_SEED
 
 
 func _ready() -> void:
@@ -193,7 +197,8 @@ func cancel() -> void:
 
 ## A spirál indítása. cells: a 36 mező közepe képernyő-koordinátában (sorfolytonosan), vals: a bázispárok
 ## (0 = A=T, 1 = G≡C), cell_px: egy mező mérete, to_px: ahová a mag repül (a táska gombja).
-func play_helix(cells: Array, vals: Array, cell_px: float, to_px: Vector2) -> void:
+func play_helix(cells: Array, vals: Array, cell_px: float, to_px: Vector2, rare := false) -> void:
+	_seed_col = C_SEED_RARE if rare else C_SEED
 	_cells = cells
 	_vals = vals
 	_cell_px = cell_px
@@ -351,10 +356,10 @@ func _helix() -> void:
 	var seed := center.lerp(to, fly) + Vector3(0, sin(fly * PI) * view_h * .07, 0)
 	var ss := cell * (.15 + 1.1 * collapse) * (1.0 - fly * .7)
 	mm.set_instance_transform(I_SEED, Transform3D(Basis.from_scale(Vector3.ONE * ss), seed))
-	mm.set_instance_color(I_SEED, Color(C_SEED, 1.6 * collapse))
+	mm.set_instance_color(I_SEED, Color(_seed_col, 1.6 * collapse))
 	mm.set_instance_custom_data(I_SEED, Color(0, 0, .08 * collapse * (1.0 - fly), 0))
 	mm.set_instance_transform(I_AURA, Transform3D(Basis.from_scale(Vector3.ONE * cell * 4.5 * collapse * (1.0 - fly * .8)), seed))
-	mm.set_instance_color(I_AURA, Color(C_SEED, .38 * collapse * (1.0 - fly)))
+	mm.set_instance_color(I_AURA, Color(_seed_col, .38 * collapse * (1.0 - fly)))
 	# a fátyol a tábla mögötti ködből folytatódik, és a mag elrepülésével feloszlik
 	_veil_mat.set_shader_parameter("amount", lerpf(.86, .93, morph) * (1.0 - fly))
 

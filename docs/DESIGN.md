@@ -70,13 +70,31 @@ A herbárium és a tenyésztési célok csak halk háttérelemek, nem kényszer�
 
 ### A nap magja
 
-- **Mindenkinek ugyanaz a tábla**, de 1–2 szabad génnél a játékos választ → rokon, mégis saját növény.
-- A tábla a dátumból determinisztikusan generálható, **szerver nélkül, offline is** működik.
+- **Minden játékosnak más a tábla** (Döntés: 2026. 11. 11., Péter: „a nap magját randomra kell venni mindenkinek”; korábban mindenkinek ugyanaz volt), és 1–2 szabad génnél a játékos választ.
+- A tábla a dátumból és a játékoskódból determinisztikusan generálható (`DnaBoard.daily(nap, játékos)`), **szerver nélkül, offline is** működik; újratöltve, más eszközön ugyanazzal a játékoskóddal ugyanaz. A régi (közös) feladvány félkész rácsa a váltáskor elvész (`GameState.DAILY_GEN`), a kész napok megmaradnak.
+- **Ritka módosítás (2026. 11. 11., lásd lent):** a nap magjába százalékos eséllyel olyan módosítás sorsolódhat, ami a DNS-tábláról nem jöhet ki.
 - Megosztás az első verzióban: kép + kód. „Mások mit választottak” statisztikához később szerver kell.
-- **Megvalósítás (M10):** a kész napi tábla a táskában („A mai tábla kész” → „Megosztom”) Wordle-szerű szövegként osztható meg: „Mag · 2026. 11. 11. · Zephionea purpurea”, alatta 6×6 emoji-rács **spoiler nélkül** (⬜ a feladvány adta mező, 🟩 amit kikövetkeztettél – az értéke nem látszik –, 🟨/🟪 a szabad sorokban a választásod: A=T / G≡C), „Választásom: virágszín: magenta, szirmok: 5 szirom”, és a link (`?tabla`: a tábla nyílik vele). Így a barátok összevethetik, ki mit választott, a megoldás elárulása nélkül. A napi mag maga is megosztható mag-kóddal (a táskában a magon „Megosztom”): aki aznap ugyanazt választotta, ugyanazt a kódot kapja.
+- **Megvalósítás (M10):** a kész napi tábla a táskában („A mai tábla kész” → „Megosztom”) Wordle-szerű szövegként osztható meg: „Mag · 2026. 11. 11. · Zephionea purpurea”, alatta 6×6 emoji-rács **spoiler nélkül** (⬜ a feladvány adta mező, 🟩 amit kikövetkeztettél – az értéke nem látszik –, 🟨/🟪 a szabad sorokban a választásod: A=T / G≡C), „Választásom: virágszín: magenta, szirmok: 5 szirom”, és a link (`?tabla`: a tábla nyílik vele). Így a barátok összevethetik, hogyan oldották meg a saját táblájukat, a megoldás elárulása nélkül (2026. 11. 11. óta mindenkinek más a tábla; a `?tabla` link a megnyitó saját tábláját nyitja). A napi mag maga is megosztható mag-kóddal (a táskában a magon „Megosztom”).
 - **Kihagyás:** az elmúlt 7 nap magjai a magos táskában várnak, bármikor elvethetők. Régebbiek nem.
 - **Megvalósítás (M2):** a feladvány a helyi dátum napsorszámából jön, saját, motorfüggetlen véletlenszám-generátorral (xorshift32), így minden eszközön ugyanaz. A táskában a mai és legfeljebb 7 korábbi nap megfejtetlen magja „Megfejtem” gombbal áll (a játék kezdete előtti napok nem), a kész napi mag „Elvetem” gombbal: az aktív bolygóra kerül, holnap kel ki. A félkész tábla naponként mentődik. A spirál, az elvetés és a kikelés látványa: lásd „A nagy pillanat”.
 - **Fajnév a DNS-ből:** ugyanaz a DNS mindig ugyanazt a latin nevet kapja (a második tag a virágszínből, pl. *rosea*, *violacea*), így a nap magja összevethető („nekem Calulina lilacina lett”), és a táskában és a kikelt fán ugyanaz a név.
+
+### Ritka módosítások (2026. 11. 11.)
+
+Döntés (Péter): legyen ritkaság; a nap magjába sorsolódhasson olyan módosítás, ami a tábláról nem jöhet ki; **százalékos eséllyel, bármelyik nap** (nem „minden N. nap”); részben öröklődjön; **kikeléskor derüljön ki**; mind a négy fajta (lomb, virág, törzs/termet, fény).
+
+- **Esély** (a nap magja elkészültekor, játékosonként és naponként külön, determinisztikusan: `GameState.daily_rare`, a játékoskódból és a napból, a választott DNS-től függetlenül – újra megoldva sem változik): ritka 10%, nagyon ritka 3,5%, legendás 1% (összesen 14,5%; 4000 napon mérve a végigjátszásban). Fokozaton belül egyforma eséllyel.
+- **A 12 módosítás** (`genes.gd RARE`, fokozatonként négy fajta egy-egy):
+  | | Lomb | Virág | Törzs / termet | Fény |
+  |---|---|---|---|---|
+  | ritka | kétszínű lomb (a levélcsúcs más árnyalat) | óriás virágok (1,8×) | óriás termet (1,38×) | fénylő virágok (nappal is derengenek) |
+  | nagyon ritka | tarka levél (krémfehér szegély) | telt virág (harmadik szirom-sor) | csavart törzs (csigavonalban) | holdfény (teljes éjszakai fény, nappal is dereng) |
+  | legendás | ezüstlomb (ezüstös, csillanó) | szivárványvirág (minden virága más színű) | aranykéreg (aranyló, végigfutó csillanás) | csillámlomb (felvillanó fények a leveleken) |
+- **Megvalósítás:** a módosítás a fa / mag / csillag rekordjában (`rare`, 0 = nincs). `Genes.from_dna(dna, kód, rare)` a véletlenszámok után módosítja a genomot (szín, méret, rétegek, `twist`), így a fa többi tulajdonsága ugyanaz, mint nélküle; a látványhoz a shaderekben egy-egy ág (`leaf_fx`, `flower_fx`, `wood_fx`; `Genes.rare_params`). Háromszögszám: csak a telt virág ad hozzá (virágonként egy szirom-sor).
+- **Felfedés:** az egyetlen előjel: ritka napon a kész tábla spiráljából húzódó mag gyöngyházfehér (nem arany). A táskában a még ki nem kelt nap magján nem látszik (a megosztott kódjában benne van); másnap a kikeléskor: „Ritka mag volt! telt virág (nagyon ritka): háromsoros, telt virágok.”, plusz fényvillanás és csengés. Utána a fa tábláján „ritka: …”, a táskában, a herbáriumban, a megosztott képen is.
+- **Öröklődés (részben):** a fáról gyűjtött mag és a csillagról visszahozott mag megtartja; keresztezésben a csírák fele örökli (ha mindkét szülő hordoz egyet, a kettő közül sorsolva; külön véletlen-sorozatból, így a csírák DNS-e ugyanaz, mint nélküle – `--crosstest`: 50%). A csíra kártyáján látszik.
+- **Megosztás:** a mag-kód farkának eddig tartalék tartománya (4096–8191) hordozza: 4096 + (ritka − 1)·256 + al-kulcs; a régi kódok változatlanok, a régi játékváltozat „újabb játékváltozat” üzenetet ad rá. A bolygó-linkben a fa jelzőbájtjának 128-as bitje + 1 bájt.
+- **Teszt:** `?ritka=N` (natívan `--ritka=N`): a nap magja az N. módosítást kapja (nem mentődik); fejlesztői módban „…” → „ritka fa” (vagy a fiókban „+ ritka fa (sorban)”): kikelt fa a következő módosítással, körbe mind a 12; képen `--ritkafa=N` a `planet` lövésnél.
 
 ### Tempó
 

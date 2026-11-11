@@ -94,6 +94,7 @@ func _build() -> void:
 	_section("Hozzáadás")
 	var g := _grid()
 	_btn(g, "+ fa (ültetés)", func() -> void: host.plant_new())
+	_btn(g, "+ ritka fa (sorban)", func() -> void: host.plant_rare())
 	_btn(g, "+ 2 mag", func() -> void: host._debug_seeds())
 	_btn(g, "+ 3 csillag", func() -> void: host._debug_stars())
 	_btn(g, "+ új bolygó", func() -> void: host._debug_new_planet())
