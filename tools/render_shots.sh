@@ -21,6 +21,9 @@
 #     skyland (leszállva, a fa mögötti égen) | herb / herbN (a csillagkép-nézet, az N. csillag lapja) | herbland (ugyanez
 #     leszállva) | releaseask (az elengedés megerősítése) | releaseNN (a 0. fa elengedése NN%-nál: 25 oszlik, 55 a fény
 #     felszáll, 92 a csillag kigyullad) | releaseplay / herbplay (valódi koppintásokkal; --state=fájl-lal a mentésbe is)
+#   Bolygók (M7): state,óra,birth / birthNN (megtelik, az új bolygó születése NN%-nál) | system / systemN / systemNzZ
+#     (N bolygó kicsinyítve, a középső aktív) | hopNN (átrepülés NN%-nál, ~74 a csere) | hopplay (valódi koppintás a kis
+#     bolygóra; --state-tel mentve) | hopsow (megtelt bolygóról elvetés: átrepülés az új bolygóra, ott hull le a mag)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 G="$HOME/godot-bin/godot"

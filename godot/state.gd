@@ -10,8 +10,8 @@ extends RefCounted
 ##   created      int      az első indítás napja (napsorszám, lásd today())
 ##   day_offset   int      teszt-eltolás napokban (?nap=+1, debug-gomb); 0 = valódi nap
 ##   next_id      int      a következő egyedi azonosító (fák, magok)
-##   active       int      az aktív bolygó indexe a planets tömbben
-##   planets      Array    bolygók, lásd new_planet()
+##   active       int      az aktív bolygó indexe a planets tömbben (M7: bolygóváltáskor mentve)
+##   planets      Array    bolygók, lásd new_planet(); ha az utolsó megtelt, mellette új születik (ensure_next_planet)
 ##   bag          Array    magos táska, lásd new_seed()
 ##   daily        Dict     a nap magja: napsorszám → félkész rács vagy kész jelző és a választott DNS (lásd lent)
 ##   flags        Dict     apró jelzők (pl. látott bemutatók), bármi, ami nem érdemel saját mezőt
@@ -22,7 +22,8 @@ extends RefCounted
 ## ne a rendszerórát, hogy a teszt-eltolás mindenre hasson.
 
 ## 4 (M6): bolygón "next_star", "peak"; csillagon "seq"; csillagról hozott magon "star_origin", "star_day".
-const VERSION := 4
+## 5 (M7): bolygón "born_seen" (a születését látta-e már a játékos; a régi mentésben igaz).
+const VERSION := 5
 const SAVE_PATH := "user://mag_mentes.json"
 const BACKUP_SUFFIX := ".bak"
 ## Ennyi fa fér egy bolygóra (teljesítménykeret); utána új bolygó születik.
@@ -143,6 +144,8 @@ func new_game(player_code := "") -> void:
 		"cross": {},
 	}
 	var p := new_planet()
+	# az első bolygó születését nem kell megmutatni
+	p.born_seen = true
 	var r := RandomNumberGenerator.new()
 	r.seed = hash(str(data.player) + "kezdo")
 	var dnas: Array = []
@@ -221,7 +224,7 @@ func migrate(d: Dictionary) -> Dictionary:
 		out.bag.append(_fill_seed(s))
 	if out.planets.is_empty():
 		data = out
-		new_planet()
+		new_planet().born_seen = true
 	out.active = clampi(out.active, 0, out.planets.size() - 1)
 	return out
 
@@ -237,12 +240,60 @@ func active_planet() -> Dictionary:
 
 
 ## Új, üres bolygó a listában (kód = játékoskód + sorszám). Az első ültetett fák lesznek az alapítók.
+## A születését (M7) a játékos még nem látta: born_seen = hamis (a planet_system.gd mutatja meg, aztán igaz).
 func new_planet() -> Dictionary:
 	var n: int = data.planets.size() + 1
-	var p := _fill_planet({"code": "%s-%d" % [data.player, n], "index": n, "founded": today()})
+	var p := _fill_planet({"code": "%s-%d" % [data.player, n], "index": n, "founded": today(), "born_seen": false})
 	data.planets.append(p)
 	return p
 
+
+func active_index() -> int:
+	return int(data.active)
+
+
+## Bolygóváltás (M7): ez lesz az aktív bolygó (mentve; újratöltéskor ez nyílik).
+func set_active(i: int) -> void:
+	data.active = clampi(i, 0, (data.planets as Array).size() - 1)
+
+
+func planet_index(p: Dictionary) -> int:
+	return (data.planets as Array).find(p)
+
+
+## Ha a legutolsó bolygó megtelt, mellette új, üres bolygó születik (M7). Visszaadja az újat, vagy üreset.
+## A régebbi bolygók megmaradnak; ha egy régebbin elengedéssel hely szabadul fel, oda is lehet vetni, de új bolygó
+## csak a legutolsó megtelésekor születik.
+func ensure_next_planet() -> Dictionary:
+	var last: Dictionary = (data.planets as Array).back()
+	if is_full(last):
+		return new_planet()
+	return {}
+
+
+## Hová hull az elvetett mag (M7): az aktív bolygóra, ha nem telt meg; különben a legújabb, még nem megtelt bolygóra
+## (a hívó odarepül vele). A táska, a nap magja és a keresztezés közös; a csillagok bolygónként.
+func sow_target() -> int:
+	if not is_full(active_planet()):
+		return active_index()
+	ensure_next_planet()
+	var ps: Array = data.planets
+	for i in range(ps.size() - 1, -1, -1):
+		if not is_full(ps[i]):
+			return i
+	return active_index()
+
+
+## A bolygó még alapító fa nélküli, csupasz gömb-e (M7): egy fája sem kelt ki és látszott még, és el sem engedtek
+## róla fát. Az első kikelt fa adja meg a jellegét (domborzat, talaj, színek, holdak).
+func is_bare(p: Dictionary) -> bool:
+	if int(p.get("peak", 0)) > 0:
+		return false
+	var d := today()
+	for t in p.trees:
+		if int(t.hatch) <= d and bool(t.revealed):
+			return false
+	return true
 
 func _fill_planet(p: Dictionary) -> Dictionary:
 	var out := {
@@ -262,6 +313,8 @@ func _fill_planet(p: Dictionary) -> Dictionary:
 		"next_star": int(p.get("next_star", 0)),
 		# az eddigi legtöbb kikelt fa (M6): a bolygó ehhez méreteződik, így elengedéskor nem zsugorodik össze
 		"peak": int(p.get("peak", 0)),
+		# a születését látta-e már a játékos (M7; a régi mentésben és az első bolygónál igaz)
+		"born_seen": bool(p.get("born_seen", true)),
 	}
 	for t in p.get("trees", []):
 		out.trees.append(_fill_tree(t))
@@ -420,6 +473,29 @@ func debug_stars(n: int) -> Array:
 	return out
 
 
+## Teszt („tele” gomb, --shot ...,birth/system/hop…): a bolygót feltölti kikelt, már látott fákkal (véletlen, a
+## játékoskódból és a hely sorszámából determinisztikus DNS), amíg upto fája nem lesz; ha ezzel az utolsó bolygó megtelt,
+## mellette új bolygó születik. Visszaadja az új fák számát.
+func debug_fill(p: Dictionary, upto: int) -> int:
+	var n := 0
+	while (p.trees as Array).size() < upto:
+		var r := RandomNumberGenerator.new()
+		r.seed = hash("%s-%s-tele-%d" % [data.player, p.code, int(p.next_tree)])
+		var dna: Array = []
+		for k in 6:
+			dna.append(r.randi() % 14)
+		var t := new_tree(p, dna, "teszt")
+		t.planted = today() - 1 - r.randi() % 6
+		t.hatch = t.planted + 1
+		t.revealed = true
+		place_tree(p, t)
+		if (p.founders as Array).is_empty():
+			p.founders = [dna.duplicate()]
+		n += 1
+	ensure_next_planet()
+	return n
+
+
 func find_tree(id: int) -> Dictionary:
 	for p in data.planets:
 		for t in p.trees:
@@ -474,7 +550,8 @@ func remove_seed(id: int) -> void:
 
 
 ## Elvetés: a mag DNS-ével új fa az aktív bolygón, holnap kel ki (a DESIGN szerint minden elvetett mag másnap).
-## Visszaadja a fa-rekordot, vagy üreset, ha a bolygó megtelt.
+## Visszaadja a fa-rekordot, vagy üreset, ha a bolygó megtelt. Ha ezzel az utolsó bolygó megtelt, mellette új
+## bolygó születik (ensure_next_planet; a születés látványa: planet_system.gd).
 func sow_seed(seed: Dictionary) -> Dictionary:
 	var p := active_planet()
 	if is_full(p):
@@ -487,6 +564,7 @@ func sow_seed(seed: Dictionary) -> Dictionary:
 	if (p.founders as Array).is_empty():
 		p.founders = [(seed.dna as Array).duplicate()]
 	remove_seed(int(seed.id))
+	ensure_next_planet()
 	return t
 
 

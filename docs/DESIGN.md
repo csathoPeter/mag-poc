@@ -116,6 +116,15 @@ Döntés: 2026. 11. 10. A „kert” kis bolygók sora. A játékos nemcsak fák
 - **Kamera:** húzással forgatod a bolygót, csípéssel közelítesz. Egy fára koppintva a kamera lerepül hozzá a felszínre: ott van tiltshift, gondozás, metszés.
 - **Teljesítmény:** a túloldali fák nem látszanak, kívülről minden fa apró (egyszerűsített szint), a felszín közelében csak a közeli 3–4 fa részletes.
 
+**Godotban (M7, `godot/planet_system.gd` kis bolygók, születés, váltás; `state.gd` megtelés, célbolygó):**
+- **Megtelés:** `GameState.PLANET_FULL` = 30 fa (a kelésre váró magokkal együtt). Ha a **legutolsó** bolygó megtelik (az elvetéssel vagy a teszt-feltöltéssel), mellette azonnal új, üres bolygó jön létre a mentésben (`ensure_next_planet`, kód: játékoskód + sorszám, `born_seen` = hamis). A régi bolygó megmarad; ha egy régebbin elengedéssel hely szabadul fel, oda is lehet vetni, de új bolygó csak a legutolsó megtelésekor születik.
+- **Születés (~10 mp, koppintás gyorsít):** a következő nyugodt pillanatban (nincs nyitott lap, elvetés, kikelés) a kamera kicsinyít; a megtelt bolygó peremén meleg fénypont gyúl, csóvával, ívben kiúszik a bolygó alá, ott fénygyűrűvel szétnyílik, és fehéren izzó gömbből kibomlik a kis új bolygó, ami lassan a pályájára áll. Felirat: „<régi> megtelt. Mellette megszületett <új>. A következő elvetett magod már oda hull. Koppints rá, és odarepülsz.” Utána `born_seen` = igaz (ha közben bezárul a lap, legközelebb újra lejátszódik).
+- **A csupasz bolygó:** amíg nincs látott (kikelt és megmutatott) fája, és nem is engedtek el róla fát, sima, halvány gyöngyház-levendula gömb, fű, hold és gyűrű nélkül („csupasz, fiatal bolygó · még nincs alapító fája”). Az első elvetett mag lesz az alapító (`founders`); amikor másnap kikel, a kikelés-jelenetben a bolygó felveszi a jellegét: a domborzat lassan kiemelkedik (a fák vele mozognak), a színek átúsznak, a fű kinő, a holdak és a gyűrű megjelennek; a feliraton: „Ő <bolygó> alapítója: a bolygó felveszi a jellegét.”
+- **Kis bolygók (a többi bolygó):** bolygó-nézetben kicsinyítve (csípés 0 alá: a kamera legfeljebb kétszer messzebb húzódik) a többi bolygó az aktív alatt sorakozik, a háttérben: jobbra az újabbak, balra a régebbiek, a távolabbi sorszámúak lejjebb és hátrébb (oldalanként 3). Olcsó változat: egy alacsony felbontású gömb (~360 háromszög, gyűrűvel ~520) a bolygó színeivel (ugyanabból a bolygó-DNS-ből, `Planet.look_of`), légkör-peremmel, a fák apró színes pöttyök a shaderben (≤16), a kikelésre váró fák meleg, lüktető pöttyök. A valódi méret 0,62-szeresén látszanak. Közelről és leszállva nem látszanak; ha csak egy bolygó van, a kicsinyítés sem megy 0 alá. Átlátszatlan anyag, pontrácsos áttűnéssel (az átlátszót a lencse-utófeldolgozás lefedné).
+- **Váltás (~4 mp):** egy kis bolygóra koppintva a kamera felé fordul, ívben odarepül (a cél közben a valódi méretére nő), a légkörébe érve a pára színe egy pillanatra betölti a képet: ekkor cserélődik a teljes bolygó (`active` mentve, a fák a meglévő sorbaállítással, képkockánként épülnek és kinőnek), és a kamera a pára mögül az új bolygó elé ér. Újratöltéskor az aktív bolygó nyílik.
+- **Mi közös, mi bolygónkénti:** a magos táska, a nap magja és a keresztezés **közös** (a játékosé). A **csillagok bolygónként** (minden bolygó egén a saját elengedett fái és a rajta választott keresztezés csírái). Az elvetés mindig az aktív bolygóra megy, ha nem telt meg; **megtelt aktív bolygónál a legújabb, még nem megtelt bolygóra** – a táska ezt kiírja („<régi> megtelt. Az elvetett mag a legújabb bolygóra hull: <új> (odarepülünk).”), és az „Elvetem” után a kamera előbb odarepül, ott hull le a mag. A maghozás tempója bolygónként számol (a bolygó kikelt fáiból), a szomjazás és a virágzás minden bolygón a napokból jön (a nem látott bolygón is, büntetés nélkül).
+- **Teszt:** „tele” (a második apró sorban: a bolygó feltöltése kikelt teszt-fákkal → megtelik, megszületik az új), „…” → „új bolygó” (üres bolygó az aktív mellett, akkor is, ha nem telt meg).
+
 ### A bolygó DNS-e
 
 | Növény génje | → Bolygó tulajdonsága |
@@ -223,6 +232,7 @@ Döntés: 2026. 11. 10. Az egész játék egyetlen JSON-állapot (`godot/state.g
 - **Verzió 2 (M4):** a fán `gathered` (nap) és `gathered_at` (a virág helye), a magon `tree` és `name`; a régi mentésben hiányzó mezők alapértéket kapnak.
 - **Verzió 3 (M5):** a fán, magon és csillagon `hidden` (lappangó virágszín, -1 = a virágszínéhez tartozó alapérték), a játékállapotban `cross`; csillag `origin` = `csira`.
 - **Verzió 4 (M6):** a bolygón `next_star` és `peak`, a csillagon `seq` (a régi mentésben a lista sorrendjéből), a csillagról hozott magon `star_origin` és `star_day`.
+- **Verzió 5 (M7):** a bolygón `born_seen` (a születését látta-e már a játékos; a régi mentésben igaz). Az `active` (az aktív bolygó indexe) bolygóváltáskor mentődik.
 - **Napok:** a helyi dátum napsorszáma; minden napfüggő dolog a `GameState.today()`-t használja, amit a teszt-eltolás (`?nap=+1`, „nap +N” gomb) is módosít, így a „másnap” telefonon is kipróbálható.
 - **Verziószám** a későbbi migrációhoz; a hiányzó mezőket betöltéskor alapértékkel pótoljuk.
 - A `--shot` és a `--bench` nem olvas és nem ír mentést (a `--shot=...,state` csak olvas, vagy a `--state=fájl`-ba ír); a „próba” bolygó sem kerül a mentésbe.
@@ -253,7 +263,7 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [x] Kert = növekvő kis bolygók, bolygó-DNS a növényekből, elengedett fa = csillag
 - [x] Art design: pasztell nappal, világító éjjel, diegetikus felület, DNS-ből generált hang
 - [x] Bolygó-prototípus: domborzat, légkör, holdak, gyűrű, felszíntakaró a bolygó-DNS-ből; forgatás, csípés, koppintásra leszállás; napszak (valódi idő vagy gomb); rejtett éjszakai fény a tábla átlóiból; érintésre fényhullám; lebegő névtábla
-- [ ] Új bolygó születése, ha megtelt; bolygóváltás
+- [x] Új bolygó születése, ha megtelt; bolygóváltás (M7: 30 fánál megtelik, mellette fénypontból kibomló csupasz bolygó, az első kikelő fa adja a jellegét; kicsinyítve a többi bolygó olcsó kis változata, koppintásra átrepülés)
 - [ ] Mérés iPhone 15-ön (bolygó-nézet, leszállás 4 részletes fával)
 - [x] Csillagképek, visszahozás az égről (M6: elengedés megerősítéssel, fénnyé oszló fa, felszálló fény; determinisztikus, növő csillagkép; herbárium-lap 3D-előnézettel, lapozás; „Visszahozom” → mag a táskában)
 - [x] A nap magja: dátumból generált tábla, magos táska (7 nap), egyszerű elvetés (M2)

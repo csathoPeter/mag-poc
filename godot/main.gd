@@ -89,6 +89,7 @@ var s_dist := 6.0
 var trans_t := 9.0
 var sun_dir := Vector3(.4, .6, .7)
 var last_r := 0.0
+var last_shape := 1.0
 var taps := {}
 var tag := Label3D.new()
 var tag_alpha := 0.0
@@ -214,6 +215,8 @@ var ui_moment := false
 ## az „Elengedem…” és a megerősítés (herbarium.gd).
 var stars := SkyStars.new()
 var herb := Herbarium.new()
+# Bolygók (M7; a látvány és a váltás: planet_system.gd)
+var system := PlanetSystem.new()
 ## Hosszú nyomás a kiválasztott fán (ms): elengedés (megerősítéssel).
 const LONG_PRESS := 650
 
@@ -253,6 +256,11 @@ func _ready() -> void:
 	add_child(stars)
 	stars.gone.connect(_on_release_gone)
 	stars.arrived.connect(_on_star_arrived)
+	system.host = self
+	add_child(system)
+	system.swap.connect(_hop_swap)
+	system.arrived.connect(_on_hop_arrived)
+	system.born.connect(_on_planet_born)
 	herb.host = self
 	fx.helix_done.connect(_on_helix_done)
 	fx.sow_landed.connect(func() -> void: _refresh_marks(sow_id))
@@ -470,26 +478,39 @@ func _build_ui() -> void:
 		vp.msaa_3d = Viewport.MSAA_DISABLED if vp.msaa_3d != Viewport.MSAA_DISABLED else Viewport.MSAA_2X
 		_sync_dbg())
 	btn.bm = _small_button(dbg, "mérés", start_bench)
-	# második apró sor: a játékállapot tesztelése (napok, próba-bolygó, mentés törlése)
+	# második apró sor: a játékállapot tesztelése (napok, magok, csillagok, tele bolygó); a ritkábbak a „…” mögött
 	var dbg2 := HBoxContainer.new()
 	dbg2.add_theme_constant_override("separation", 3)
 	col.add_child(dbg2)
 	btn.day = _small_button(dbg2, "nap +0", _next_day)
-	btn.try = _small_button(dbg2, "próba", _toggle_try)
-	btn.wipe = _small_button(dbg2, "törlés", _wipe_tap)
-	# régi, azonnali ültetés véletlen DNS-sel (próbához); a valódi út: a nap magja → táska → Elvetem
-	btn.plant = _small_button(dbg2, "ültess", plant_new)
 	# teszt: két gyűjtött mag a kert fáiról (a keresztezés kipróbálásához, napok várakozása nélkül)
 	btn.seeds = _small_button(dbg2, "+2 mag", _debug_seeds)
 	# teszt: három csillag az égre (a csillagkép és a herbárium kipróbálásához)
 	btn.stars = _small_button(dbg2, "+csillag", _debug_stars)
+	# teszt (M7): a bolygó feltöltése kikelt fákkal → megtelik, mellette új bolygó születik
+	btn.fill = _small_button(dbg2, "tele", _debug_fill)
+	btn.more = _small_button(dbg2, "…", func() -> void:
+		dbg_btn.row3.visible = not dbg_btn.row3.visible
+		dbg_btn.more.text = "×" if dbg_btn.row3.visible else "…")
+	# harmadik apró sor (a „…” nyitja): ritkán kell
+	var dbg3 := HBoxContainer.new()
+	dbg3.add_theme_constant_override("separation", 3)
+	dbg3.visible = false
+	col.add_child(dbg3)
+	btn.row3 = dbg3
+	btn.try = _small_button(dbg3, "próba", _toggle_try)
+	# régi, azonnali ültetés véletlen DNS-sel (próbához); a valódi út: a nap magja → táska → Elvetem
+	btn.plant = _small_button(dbg3, "ültess", plant_new)
+	# teszt (M7): új, üres bolygó születik az aktív mellett (ha az aktív a legutolsó), akkor is, ha nem telt meg
+	btn.planet = _small_button(dbg3, "új bolygó", _debug_new_planet)
+	btn.wipe = _small_button(dbg3, "törlés", _wipe_tap)
+	# a játék állapota (bolygókód, a bolygók száma, a játék napja) külön apró sorban: így sosem tolja szélesebbre a gombsort
 	game_l.add_theme_font_size_override("font_size", 11)
 	game_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .6))
-	game_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	game_l.size_flags_stretch_ratio = 1.6
-	game_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	game_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	dbg2.add_child(game_l)
+	game_l.clip_text = true
+	game_l.custom_minimum_size = Vector2(0, 14)
+	game_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	col.add_child(game_l)
 	joy.set_anchors_preset(Control.PRESET_FULL_RECT)
 	joy.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	joy.draw.connect(func() -> void:
@@ -794,11 +815,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if board.visible or bag.visible or crossing.is_open() or herb.asking():
 		return
 	# a nagy pillanat, a kikelés és az elengedés alatt a koppintás gyorsít / átugrik
-	if fx.busy() or hatching.active() or stars.busy():
+	if fx.busy() or hatching.active() or stars.busy() or system.busy():
 		if event is InputEventScreenTouch and event.pressed:
 			fx.skip()
 			hatching.skip()
 			stars.skip()
+			system.skip()
 		return
 	# csillagkép-nézet (herbárium): koppintás csillagra, húzás jobbra-balra = lapozás
 	if herb.card_open():
@@ -975,6 +997,8 @@ func _process(delta: float) -> void:
 				_shot_care(shot_args[5])
 			elif (shot_args[5] as String).begins_with("sky") or (shot_args[5] as String).begins_with("herb") or (shot_args[5] as String).begins_with("release"):
 				_shot_stars(shot_args[5])
+			elif (shot_args[5] as String).begins_with("birth") or (shot_args[5] as String).begins_with("system") or (shot_args[5] as String).begins_with("hop"):
+				_shot_system(shot_args[5])
 			elif (shot_args[5] as String).begins_with("zoom"):
 				orbit_zoom = float((shot_args[5] as String).trim_prefix("zoom"))
 			elif (shot_args[5] as String).begins_with("macro"):
@@ -1001,6 +1025,8 @@ func _process(delta: float) -> void:
 			crossing.pick.choose(0)
 		if shot_args.size() > 5 and shot_args[5] in ["releaseplay", "herbplay"]:
 			_shot_stars_play(shot_args[5])
+		if shot_args.size() > 5 and (shot_args[5] as String).begins_with("hop"):
+			_shot_hop(shot_args[5])
 		if shot_args.size() > 5 and shot_args[5] == "crossplay":
 			# valódi koppintások a felületen át: Keresztezem → Ezzel → a tábla kitöltése → Ezt nevelem (a 2. csíra)
 			if shot_frames == 6:
@@ -1026,13 +1052,13 @@ func _process(delta: float) -> void:
 			Input.parse_input_event(t2)
 		var last_frame := 8
 		if shot_args.size() > 5:
-			last_frame = 90 if shot_args[5] == "crossplay" else (130 if shot_args[5] in ["releaseplay", "herbplay"] else 40)
+			last_frame = 90 if shot_args[5] in ["crossplay", "hopplay", "hopsow"] else (130 if shot_args[5] in ["releaseplay", "herbplay"] else 40)
 		if shot_frames == last_frame:
 			var highs := 0
 			for t in trees:
 				if t.high_on:
 					highs += 1
-			print("STATS ", stats_l.text, " | ", planet.grass_info(cam) if garden_mode == "planet" else "", " | ", name_l.text, " | cam ", cam_pos, " stick ", stick, " highs ", highs)
+			print("STATS ", stats_l.text, " | ", planet.grass_info(cam) if garden_mode == "planet" else "", " | ", system.info(), " | ", name_l.text, " | cam ", cam_pos, " stick ", stick, " highs ", highs)
 			if saved_view:
 				print("STATE ", _state_digest())
 			get_viewport().get_texture().get_image().save_png(shot_args[0])
@@ -1084,6 +1110,7 @@ func start_planet(code: String, count: int) -> void:
 	_enter_planet(code, dnas, [])
 	saved_view = false
 	stars.sync()
+	system.sync()
 	var dirs: Array = []
 	for i in count:
 		var dir := planet.pick_spot(i, dirs)
@@ -1109,17 +1136,21 @@ func show_saved_planet() -> void:
 			dnas.append(t.dna)
 	var founders: Array = p.founders
 	if dnas.is_empty() and founders.is_empty():
-		# még fa nélküli bolygó: a kódjából jön egy ideiglenes jelleg
+		# még fa nélküli bolygó: a kódjából jön egy ideiglenes jelleg (csupaszon úgysem látszik)
 		founders = [GameState._dna([hash(p.code) % 14, 3, 0, 0, 2, 0])]
+	# csupasz bolygó (M7): még nincs látott fája (és nem is engedtek el róla): sima, halvány gömb; az első kikelő fa
+	# adja meg a jellegét (planet.add_plant)
+	var bare := dnas.is_empty() and int(p.peak) == 0
 	if not shown.is_empty():
 		# a legutóbb kikelt fa felé nézünk (a bolygó amúgy lassan forog tovább)
 		var d: Vector3 = shown[shown.size() - 1].dir
 		orbit_q = Basis.looking_at(-d, Vector3.UP if absf(d.y) < .98 else Vector3.RIGHT).get_rotation_quaternion()
 	# elengedéskor a bolygó nem zsugorodik: az eddigi legtöbb kikelt fához méreteződik
 	planet.min_plants = maxi(int(p.peak), 0)
-	_enter_planet(p.code, dnas, founders)
+	_enter_planet(p.code, dnas, founders, bare)
 	saved_view = true
 	stars.sync()
+	system.sync()
 	for t in shown:
 		var item := _tree_item(t, false)
 		item.reveal = reveal.has(int(t.id))
@@ -1148,7 +1179,7 @@ func _tree_item(t: Dictionary, focus_it: bool) -> Dictionary:
 	return {"dna": t.dna, "code": t.code, "dir": t.dir, "rot": t.rot, "size": t.size, "sid": t.id, "focus": focus_it}
 
 
-func _enter_planet(code: String, dnas: Array, founders: Array) -> void:
+func _enter_planet(code: String, dnas: Array, founders: Array, bare := false) -> void:
 	clear_plants()
 	queue.clear()
 	fx.cancel()
@@ -1166,8 +1197,9 @@ func _enter_planet(code: String, dnas: Array, founders: Array) -> void:
 	planet.visible = true
 	for n in flat_ground:
 		(n as Node3D).visible = false
-	planet.setup(code, planet_dnas, founders)
+	planet.setup(code, planet_dnas, founders, bare)
 	last_r = planet.radius
+	last_shape = planet.shape_k
 	env.sky.sky_material = space_mat
 	env.fog_enabled = false
 	sun.directional_shadow_max_distance = 60.0
@@ -1194,7 +1226,8 @@ func _fit_dist(r: float) -> float:
 
 func _planet_texts() -> void:
 	name_l.text = planet.planet_name()
-	traits_l.text = planet.describe() + "\nHúzd: forgatás · csípd: közelítés · koppints egy fára"
+	var more := saved_view and not game.data.is_empty() and (game.data.planets as Array).size() > 1
+	traits_l.text = planet.describe() + "\nHúzd: forgatás · csípd: közelítés%s · koppints egy fára" % (" · kicsinyítsd: a többi bolygód" if more else "")
 
 
 ## Új fa a bolygón: a bolygó-DNS változik, a bolygó lassan nő, a kamera odarepül a csírához.
@@ -1203,8 +1236,8 @@ func _planet_texts() -> void:
 func plant_new() -> void:
 	if garden_mode != "planet" or queue.size() > 0 or retreating:
 		return
-	if trees.size() >= GameState.PLANET_FULL:
-		traits_l.text = "A bolygó megtelt. Később itt születik mellette egy új kis bolygó."
+	if trees.size() >= GameState.PLANET_FULL or (saved_view and game.is_full(game.active_planet())):
+		traits_l.text = "A bolygó megtelt. A táskából elvetett mag a legújabb bolygóra hull (kicsinyíts: ott van mellette)."
 		return
 	var dna := Genes.random_dna()
 	if saved_view:
@@ -1215,6 +1248,11 @@ func plant_new() -> void:
 		game.place_tree(p, st)
 		if (p.founders as Array).is_empty():
 			p.founders = [dna.duplicate()]
+		if planet.bare:
+			# csupasz bolygó: a jelleg az új alapítóból (a sima gömb alatt újraépül, aztán kiemelkedik)
+			planet.setup(p.code, [], p.founders, true)
+			planet_dnas.clear()
+		game.ensure_next_planet()
 		game.save()
 		planet_dnas.append(dna)
 		planet.add_plant(dna)
@@ -1349,7 +1387,8 @@ func _tag_text() -> void:
 
 func _zoom(f: float) -> void:
 	if view == "orbit":
-		orbit_zoom = clampf(orbit_zoom - log(f) * 1.1, 0.0, 1.0)
+		# több bolygónál 0 alá is: a kamera hátrébb húzódik, és előtűnnek a többi bolygók (planet_system.gd)
+		orbit_zoom = clampf(orbit_zoom - log(f) * 1.1, system.min_zoom(), 1.0)
 	elif macro:
 		m_dist *= f
 		if m_dist > 2.6:
@@ -1364,6 +1403,12 @@ func _zoom(f: float) -> void:
 
 
 func _tap(pos: Vector2) -> void:
+	# kicsinyítve a többi bolygó: rákoppintva odarepülünk (M7)
+	if view == "orbit":
+		var mi := system.pick(pos)
+		if mi >= 0:
+			system.go(mi)
+			return
 	var vp := get_viewport().get_visible_rect().size
 	var px := vp.y * .5 / tan(deg_to_rad(cam.fov) * .5)
 	var best := -1
@@ -1472,8 +1517,9 @@ func _planet_process(delta: float) -> void:
 	trans_t += delta
 	_long_press_check()
 	# a bolygó növekedésekor a fák a felszínen maradnak
-	if absf(planet.radius - last_r) > .0001:
+	if absf(planet.radius - last_r) > .0001 or absf(planet.shape_k - last_shape) > .0001:
 		last_r = planet.radius
+		last_shape = planet.shape_k
 		for t in trees:
 			_place_tree(t)
 	_update_tod(delta, snap)
@@ -1509,7 +1555,7 @@ func _planet_cam(delta: float, snap: bool) -> void:
 	if view == "orbit" or focus < 0:
 		if touches.is_empty():
 			# a bolygó lassan forog tovább, kivéve a nagy pillanatok alatt (a mag helye maradjon a kép közepén)
-			if spin.length() < .02 and not bench_on and not fx.busy() and not hatching.active() and not stars.sky_on:
+			if spin.length() < .02 and not bench_on and not fx.busy() and not hatching.active() and not stars.sky_on and not system.busy():
 				spin = spin.lerp(Vector2(.03, 0), 1.0 - exp(-delta * .5))
 			orbit_q = (orbit_q * Quaternion(Vector3.UP, spin.x * delta) * Quaternion(Vector3.RIGHT, spin.y * delta)).normalized()
 			spin *= exp(-delta * 2.2)
@@ -1543,6 +1589,13 @@ func _planet_cam(delta: float, snap: bool) -> void:
 	# átmenetkor lassú, puha mozgás; utána gyorsan követi az ujjat
 	var rate := 2.2 if trans_t < 2.5 else 12.0
 	var k := 1.0 if snap else 1.0 - exp(-delta * rate)
+	# bolygóváltás (M7): a kamera útja a planet_system.gd-ből
+	if system.flying():
+		var hp := system.hop_pose()
+		want_eye = hp[0]
+		want_look = hp[1]
+		want_up = hp[2]
+		k = 1.0
 	var ed := eye.normalized().slerp(want_eye.normalized(), k)
 	eye = ed * lerpf(eye.length(), want_eye.length(), k)
 	look = look.lerp(want_look, k)
@@ -1685,6 +1738,8 @@ func _next_day() -> void:
 			# a fák lassan átúsznak az új napba (szomjazás, bimbó, virágzás, elnyílás)
 			tending.refresh()
 			_tag_text()
+			# a többi bolygó kis változatán is (kikelésre váró fák jele)
+			system.sync()
 
 
 ## Próba-bolygó (véletlen, nem kerül a mentésbe), és vissza a sajátra.
@@ -1727,7 +1782,8 @@ func _sync_game_dbg() -> void:
 	dbg_btn.wipe.text = "törlés"
 	_sync_daily()
 	var where: String = (game.active_planet().code as String) if saved_view else "nem mentődik"
-	game_l.text = "%s · %s" % [where, GameState.day_label(GameState.today())]
+	var n: int = (game.data.planets as Array).size() if not game.data.is_empty() else 0
+	game_l.text = "%s%s · %s" % [where, (" (%d/%d bolygó)" % [game.active_index() + 1, n]) if saved_view and n > 1 else "", GameState.day_label(GameState.today())]
 
 
 ## Ellenőrzéshez (--shot ...,state): a mentett állapot tömör lenyomata és a fák helye.
@@ -1747,6 +1803,12 @@ func _state_digest() -> String:
 	parts.append("bolygó: alapító %s, legtöbb fa %d, következő csillag %d" % [p.founders[0] if not (p.founders as Array).is_empty() else [], int(p.peak), int(p.next_star)])
 	if not game.pending_sprouts().is_empty():
 		parts.append("választásra vár: %s" % [(game.pending_sprouts().sprouts as Array).map(func(x: Dictionary) -> String: return str(x.name))])
+	var ps: Array = game.data.planets
+	for i in ps.size():
+		var q: Dictionary = ps[i]
+		parts.append("bolygó %d/%d: %s %s, %d fa (%d kikelt), %d csillag, %s%s%s" % [i + 1, ps.size(), q.code, Planet.name_for(str(q.code)), (q.trees as Array).size(),
+			game.hatched(q).size(), (q.stars as Array).size(), "csupasz" if game.is_bare(q) else "alapítva", "" if bool(q.born_seen) else ", születése még nem látszott",
+			" ← aktív" if i == game.active_index() else ""])
 	return "játékos %s · bolygó %s · %d fa · ma %d · hash %08x\n  %s" % [game.data.player, p.code, (p.trees as Array).size(), GameState.today(),
 		hash(JSON.stringify(GameState._plain(game.data), "", true, true)), "\n  ".join(parts)]
 
@@ -1785,6 +1847,10 @@ func open_daily_day(day: int) -> void:
 func open_bag(highlight := -1, msg := "") -> void:
 	if bench_on:
 		return
+	if msg == "" and not game.data.is_empty() and game.is_full(game.active_planet()):
+		var to: Dictionary = game.data.planets[game.sow_target()]
+		if to != game.active_planet():
+			msg = "%s megtelt. Az elvetett mag a legújabb bolygóra hull: %s (odarepülünk)." % [planet.planet_name(), Planet.name_for(str(to.code))]
 	board.close()
 	bag.open(game, highlight, msg)
 	ui_col.visible = false
@@ -1793,7 +1859,7 @@ func open_bag(highlight := -1, msg := "") -> void:
 ## A gombsor a nagy pillanatok (spirál, elvetés, kikelés) alatt eltűnik, utána puhán visszaúszik
 ## (ha közben a tábla vagy a táska nyílt meg, azok maguk rejtik és mutatják).
 func _sync_ui_visible() -> void:
-	var moment := fx.busy() or hatching.active() or stars.busy()
+	var moment := fx.busy() or hatching.active() or stars.busy() or system.busy()
 	if moment:
 		ui_col.visible = false
 	elif ui_moment and not board.visible and not bag.visible and not crossing.is_open() and not herb.is_open():
@@ -1806,7 +1872,7 @@ func _sync_ui_visible() -> void:
 func _overlay_closed() -> void:
 	board_day = -1
 	crossing.board_open = false
-	if not board.visible and not bag.visible and not crossing.is_open() and not herb.is_open() and not stars.busy():
+	if not board.visible and not bag.visible and not crossing.is_open() and not herb.is_open() and not stars.busy() and not system.busy():
 		ui_col.visible = true
 	_sync_daily()
 
@@ -1882,6 +1948,17 @@ func _sow(seed_id: int, animate := true) -> void:
 	var s := game.find_seed(seed_id)
 	if s.is_empty():
 		return
+	# megtelt az aktív bolygó (M7): a mag a legújabb, még nem megtelt bolygóra hull – előbb odarepülünk
+	var target := game.sow_target()
+	if target != game.active_index():
+		game.save()
+		bag.visible = false
+		if animate and saved_view and not bench_on and system.go(target, func() -> void: _sow(seed_id, true)):
+			return
+		game.set_active(target)
+		game.save()
+		if saved_view:
+			show_saved_planet()
 	var t := game.sow_seed(s)
 	if t.is_empty():
 		bag.open(game, -1, "A bolygó megtelt. Később mellette új kis bolygó születik.")
@@ -2242,6 +2319,164 @@ func _shot_stars_play(mode: String) -> void:
 			_shot_click(herb, "Visszahozom", 0)
 
 
+# ---------------------------------------------------------------- Bolygók (M7; a látvány és a váltás: planet_system.gd)
+
+## Születés indul: a kamera kicsinyít (a bolygó és mellette az újszülött helye látszik), a bolygó nem forog tovább.
+func begin_birth() -> void:
+	if view == "surface":
+		_unfocus()
+	macro = false
+	orbit_zoom = PlanetSystem.ZOOM_BIRTH
+	trans_t = 0.0
+	spin = Vector2.ZERO
+
+
+## Váltás indul: a kamera útját a planet_system.gd adja (hop_pose); a felület és az érintések elengednek.
+func begin_hop() -> void:
+	view = "orbit"
+	focus = -1
+	macro = false
+	spin = Vector2.ZERO
+	touches.clear()
+	taps.clear()
+	herb.close_now()
+
+
+## A váltás közepén, a pára mögött: az új bolygó lesz az aktív (mentve), a teljes bolygó újraépül (a fák a sorban,
+## képkockánként), a kamera ugyanott marad az új bolygóhoz mérve.
+func _hop_swap(i: int) -> void:
+	var arr := system.hop_arrival()
+	var dir: Vector3 = arr[0]
+	var up: Vector3 = arr[1]
+	game.set_active(i)
+	game.save()
+	show_saved_planet()
+	if absf(up.dot(dir)) > .98:
+		up = Basis(orbit_q).x
+	orbit_q = Basis.looking_at(-dir, up).get_rotation_quaternion()
+	orbit_zoom = PlanetSystem.ZOOM_ARRIVE
+	spin = Vector2.ZERO
+	system.after_swap()
+	var hp := system.hop_pose()
+	eye = hp[0]
+	look = hp[1]
+	up_v = hp[2]
+	cam.look_at_from_position(eye, look, up_v)
+
+
+func _on_hop_arrived(_i: int) -> void:
+	trans_t = 0.0
+	_planet_texts()
+	_sync_game_dbg()
+
+
+func _on_planet_born(i: int) -> void:
+	var p: Dictionary = game.data.planets[i]
+	_planet_texts()
+	traits_l.text = "Megszületett %s. A következő elvetett magod oda hull (Táska → Elvetem). Kicsinyíts, és koppints rá: odarepülsz." % Planet.name_for(str(p.code))
+	_sync_game_dbg()
+
+
+## Teszt („tele”): az aktív bolygó feltöltése kikelt fákkal (GameState.debug_fill) → megtelik, mellette új bolygó születik.
+func _debug_fill() -> void:
+	if game.data.is_empty() or not saved_view or bench_on or retreating or system.busy():
+		return
+	var p := game.active_planet()
+	var n := game.debug_fill(p, GameState.PLANET_FULL)
+	game.save()
+	traits_l.text = "Teszt: %d kikelt fa került a bolygóra, most tele van (%d fa)." % [n, (p.trees as Array).size()]
+	if n > 0:
+		retreat(show_saved_planet)
+	else:
+		system.sync()
+
+
+## Teszt („új bolygó”): új, üres bolygó születik az aktív mellett (ha az aktív a legutolsó), akkor is, ha nem telt meg.
+func _debug_new_planet() -> void:
+	if game.data.is_empty() or not saved_view or bench_on or retreating or system.busy():
+		return
+	var p := game.new_planet()
+	if game.active_index() != (game.data.planets as Array).size() - 2:
+		p.born_seen = true
+	game.save()
+	system.sync()
+	_planet_texts()
+	_sync_game_dbg()
+	traits_l.text = "Teszt: új bolygó: %s. Kicsinyíts, és koppints rá." % Planet.name_for(str(p.code))
+
+
+## Teszt (--shot ...,state,óra,MÓD): bolygók. birth / birthNN: az aktív bolygó megtelik (teszt-fákkal), és mellette
+## megszületik az új – a születés NN%-ánál (≈20 a fény a peremen, 40 úton, 58 kibomlik, 80 felirat);
+## system / systemN / systemNzZ: N bolygó (alapból 3; a régebbiek tele teszt-fákkal, a legújabb csupasz), a középső
+## (2 bolygónál az első) aktív, kicsinyítve (Z: a közelség, alapból PlanetSystem.ZOOM_REF);
+## hopNN: ugyanez 3 bolygóval, és átrepülés a 2.-ról az 1.-re (a 3. képkockában indul), NN%-nál (≈75: a pára mögött
+## a csere); hopplay: valódi koppintással a jobb oldali kis bolygóra, végig (--state-tel a mentésbe is: az aktív bolygó).
+func _shot_system(mode: String) -> void:
+	system.snap = not mode.ends_with("play") and mode != "hopsow"
+	var ps: Array = game.data.planets
+	if mode == "hopsow":
+		# a megtelt bolygóról a nap magja elvetve: átrepülés az új (csupasz) bolygóra, ott hull le a mag
+		game.debug_fill(game.active_planet(), GameState.PLANET_FULL)
+		for q in ps:
+			q.born_seen = true
+		game.finish_daily(GameState.today(), DnaBoard.daily(GameState.today()).target)
+		game.save()
+		show_saved_planet()
+		orbit_zoom = PlanetSystem.ZOOM_REF
+		return
+	if mode.begins_with("birth"):
+		var spec := mode.trim_prefix("birth")
+		system.freeze_at = (float(spec) if spec != "" else 60.0) / 100.0 * PlanetSystem.B_LEN
+		game.debug_fill(game.active_planet(), GameState.PLANET_FULL)
+		game.save()
+		show_saved_planet()
+		orbit_zoom = PlanetSystem.ZOOM_BIRTH
+		return
+	var count := 3
+	var zoom := PlanetSystem.ZOOM_REF
+	if mode.begins_with("system"):
+		var spec := mode.trim_prefix("system")
+		if spec.contains("z"):
+			zoom = float(spec.get_slice("z", 1))
+			spec = spec.get_slice("z", 0)
+		if spec != "":
+			count = clampi(int(spec), 2, 7)
+	while ps.size() < count:
+		game.debug_fill(ps.back(), GameState.PLANET_FULL)
+	for q in ps:
+		q.born_seen = true
+	game.set_active(1 if count >= 3 else 0)
+	game.save()
+	show_saved_planet()
+	orbit_zoom = zoom
+	if mode.begins_with("hop") and mode != "hopplay":
+		var spec := mode.trim_prefix("hop")
+		system.freeze_at = (float(spec) if spec != "" else 50.0) / 100.0 * PlanetSystem.H_LEN
+
+
+## A váltás indítása a lövésben: hopNN a 3. képkockában (amikor a kis bolygók már a helyükön vannak), hopplay valódi
+## koppintással a jobb oldali (újabb) kis bolygóra.
+func _shot_hop(mode: String) -> void:
+	if mode == "hopsow":
+		if shot_frames == 4:
+			var bag_seeds: Array = game.data.bag
+			_sow(int(bag_seeds[bag_seeds.size() - 1].id))
+		return
+	if mode == "hopplay":
+		if shot_frames == 6:
+			var c := system.screen_pos(game.active_index() + 1)
+			for down in [true, false]:
+				var e := InputEventScreenTouch.new()
+				e.index = 0
+				e.position = c
+				e.pressed = down
+				Input.parse_input_event(e)
+			print("TAP: kis bolygó @ %s" % c)
+		return
+	if shot_frames == 3 and not system.busy():
+		system.go(game.active_index() - 1)
+
+
 ## A gombok felirata: hány mag és megfejtetlen nap vár a táskában.
 func _sync_daily() -> void:
 	if daily_btn == null:
@@ -2461,7 +2696,8 @@ func _orbit_pose(z: float) -> Array:
 	var r := planet.radius
 	var p := planet.surface_point(n)
 	var e := smoothstep(0.0, 1.0, z)
-	var d := lerpf(_fit_dist(r) - r, r * 1.05 + 2.0, e)
+	# z < 0 (M7): kicsinyítve a kamera hátrébb húzódik, és előtűnnek a többi bolygók
+	var d := lerpf(_fit_dist(r) - r, r * 1.05 + 2.0, e) * PlanetSystem.pull(z)
 	var el := lerpf(PI * .5, deg_to_rad(38.0), e)
 	var dir := n * sin(el) - u * cos(el)
 	return [p + dir * d, p, n * cos(el) + u * sin(el)]

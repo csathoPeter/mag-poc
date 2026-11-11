@@ -5,6 +5,8 @@ uniform vec3 rock : source_color = vec3(0.6, 0.55, 0.6);
 uniform vec3 grass : source_color = vec3(0.5, 0.7, 0.5);
 uniform vec3 atmo : source_color = vec3(0.8, 0.7, 0.9);
 uniform float night = 0.0;
+// a domborzat megjelenése (M7): 0 = csupasz, sima gömb; az első fánál 1-re nő
+uniform float shape = 1.0;
 varying float h_v;
 varying float patch_v;
 varying float slope_v;
@@ -25,6 +27,9 @@ float vnoise(vec3 x) {
 }
 
 void vertex() {
+	vec3 unit = normalize(VERTEX);
+	VERTEX = mix(unit, VERTEX, shape);
+	NORMAL = normalize(mix(unit, NORMAL, shape));
 	h_v = COLOR.r;
 	patch_v = COLOR.g;
 	slope_v = dot(normalize(NORMAL), normalize(VERTEX));

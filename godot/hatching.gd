@@ -24,6 +24,7 @@ var t := 0.0
 ## Képernyőképhez: a kikelés ennél az időpontnál áll (-1 = fut).
 var freeze_at := -1.0
 var _done_steps := {}
+var _founding := false
 
 
 func reset(ids: Array = []) -> void:
@@ -64,7 +65,7 @@ func _process(delta: float) -> void:
 func _can_start() -> bool:
 	return host.garden_mode == "planet" and host.saved_view and (host.queue as Array).is_empty() and not host.retreating \
 		and not host.board.visible and not host.bag.visible and not host.crossing.is_open() and not host.fx.busy() and not host.bench_on \
-		and not host.herb.is_open() and not host.stars.busy()
+		and not host.herb.is_open() and not host.stars.busy() and not host.system.busy()
 
 
 func _index(id: int) -> int:
@@ -82,6 +83,7 @@ func _start(id: int) -> void:
 	cur = id
 	t = freeze_at if freeze_at >= 0.0 else 0.0
 	_done_steps.clear()
+	_founding = false
 	host._focus(i)
 	# a felirat csak a szétnyílás után jön (addig a tábla üres, hogy ne lője le a meglepetést)
 	host.tag.text = ""
@@ -104,6 +106,8 @@ func _step(i: int) -> void:
 		host.marks.remove(cur)
 		# a fa most kerül a bolygó-DNS-be: a bolygó lassan átúszik (szín, méret)
 		var dna: Array = (tr.g as Dictionary).dna
+		# csupasz bolygón (M7) ez az első fa: most kapja meg a bolygó a jellegét (a domborzat kiemelkedik)
+		_founding = planet.bare
 		if (host.planet_dnas as Array).is_empty():
 			# az első kikelt fa: a bolygó addig az alapítóból állt össze, azt ne számoljuk kétszer
 			planet.dnas.clear()
@@ -135,4 +139,5 @@ func _caption(tr: Dictionary) -> String:
 	if not st.is_empty():
 		days = maxi(1, GameState.today() - int(st.planted))
 	var head := "Kikelt a tegnapi magod:" if days == 1 else "Kikelt a %d napja elvetett magod:" % days
-	return "%s\n%s" % [head, host._tree_title(tr)]
+	var found := ("\nŐ %s alapítója: a bolygó felveszi a jellegét." % host.planet.planet_name()) if _founding else ""
+	return "%s\n%s%s" % [head, host._tree_title(tr), found]
