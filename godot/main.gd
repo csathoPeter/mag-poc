@@ -134,6 +134,9 @@ var res_ok := 0.0
 var res_wait := 8.0
 var res_up_at := -100.0
 var res_last := 0
+## A fű sűrűsége melegedéskor (planet.grass_mult): ha a felbontás már 50%-on van és még mindig lassú, ez megy le
+## lépésenként (1 → 0,8 → 0,6), lehűléskor előbb ez jön vissza, csak utána a felbontás.
+var grass_q := 1.0
 ## Puha stílus be/ki (a fejlesztői „puha”/„régi” gomb, ?stilus=regi, a mérés „soft” kulcsa); _soft_globals() alkalmazza.
 var soft_on := true
 var _soft_last: Array = []
@@ -2005,17 +2008,26 @@ func _auto_res() -> void:
 		res_hot = maxf(res_hot - sec * .5, 0.0)
 		res_ok = res_ok + sec if res_ema < 17.4 else 0.0
 	var t := now / 1000000.0
-	if res_hot > 1.5 and res_scale > .5 + .001:
+	if res_hot > 1.5 and (res_scale > .5 + .001 or grass_q > .6 + .001):
 		if t - res_up_at < 20.0:
 			res_wait = minf(res_wait * 2.0, 120.0)
-		res_scale = maxf(.5, res_scale - .1)
-		get_viewport().scaling_3d_scale = res_scale
+		if res_scale > .5 + .001:
+			res_scale = maxf(.5, res_scale - .1)
+			get_viewport().scaling_3d_scale = res_scale
+		else:
+			# a legkisebb felbontáson is lassú: a fű ritkul (a csomók puhán elhalványulnak, nem pattannak)
+			grass_q = maxf(.6, grass_q - .2)
+			planet.set_grass_mult(grass_q)
 		res_hot = 0.0
 		res_ok = 0.0
 		_sync_dbg()
-	elif res_ok > res_wait and res_scale < base_scale - .001:
-		res_scale = minf(base_scale, res_scale + .05)
-		get_viewport().scaling_3d_scale = res_scale
+	elif res_ok > res_wait and (res_scale < base_scale - .001 or grass_q < 1.0 - .001):
+		if grass_q < 1.0 - .001:
+			grass_q = minf(1.0, grass_q + .2)
+			planet.set_grass_mult(grass_q)
+		else:
+			res_scale = minf(base_scale, res_scale + .05)
+			get_viewport().scaling_3d_scale = res_scale
 		res_up_at = t
 		res_ok = 0.0
 		_sync_dbg()
@@ -3182,6 +3194,7 @@ func _bench_cfg(cfg: Dictionary) -> void:
 	orbit_zoom = cfg.get("zoom", ORBIT_ZOOM)
 	lod_force = cfg.get("force", false)
 	planet.set_grass_mult(cfg.get("gmul", 1.0))
+	grass_q = planet.grass_mult
 	sun.shadow_enabled = cfg.get("shadow", true)
 	soft_on = cfg.get("soft", true)
 	env.glow_enabled = cfg.get("glow", true)
@@ -3288,7 +3301,7 @@ func _bench_process(_delta: float) -> void:
 			total += d
 		var sorted := bench_dt.duplicate()
 		sorted.sort()
-		bench_rows.append({"view": step[0], "name": step[1] + (" → %d%%" % roundi(res_scale * 100.0) if auto_res else ""), "fps": n / maxf(total, .001), "avg": total / maxi(n, 1) * 1000.0,
+		bench_rows.append({"view": step[0], "name": step[1] + (" → %d%%%s" % [roundi(res_scale * 100.0), (", fű ×%.1f" % grass_q) if grass_q < .999 else ""] if auto_res else ""), "fps": n / maxf(total, .001), "avg": total / maxi(n, 1) * 1000.0,
 			"p95": sorted[mini(n - 1, int(n * .95))] * 1000.0, "cpu": bench_cpu / maxi(n, 1), "tris": bench_tris, "calls": bench_calls})
 		_bench_next()
 

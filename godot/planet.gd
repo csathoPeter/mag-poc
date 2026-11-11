@@ -39,6 +39,9 @@ const COVER := [
 const TILES_N := 6
 const GROUP := 3
 const NEAR_DENS := 140.0
+## A fű alapsűrűségének szorzója (2026. 11. 11., Péter kérésére sokkal sűrűbb fű). A grass_mult (mérés, önálló
+## minőség) erre szorzódik; melegedéskor a main.gd _auto_res ezt veszi vissza puhán (a ritkább csomók elhalványulnak).
+const DENSITY := 1.6
 const CLUMP_BLADES := 4
 ## A kamera körül CAM_R-en belül teljes a sűrűség, CAM_FAR-ig ritkul.
 const CAM_R := 2.5
@@ -332,7 +335,7 @@ func _apply() -> void:
 		gm.set_shader_parameter("planet_r", radius)
 		# csupasz bolygón (M7) nincs fű: a szálak a jelleg megjelenésekor nőnek ki
 		gm.set_shader_parameter("blade_h", float(cover.h) * float(cur.blade) * deco * deco * deco)
-		gm.set_shader_parameter("near_w", NEAR_DENS * float(cover.dens) * grass_mult)
+		gm.set_shader_parameter("near_w", NEAR_DENS * float(cover.dens) * grass_mult * DENSITY)
 		gm.set_shader_parameter("base_w", _base_u() / (radius * radius))
 		gm.set_shader_parameter("cam_r", CAM_R)
 		gm.set_shader_parameter("cam_far", CAM_FAR)
@@ -638,7 +641,7 @@ func _fill_node(node: MultiMeshInstance3D, counts: Array) -> void:
 
 ## Alapsűrűség az egységgömbön (a bolygó méretétől független, így a növekedéskor sem változik, mely szálak látszanak).
 func _base_u() -> float:
-	return float(cover.count) * grass_mult / (4.0 * PI)
+	return float(cover.count) * grass_mult * DENSITY / (4.0 * PI)
 
 
 func _build_grass() -> void:
@@ -685,7 +688,7 @@ func _update_tiles() -> void:
 	if tiles.is_empty() or cover.is_empty() or blade_hi == null:
 		return
 	var r := radius
-	var near_w := NEAR_DENS * float(cover.dens) * grass_mult
+	var near_w := NEAR_DENS * float(cover.dens) * grass_mult * DENSITY
 	var base_w := _base_u() / (r * r)
 	var pa := 4.0 / float(TILES_N * TILES_N)
 	var ctr := global_position
