@@ -2,7 +2,7 @@ class_name Crossing
 extends Node
 ## Keresztezés (M5) – a folyamat: táska („Keresztezem” → „Ezzel”) → keresztezett DNS-tábla (a két szülő génjei,
 ## a legközelebbi szabályos DNS, két szabad sor, 1 / 2 / M jelölés) → „Három csíra” (sprout_pick.gd) → a választott
-## csíra kettős spirállal maggá lesz a táskában, a másik kettő csillag lesz a bolygó egén. A szabályok: breeding.gd,
+## csíra kettős spirállal maggá lesz a táskában, a másik kettő csillag lesz az égbolton. A szabályok: breeding.gd,
 ## az adat: state.gd (data.cross, a csírák választásig a mentésben várnak).
 ##
 ## A főjelenet (main.gd) tagjait használja, ezért a host típus nélküli: game, board, bag, fx, ui_col, bag_btn,
@@ -97,12 +97,12 @@ func _on_chosen(k: int) -> void:
 	var s := game.choose_sprout(k)
 	game.save()
 	host._sync_daily()
-	# a két csillag a felszállásuk végén kigyullad a bolygó egén (a csillagkép: sky_stars.gd)
+	# a két csillag a felszállásuk végén kigyullad az égbolton (sky_stars.gd)
 	host.get_tree().create_timer(SproutPick.STAR_LEN - .3).timeout.connect(host.stars.sync)
 	if s.is_empty():
 		return
 	host.helix_seed = int(s.id)
-	host.helix_msg = "Kész! %s a táskádba került. A másik két csíra csillag lett a bolygó egén." % Genes.latin_name(s.dna)
+	host.helix_msg = "Kész! %s a táskádba került. A másik két csíra csillag lett az égbolton." % Genes.latin_name(s.dna)
 	var vp: Vector2 = host.get_viewport().get_visible_rect().size
 	var r: Rect2 = (host.bag_btn as Control).get_global_rect()
 	var to := r.get_center() if r.size.x > 1.0 else Vector2(vp.x * .62, 130.0)

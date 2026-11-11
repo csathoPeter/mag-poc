@@ -1001,8 +1001,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			stars.skip()
 			system.skip()
 		return
-	# csillagkép-nézet (herbárium): koppintás csillagra, húzás jobbra-balra = lapozás
-	if herb.card_open():
+	# felnézve (égbolt-nézet, herbárium): koppintás csillagra, húzás jobbra-balra = lapozás
+	if herb.looking:
 		herb.sky_input(event)
 		return
 	if garden_mode == "planet":
@@ -1187,7 +1187,8 @@ func _process(delta: float) -> void:
 				_shot_cross(shot_args[5])
 			elif shot_args[5] in ["thirsty", "bloom", "bud", "wilt"] or (shot_args[5] as String).begins_with("water") or (shot_args[5] as String).begins_with("gather"):
 				_shot_care(shot_args[5])
-			elif (shot_args[5] as String).begins_with("sky") or (shot_args[5] as String).begins_with("herb") or (shot_args[5] as String).begins_with("release"):
+			elif (shot_args[5] as String).begins_with("sky") or (shot_args[5] as String).begins_with("herb") or (shot_args[5] as String).begins_with("release") \
+					or (shot_args[5] as String).begins_with("look"):
 				_shot_stars(shot_args[5])
 			elif (shot_args[5] as String).begins_with("birth") or (shot_args[5] as String).begins_with("system") or (shot_args[5] as String).begins_with("hop"):
 				_shot_system(shot_args[5])
@@ -1227,7 +1228,7 @@ func _process(delta: float) -> void:
 					orbit_q = (orbit_q * Quaternion(Vector3.UP, dy)).normalized()
 		if shot_frames == 3 and shot_args.size() > 5 and (shot_args[5] as String).begins_with("stars"):
 			crossing.pick.choose(0)
-		if shot_args.size() > 5 and shot_args[5] in ["releaseplay", "herbplay"]:
+		if shot_args.size() > 5 and shot_args[5] in ["releaseplay", "herbplay", "lookplay"]:
 			_shot_stars_play(shot_args[5])
 		if shot_args.size() > 5 and (shot_args[5] as String).begins_with("hop"):
 			_shot_hop(shot_args[5])
@@ -2311,17 +2312,17 @@ func _state_digest() -> String:
 	for sd in game.data.bag:
 		parts.append("táska: %s %s %s rejtett %d kód %s%s" % [sd.origin, GameState.seed_name(sd), sd.parents, int(sd.hidden), sd.code,
 			(" (csillagról: %s, %d)" % [sd.star_origin, int(sd.star_day)]) if str(sd.origin) == "csillag" else ""])
-	for st in p.stars:
-		parts.append("csillag #%d: %s %s %s rejtett %d kód %s, csillag lett %d" % [int(st.seq), st.origin, Genes.latin_name(st.dna), st.dna, int(st.hidden),
-			st.code, int(st.released)])
-	parts.append("bolygó: alapító %s, legtöbb fa %d, következő csillag %d" % [p.founders[0] if not (p.founders as Array).is_empty() else [], int(p.peak), int(p.next_star)])
+	for st in game.data.stars:
+		parts.append("csillag #%d: %s %s %s rejtett %d kód %s, csillag lett %d (%s)" % [int(st.seq), st.origin, Genes.latin_name(st.dna), st.dna, int(st.hidden),
+			st.code, int(st.released), st.planet])
+	parts.append("bolygó: alapító %s, legtöbb fa %d · következő csillag %d" % [p.founders[0] if not (p.founders as Array).is_empty() else [], int(p.peak), int(game.data.next_star)])
 	if not game.pending_sprouts().is_empty():
 		parts.append("választásra vár: %s" % [(game.pending_sprouts().sprouts as Array).map(func(x: Dictionary) -> String: return str(x.name))])
 	var ps: Array = game.data.planets
 	for i in ps.size():
 		var q: Dictionary = ps[i]
-		parts.append("bolygó %d/%d: %s %s, %d fa (%d kikelt), %d csillag, %s%s%s" % [i + 1, ps.size(), q.code, Planet.name_for(str(q.code)), (q.trees as Array).size(),
-			game.hatched(q).size(), (q.stars as Array).size(), "csupasz" if game.is_bare(q) else "alapítva", "" if bool(q.born_seen) else ", születése még nem látszott",
+		parts.append("bolygó %d/%d: %s %s, %d fa (%d kikelt), %s%s%s" % [i + 1, ps.size(), q.code, Planet.name_for(str(q.code)), (q.trees as Array).size(),
+			game.hatched(q).size(), "csupasz" if game.is_bare(q) else "alapítva", "" if bool(q.born_seen) else ", születése még nem látszott",
 			" ← aktív" if i == game.active_index() else ""])
 	return "játékos %s · bolygó %s · %d fa · ma %d · hash %08x\n  %s" % [game.data.player, p.code, (p.trees as Array).size(), GameState.today(),
 		hash(JSON.stringify(GameState._plain(game.data), "", true, true)), "\n  ".join(parts)]
@@ -2963,7 +2964,7 @@ func _on_star_arrived(id: int) -> void:
 	var s := stars._find(id)
 	if s.is_empty():
 		return
-	herb.open(id, "%s csillag lett %s egén. Bármikor visszahozhatod." % [Genes.latin_name(s.rec.dna), planet.planet_name()])
+	herb.open(id, "%s csillag lett az égbolton. Bármikor visszahozhatod." % Genes.latin_name(s.rec.dna))
 
 
 ## „Visszahozom”: a csillagból mag lesz a táskában (eredet „csillag”), a csillag felvillan és elhalványul, a mag fénye
@@ -2974,7 +2975,7 @@ func _recall_star(id: int) -> void:
 		return
 	var from := stars.screen_pos(id)
 	var col: Color = s.col
-	var seed := game.recall_star(game.active_planet(), id)
+	var seed := game.recall_star(id)
 	if seed.is_empty():
 		return
 	game.save()
@@ -2988,51 +2989,56 @@ func _recall_star(id: int) -> void:
 	_sync_daily()
 
 
-## Teszt („+csillag”): három teszt-csillag az aktív bolygó egén (lásd GameState.debug_stars).
+## Teszt („+csillag”): három teszt-csillag az égbolton (lásd GameState.debug_stars).
 func _debug_stars() -> void:
 	if game.data.is_empty() or not saved_view or bench_on or stars.busy():
 		return
 	game.debug_stars(3)
 	game.save()
 	stars.sync()
-	traits_l.text = "Három teszt-csillag az égen. Koppints rájuk, vagy a jobb alsó csillagjelre."
+	traits_l.text = "Három teszt-csillag az égen. Koppints rájuk, vagy a „Felnézek az égboltra” gombra."
 
 
-## Teszt (`?csillag`): a csillagkép-nézet a legutóbbi csillaggal; ha még nincs csillag, öt teszt-csillaggal.
+## Teszt (`?csillag`): felnézve az égboltra; ha még nincs csillag, öt teszt-csillaggal.
 func _debug_sky() -> void:
 	if game.data.is_empty() or not saved_view or bench_on:
 		return
-	if (game.active_planet().stars as Array).is_empty():
+	if (game.data.stars as Array).is_empty():
 		game.debug_stars(5)
 		game.save()
 		stars.sync()
-	var ord := stars.ordered()
-	if not ord.is_empty():
-		herb.open(int(ord[ord.size() - 1].id))
+	herb.look_up()
 
 
 ## Teszt (--shot ...,state,óra,MÓD): csillagok. Ha a bolygón 6-nál kevesebb csillag van, teszt-csillagokkal pótolja
 ## (--state-tel ezek a mentésbe is bekerülnek). skyZ: kívülről, Z közelséggel (alapból a szokásos); skyland: leszállva
 ## a 0. fához (a fa mögötti égen); herb / herbN: a csillagkép-nézet az N. (alapból a legutóbbi) csillag lapjával;
-## herbland: ugyanez leszállva; releaseask: leszállva a 0. fához, az elengedés megerősítése; releaseNN: a 0. fa
+## herbland: ugyanez leszállva; look / lookland: felnézve az égboltra (lap nélkül, kívülről / leszállva); lookN: N
+## csillaggal (teszt-csillagokkal pótolva); lookplay: valódi koppintással a „Felnézek az égboltra” gombra; releaseask: leszállva a 0. fához, az elengedés megerősítése; releaseNN: a 0. fa
 ## elengedése, az idővonal NN%-ánál (≈30: oszlik, 55: a fény felszáll, 92: a csillag kigyullad, a lap nyílik);
 ## releaseplay / herbplay: valódi koppintásokkal végig (lásd _shot_stars_play).
 func _shot_stars(mode: String) -> void:
 	stars.snap = not mode.ends_with("play")
 	herb.snap = true
-	var p := game.active_planet()
-	if not mode.begins_with("release") and (p.stars as Array).size() < 6:
-		game.debug_stars(6 - (p.stars as Array).size())
+	var want := 6
+	if mode.begins_with("look") and mode.trim_prefix("look").is_valid_int():
+		want = int(mode.trim_prefix("look"))
+	if not mode.begins_with("release") and (game.data.stars as Array).size() < want:
+		game.debug_stars(want - (game.data.stars as Array).size())
 		game.save()
 		stars.sync()
 	if mode.begins_with("sky") and mode != "skyland":
 		var spec := mode.trim_prefix("sky")
 		orbit_zoom = float(spec) if spec != "" else ORBIT_ZOOM
 		return
-	if mode in ["skyland", "herbland", "releaseask", "releaseplay", "herbplay"] or mode.begins_with("release"):
+	if mode in ["skyland", "herbland", "lookland", "releaseask", "releaseplay", "herbplay"] or mode.begins_with("release"):
 		if mode != "herbplay" and not trees.is_empty():
 			_focus(0)
 			_planet_cam(0.0, true)
+	if mode.begins_with("look"):
+		if mode != "lookplay":
+			herb.look_up()
+		return
 	if mode.begins_with("herb") and mode != "herbplay":
 		var ord := stars.ordered()
 		var spec := mode.trim_prefix("herb")
@@ -3052,7 +3058,8 @@ func _shot_stars(mode: String) -> void:
 
 
 ## Teszt: valódi koppintások. releaseplay: „Elengedem…” a lebegő tábla alatt → „Elengedem” a megerősítésben → a fa
-## fénnyé válik, felszáll, a lap nyílik. herbplay: a jobb alsó csillagjel → „›” → „Visszahozom” (a mag a táskába).
+## fénnyé válik, felszáll, a lap nyílik. herbplay: a jobb alsó „Felnézek az égboltra” → koppintás a legutóbbi
+## csillagra → „›” → „Visszahozom” (a mag a táskába). lookplay: csak a gomb (felnézve marad).
 func _shot_stars_play(mode: String) -> void:
 	if mode == "releaseplay":
 		if shot_frames == 8:
@@ -3061,10 +3068,16 @@ func _shot_stars_play(mode: String) -> void:
 			_shot_click(herb, "Elengedem", 0)
 	else:
 		if shot_frames == 6:
-			_shot_click_at(herb.chip.get_global_rect().get_center(), "csillagjel" if herb.chip.visible else "csillagjel (nem látszik)")
+			_shot_click_at(herb.chip.get_global_rect().get_center(), "Felnézek az égboltra" if herb.chip.visible else "Felnézek (nem látszik)")
+		elif mode == "lookplay":
+			return
 		elif shot_frames == 12:
+			var ord := stars.ordered()
+			if not ord.is_empty():
+				_shot_click_at(stars.screen_pos(int(ord[ord.size() - 1].id)), "a legutóbbi csillag")
+		elif shot_frames == 16:
 			_shot_click(herb, "›", 0)
-		elif shot_frames == 18:
+		elif shot_frames == 22:
 			_shot_click(herb, "Visszahozom", 0)
 
 

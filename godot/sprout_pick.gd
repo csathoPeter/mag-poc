@@ -87,7 +87,7 @@ func _ready() -> void:
 	BoardView._style_label(_hint, 11, BoardView.C_DIM)
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hint.text = "Egyet nevelsz tovább: az lesz a mag. A másik kettő csillag lesz a bolygó egén. 1 / 2: melyik szülőtől jött a gén, M: mutáció."
+	_hint.text = "Egyet nevelsz tovább: az lesz a mag. A másik kettő csillag lesz az égbolton. 1 / 2: melyik szülőtől jött a gén, M: mutáció."
 	col.add_child(_hint)
 	var row := HBoxContainer.new()
 	col.add_child(row)

@@ -13,6 +13,9 @@ extends RefCounted
 ##   active       int      az aktív bolygó indexe a planets tömbben (M7: bolygóváltáskor mentve)
 ##   planets      Array    bolygók, lásd new_planet(); ha az utolsó megtelt, mellette új születik (ensure_next_planet)
 ##   bag          Array    magos táska, lásd new_seed()
+##   stars        Array    csillagok (M6; v7 óta a játékosé, nem bolygónkénti): elengedett fák és el nem választott csírák,
+##                         lásd add_star(); az égbolton szétszórva (sky_stars.gd)
+##   next_star    int      a következő csillag sorszáma (ebből és a játékoskódból jön a helye az égbolton)
 ##   daily        Dict     a nap magja: napsorszám → félkész rács vagy kész jelző és a választott DNS (lásd lent)
 ##   flags        Dict     apró jelzők (pl. látott bemutatók), bármi, ami nem érdemel saját mezőt
 ##   cross        Dict     keresztezés (M5): félkész tábla {"a", "b", "grid"}, vagy kész, választásra váró csírák
@@ -27,7 +30,10 @@ extends RefCounted
 ##    "from" (honnan kaptad, pl. a barát bolygójának neve); flags.got: a már megkapott mag-kódok (kétszer nem jár).
 ## M12 (verzióváltás nélkül, a flags-ben): flags.debug (fejlesztői mód), flags.tips (a már látott első-indítás tippek
 ##    azonosítói), flags.seen_day (az utolsó megnyitás napja: ha ma későbbi, reggeli pillanat).
-const VERSION := 6
+## 7: a csillagok a játékoséi (data.stars, data.next_star), nem a bolygóké; a csillagon "planet" (melyik bolygón lett
+##    csillag). A régi mentés bolygónkénti csillagai egy listába kerülnek (elengedés napja, bolygó, sorszám szerint), új
+##    sorszámmal.
+const VERSION := 7
 const SAVE_PATH := "user://mag_mentes.json"
 const BACKUP_SUFFIX := ".bak"
 ## Ennyi fa fér egy bolygóra (teljesítménykeret); utána új bolygó születik.
@@ -164,6 +170,8 @@ func new_game(player_code := "") -> void:
 		"daily": {},
 		"flags": {},
 		"cross": {},
+		"stars": [],
+		"next_star": 0,
 	}
 	var p := new_planet()
 	# az első bolygó születését nem kell megmutatni
@@ -241,9 +249,12 @@ func migrate(d: Dictionary) -> Dictionary:
 		"daily": _ints(d.get("daily", {})) if d.get("daily") is Dictionary else {},
 		"flags": _ints(d.get("flags", {})) if d.get("flags") is Dictionary else {},
 		"cross": _fill_cross(d.get("cross", {})),
+		"stars": [],
+		"next_star": int(d.get("next_star", 0)),
 	}
 	for p in d.get("planets", []):
 		out.planets.append(_fill_planet(p))
+	_migrate_stars(d, out)
 	for s in d.get("bag", []):
 		out.bag.append(_fill_seed(s))
 	if out.planets.is_empty():
@@ -251,6 +262,51 @@ func migrate(d: Dictionary) -> Dictionary:
 		new_planet().born_seen = true
 	out.active = clampi(out.active, 0, out.planets.size() - 1)
 	return out
+
+
+## A csillagok a mentésből. v7: a játékos listája. Régebbi: a bolygók listái egybe (elengedés napja, bolygó, régi
+## sorszám szerint), új sorszámmal (0, 1, 2…), a "planet" mezőben a bolygó kódja.
+func _migrate_stars(d: Dictionary, out: Dictionary) -> void:
+	var raw: Array = []
+	if d.get("stars") is Array:
+		for t in d.stars:
+			raw.append({"rec": t, "planet": str((t as Dictionary).get("planet", "")), "pi": 0, "seq": int((t as Dictionary).get("seq", -1))})
+	else:
+		var ps: Array = d.get("planets", [])
+		for pi in ps.size():
+			var p: Dictionary = ps[pi]
+			var st: Array = p.get("stars", [])
+			for k in st.size():
+				var t: Dictionary = st[k]
+				# régi (v3) mentés: a csillag sorszáma a lista sorrendjéből
+				raw.append({"rec": t, "planet": str(p.get("code", "")), "pi": pi, "seq": int(t.get("seq", k))})
+		raw.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var ra := int((a.rec as Dictionary).get("released", 0))
+			var rb := int((b.rec as Dictionary).get("released", 0))
+			if ra != rb:
+				return ra < rb
+			if int(a.pi) != int(b.pi):
+				return int(a.pi) < int(b.pi)
+			return int(a.seq) < int(b.seq))
+		for i in raw.size():
+			raw[i].seq = i
+	for e in raw:
+		var s := _fill_star(e.rec, str(e.planet))
+		s.seq = int(e.seq)
+		out.stars.append(s)
+	for s in out.stars:
+		if int(s.seq) < 0:
+			s.seq = out.next_star
+		out.next_star = maxi(int(out.next_star), int(s.seq) + 1)
+
+
+func _fill_star(t: Dictionary, planet_code := "") -> Dictionary:
+	var s := _fill_tree(t)
+	s.released = int(t.get("released", today()))
+	s.seq = int(t.get("seq", -1))
+	# melyik bolygón lett csillag (a lapon: „<bolygó> bolygóról”)
+	s.planet = str(t.get("planet", planet_code))
+	return s
 
 
 # ---------------------------------------------------------------- Bolygók
@@ -296,7 +352,7 @@ func ensure_next_planet() -> Dictionary:
 
 
 ## Hová hull az elvetett mag (M7): az aktív bolygóra, ha nem telt meg; különben a legújabb, még nem megtelt bolygóra
-## (a hívó odarepül vele). A táska, a nap magja és a keresztezés közös; a csillagok bolygónként.
+## (a hívó odarepül vele). A táska, a nap magja, a keresztezés és a csillagok (v7) közösek.
 func sow_target() -> int:
 	if not is_full(active_planet()):
 		return active_index()
@@ -329,12 +385,7 @@ func _fill_planet(p: Dictionary) -> Dictionary:
 		"founders": _dna_list(p.get("founders", [])),
 		"next_tree": int(p.get("next_tree", 0)),
 		"trees": [],
-		# csillagok (M6): elengedett fák és a keresztezés el nem választott csírái. Ugyanaz a fa-rekord, plusz
-		# "released" (a nap) és "seq" (a csillag sorszáma a bolygón: ebből és a bolygókódból jön a helye a csillagképben,
-		# így egy csillag visszahozása nem mozdítja el a többit). A bolygó egén csillagképet rajzolnak (sky_stars.gd).
-		"stars": [],
-		# a következő csillag sorszáma
-		"next_star": int(p.get("next_star", 0)),
+		# (a csillagok v7 óta a játékoséi: data.stars)
 		# az eddigi legtöbb kikelt fa (M6): a bolygó ehhez méreteződik, így elengedéskor nem zsugorodik össze
 		"peak": int(p.get("peak", 0)),
 		# a születését látta-e már a játékos (M7; a régi mentésben és az első bolygónál igaz)
@@ -342,16 +393,6 @@ func _fill_planet(p: Dictionary) -> Dictionary:
 	}
 	for t in p.get("trees", []):
 		out.trees.append(_fill_tree(t))
-	for t in p.get("stars", []):
-		var s := _fill_tree(t)
-		s.released = int((t as Dictionary).get("released", today()))
-		s.seq = int((t as Dictionary).get("seq", -1))
-		out.stars.append(s)
-	# régi (v3) mentés: a csillagok sorszáma a lista sorrendjéből
-	for s in out.stars:
-		if int(s.seq) < 0:
-			s.seq = out.next_star
-		out.next_star = maxi(int(out.next_star), int(s.seq) + 1)
 	if out.founders.is_empty() and not out.trees.is_empty():
 		out.founders = [(out.trees[0].dna as Array).duplicate()]
 	return out
@@ -473,7 +514,7 @@ func hatched(p: Dictionary) -> Array:
 	return out
 
 
-## Elengedés (M6): a fa csillag lesz a bolygó egén (nincs halál, bármikor visszahozható). A csillag a fa teljes
+## Elengedés (M6): a fa csillag lesz az égbolton (v7: a játékos csillagai közt) (nincs halál, bármikor visszahozható). A csillag a fa teljes
 ## rekordja (DNS, kód, név, rejtett szín, eredet, ültetés és kikelés napja), plusz az elengedés napja és a sorszáma.
 ## A helye a bolygón felszabadul. A bolygó-DNS ezután a megmaradt fákból áll össze; a darabos jelleg (domborzat,
 ## felszíntakaró, holdak) és a domborzat magassága a mentett alapítókból jön, így az alapító elengedése után is
@@ -483,15 +524,16 @@ func release_tree(p: Dictionary, t: Dictionary) -> Dictionary:
 	p.trees.erase(t)
 	var s := t.duplicate(true)
 	s.released = today()
-	s.seq = _take_star(p)
+	s.seq = _take_star()
+	s.planet = str(p.code)
 	if str(s.name) == "":
 		s.name = Genes.latin_name(s.dna)
-	p.stars.append(s)
+	data.stars.append(s)
 	return s
 
 
-func find_star(p: Dictionary, id: int) -> Dictionary:
-	for s in p.stars:
+func find_star(id: int) -> Dictionary:
+	for s in data.stars:
 		if int(s.id) == id:
 			return s
 	return {}
@@ -500,33 +542,33 @@ func find_star(p: Dictionary, id: int) -> Dictionary:
 ## Visszahozás az égről (M6): a csillagból mag lesz a táskában (eredet „csillag”, a csillag DNS-ével, kódjával – így
 ## elvetve pontosan ugyanaz a fa nő ki –, szüleivel és rejtett színével); a csillag eltűnik az égről. Ha újra
 ## elengeded, új csillag lesz belőle (új sorszámmal, új helyen a csillagképben). Visszaadja a magot.
-func recall_star(p: Dictionary, id: int) -> Dictionary:
-	var st := find_star(p, id)
+func recall_star(id: int) -> Dictionary:
+	var st := find_star(id)
 	if st.is_empty():
 		return {}
-	p.stars.erase(st)
+	data.stars.erase(st)
 	return new_seed((st.dna as Array).duplicate(), "csillag", {"parents": (st.parents as Array).duplicate(true), "code": str(st.code),
 		"hidden": int(st.hidden), "star_origin": str(st.origin), "star_day": int(st.released)})
 
 
-func _take_star(p: Dictionary) -> int:
-	var i := int(p.get("next_star", 0))
-	p.next_star = i + 1
+func _take_star() -> int:
+	var i := int(data.get("next_star", 0))
+	data.next_star = i + 1
 	return i
 
 
-## Teszt („+csillag” gomb, --shot ...,sky…): n csillag az aktív bolygó egén véletlen (a játékoskódból és a sorszámból
+## Teszt („+csillag” gomb, --shot ...,sky…): n csillag az égbolton véletlen (a játékoskódból és a sorszámból
 ## determinisztikus) DNS-sel, eredet „teszt”. A fák nem változnak.
 func debug_stars(n: int) -> Array:
-	var p := active_planet()
 	var out: Array = []
 	for i in n:
 		var r := RandomNumberGenerator.new()
-		r.seed = hash("%s-csillag-%d" % [data.player, int(p.get("next_star", 0))])
+		var k0 := int(data.get("next_star", 0))
+		r.seed = hash("%s-csillag-%d" % [data.player, k0])
 		var dna: Array = []
 		for k in 6:
 			dna.append(r.randi() % 14)
-		out.append(add_star(p, {"dna": dna, "code": "%s-C%d" % [p.code, int(p.get("next_star", 0))], "origin": "teszt", "planted": today() - 1 - r.randi() % 9}))
+		out.append(add_star({"dna": dna, "code": "%s-C%d" % [data.player, k0], "origin": "teszt", "planted": today() - 1 - r.randi() % 9}))
 	return out
 
 
@@ -759,7 +801,7 @@ func finish_cross(a_id: int, b_id: int, solved: Array) -> Dictionary:
 
 
 ## A k-adik csíra lesz a mag (a táskába: eredet „keresztezes”, a két szülő DNS-e, a csíra kódja és lappangó színe);
-## a másik kettő csillag lesz az aktív bolygó egén (eredet „csira” = a keresztezés el nem választott csírája).
+## a másik kettő csillag lesz az égbolton (eredet „csira” = a keresztezés el nem választott csírája).
 func choose_sprout(k: int) -> Dictionary:
 	var c := pending_sprouts()
 	if c.is_empty():
@@ -771,22 +813,23 @@ func choose_sprout(k: int) -> Dictionary:
 		if i == k:
 			continue
 		var o: Dictionary = sp[i]
-		add_star(active_planet(), {"dna": (o.dna as Array).duplicate(), "code": o.code, "origin": "csira", "parents": (c.parents as Array).duplicate(true),
+		add_star({"dna": (o.dna as Array).duplicate(), "code": o.code, "origin": "csira", "parents": (c.parents as Array).duplicate(true),
 			"hidden": int(o.hidden), "name": str(o.name)})
 	data.cross = {}
 	return s
 
 
-## Új csillag a bolygó egén (fa-rekord hely nélkül, plusz "released" = ma és a sorszáma); a csillagkép: sky_stars.gd.
-func add_star(p: Dictionary, rec: Dictionary) -> Dictionary:
+## Új csillag az égbolton (fa-rekord hely nélkül, plusz "released" = ma, a sorszáma és az aktív bolygó kódja);
+## a rajz: sky_stars.gd.
+func add_star(rec: Dictionary) -> Dictionary:
 	var base := {"id": _take_id(), "planted": today(), "hatch": today()}
 	base.merge(rec, true)
-	var st := _fill_tree(base)
+	var st := _fill_star(base, str(active_planet().code))
 	st.released = today()
-	st.seq = _take_star(p)
+	st.seq = _take_star()
 	if str(st.name) == "":
 		st.name = Genes.latin_name(st.dna)
-	p.stars.append(st)
+	data.stars.append(st)
 	return st
 
 
