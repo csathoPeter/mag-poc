@@ -2664,6 +2664,19 @@ func _shot_shape(mode: String) -> void:
 			print("SHAPE nap %+d: %s" % [GameState.day_offset, shaping.tag_line(t)])
 		_tag_text()
 		return
+	if mode.begins_with("shapedemo"):
+		# shapedemoNN: ma kötözve (alakító módban), a kötés utáni bemutató NN%-ánál (a mása végigjárja a napokat)
+		shaping.start()
+		shaping.demo_at = float(mode.trim_prefix("shapedemo")) / 100.0
+		_shot_tie(t, b, 0)
+		return
+	if mode.begins_with("shapesel"):
+		# shapeselD: D napja kötözve, alakító módban kiválasztva (a lapon a napokra bontott sáv, a fán a cél mása)
+		shaping.start()
+		_shot_tie(t, b, int(mode.trim_prefix("shapesel")))
+		shaping.select(-1)
+		shaping.select(b)
+		return
 	if mode.begins_with("shapetie"):
 		_shot_tie(t, b, int(mode.trim_prefix("shapetie")))
 		shaping.stop()

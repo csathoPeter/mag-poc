@@ -24,7 +24,8 @@
 #   Bolygók (M7): state,óra,birth / birthNN (megtelik, az új bolygó születése NN%-nál) | system / systemN / systemNzZ
 #     (N bolygó kicsinyítve, a középső aktív) | hopNN (átrepülés NN%-nál, ~74 a csere) | hopplay (valódi koppintás a kis
 #     bolygóra; --state-tel mentve) | hopsow (megtelt bolygóról elvetés: átrepülés az új bolygóra, ott hull le a mag)
-#   Alakítás (M8, planet vagy state, a 0. fán): shape | shapehi | shapecut / shapecutNN | shapeundo | shapetieD (D napja
+#   Alakítás (M8, planet vagy state, a 0. fán): shape | shapehi | shapecut / shapecutNN | shapeundo | shapedemoNN (a kötés
+#     utáni bemutató NN%-nál) | shapeselD (D napja kötözve, kiválasztva: napokra bontott sáv) | shapetieD (D napja
 #     kötözve) | shapedayN (N napváltás) | shapedrag | shapeplay (valódi érintések) | shapesave (--state-tel mentve);
 #     hetedik elemként lodK (a fa a K. részletességi szinten), pl. planet,bolygo01,5,12,shapetie3,lod2
 #   Megosztás (M10, state): share | shareseed | shareherb | sharedaily | shareplanet (a lap a keretezett képpel; a kép a
