@@ -59,7 +59,9 @@ void fragment() {
 		discard;
 	}
 	if (kind_v > 0.5) {
-		ALBEDO = col_out(col_in(stamen));
+		vec3 st_l = col_in(stamen);
+		ALBEDO = col_out(st_l);
+		soft_fix = soft_fix_of(st_l, ALBEDO);
 		ROUGHNESS = 0.8;
 	} else {
 		vec3 c = mix(col_in(throat), mix(col_in(petal), col_in(petal_tip), smoothstep(0.25, 1.0, UV.x)), smoothstep(0.0, 0.34, UV.x)) * tint_v;
@@ -70,6 +72,7 @@ void fragment() {
 		c = mix(c, vec3(dot(c, vec3(0.33))) * vec3(1.05, 0.92, 0.74), fade_v * 0.7);
 		vec3 alb = thirsty_col(c, thirst * 0.3);
 		ALBEDO = col_out(alb);
+		soft_fix = soft_fix_of(alb, ALBEDO);
 		ROUGHNESS = 0.5;
 		BACKLIGHT = alb * (1.1 * backlight_k());
 	}
@@ -84,6 +87,6 @@ void fragment() {
 void light() {
 	// a szirom vékony: hátulról erősen átsüt
 	vec3 sp;
-	DIFFUSE_LIGHT += soft_light(NORMAL, LIGHT, VIEW, ATTENUATION, LIGHT_COLOR, 1.0, 0.3, sp) * light_albedo_fix(ALBEDO);
+	DIFFUSE_LIGHT += soft_light(NORMAL, LIGHT, VIEW, ATTENUATION, LIGHT_COLOR, 1.0, 0.3, sp) * soft_fix;
 	SPECULAR_LIGHT += sp;
 }
