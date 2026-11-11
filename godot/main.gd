@@ -1683,6 +1683,12 @@ func _tap(pos: Vector2) -> void:
 		if mi >= 0:
 			system.go(mi)
 			return
+		# átfogó nézet: a fák túl aprók; az aktív bolygóra koppintva vissza közelre
+		if system.overview() > .5:
+			if system.pick_active(pos):
+				orbit_zoom = ORBIT_ZOOM
+				trans_t = 0.0
+			return
 	var vp := get_viewport().get_visible_rect().size
 	var px := vp.y * .5 / tan(deg_to_rad(cam.fov) * .5)
 	var best := -1
@@ -1781,7 +1787,7 @@ func _planet_input(event: InputEvent) -> void:
 		if touches.size() == 1:
 			var rel: Vector2 = event.relative
 			if view == "orbit":
-				var a := rel * -.0055 * lerpf(1.0, .4, orbit_zoom)
+				var a := rel * -.0055 * lerpf(1.0, .4, maxf(orbit_zoom, PlanetSystem.ZOOM_MIN))
 				orbit_q = (orbit_q * Quaternion(Vector3.UP, a.x) * Quaternion(Vector3.RIGHT, a.y)).normalized()
 				spin = spin.lerp(a * 60.0, .5)
 				if rel.length() > 2.0:
@@ -1918,13 +1924,17 @@ func _planet_cam(delta: float, snap: bool) -> void:
 	look = look.lerp(want_look, k)
 	up_v = up_v.slerp(want_up.normalized(), k).normalized()
 	cam.look_at_from_position(eye, look, up_v)
+	# az átfogó nézetben a kamera messzebb lehet a megszokott 400-nál
+	cam.far = maxf(400.0, eye.distance_to(look) * 1.6 + 60.0)
 	sun.directional_shadow_max_distance = 26.0 if view == "surface" else eye.distance_to(look) + planet.radius * 1.2
 	_lens(delta, snap)
 	# a nap a kamerához (kint) vagy a fához (lent) igazodik, így a látható oldal mindig meg van világítva
 	var el := lerpf(lerpf(.75, .32, dusk), .6, night)
 	var z := lerpf(lerpf(.55, -.45, dusk), .3, night)
 	var local := Vector3(-.55, el, z).normalized()
-	var frame: Basis = _surface_frame(look.normalized()) if view == "orbit" or focus < 0 else _tree_frame(focus).rotated(trees[focus].dir, s_yaw)
+	# (az átfogó nézetben a nézett pont a bolygók közepe, nem a felszín: a nap a kamera felől jön)
+	var sn := look.normalized() if system.overview() < .01 else eye.normalized()
+	var frame: Basis = _surface_frame(sn) if view == "orbit" or focus < 0 else _tree_frame(focus).rotated(trees[focus].dir, s_yaw)
 	var wsun := (frame * local).normalized()
 	sun_dir = wsun if snap else sun_dir.slerp(wsun, 1.0 - exp(-delta * 3.0)).normalized()
 	sun.look_at_from_position(sun_dir * 60.0, Vector3.ZERO, Vector3.UP if absf(sun_dir.y) < .98 else Vector3.RIGHT)
@@ -3172,8 +3182,8 @@ func _debug_new_planet() -> void:
 ## megszületik az új – a születés NN%-ánál (≈20 a fény a peremen, 40 úton, 58 kibomlik, 80 felirat);
 ## system / systemN / systemNzZ: N bolygó (alapból 3; a régebbiek tele teszt-fákkal, a legújabb csupasz), a középső
 ## (2 bolygónál az első) aktív, kicsinyítve (Z: a közelség, alapból PlanetSystem.ZOOM_REF);
-## hopNN: ugyanez 3 bolygóval, és átrepülés a 2.-ról az 1.-re (a 3. képkockában indul), NN%-nál (≈75: a pára mögött
-## a csere); hopplay: valódi koppintással a jobb oldali kis bolygóra, végig (--state-tel a mentésbe is: az aktív bolygó).
+## hopNN / hopNNzZ: ugyanez 3 bolygóval, és átrepülés a 2.-ról az 1.-re (a 3. képkockában indul; Z közelségből a 12.-ben,
+## pl. z-2: az átfogó nézetből), NN%-nál (≈75: a pára mögött a csere); hopplay: valódi koppintással a jobb oldali kis bolygóra, végig (--state-tel a mentésbe is: az aktív bolygó).
 func _shot_system(mode: String) -> void:
 	system.snap = not mode.ends_with("play") and mode != "hopsow"
 	var ps: Array = game.data.planets
@@ -3203,7 +3213,7 @@ func _shot_system(mode: String) -> void:
 			zoom = float(spec.get_slice("z", 1))
 			spec = spec.get_slice("z", 0)
 		if spec != "":
-			count = clampi(int(spec), 2, 7)
+			count = clampi(int(spec), 2, 16)
 	while ps.size() < count:
 		game.debug_fill(ps.back(), GameState.PLANET_FULL)
 	for q in ps:
@@ -3214,6 +3224,10 @@ func _shot_system(mode: String) -> void:
 	orbit_zoom = zoom
 	if mode.begins_with("hop") and mode != "hopplay":
 		var spec := mode.trim_prefix("hop")
+		# hopNNzZ: az átrepülés Z közelségből indul (pl. z-2: az átfogó nézetből)
+		if spec.contains("z"):
+			orbit_zoom = float(spec.get_slice("z", 1))
+			spec = spec.get_slice("z", 0)
 		system.freeze_at = (float(spec) if spec != "" else 50.0) / 100.0 * PlanetSystem.H_LEN
 
 
@@ -3236,7 +3250,7 @@ func _shot_hop(mode: String) -> void:
 				Input.parse_input_event(e)
 			print("TAP: kis bolygó @ %s" % c)
 		return
-	if shot_frames == 3 and not system.busy():
+	if shot_frames == (12 if mode.contains("z") else 3) and not system.busy():
 		system.go(game.active_index() - 1)
 
 
@@ -3499,7 +3513,13 @@ func _orbit_pose(z: float) -> Array:
 	var d := lerpf(_fit_dist(r) - r, r * 1.05 + 2.0, e) * PlanetSystem.pull(z)
 	var el := lerpf(PI * .5, deg_to_rad(38.0), e)
 	var dir := n * sin(el) - u * cos(el)
-	return [p + dir * d, p, n * cos(el) + u * sin(el)]
+	var pose := [p + dir * d, p, n * cos(el) + u * sin(el)]
+	# a kicsinyítés utolsó fokozata: átfogó nézet, az összes bolygó egyszerre (planet_system.gd)
+	var k := system.overview()
+	if k > 0.0:
+		var o := system.overview_pose()
+		pose = [(pose[0] as Vector3).lerp(o[0], k), (pose[1] as Vector3).lerp(o[1], k), (pose[2] as Vector3).lerp(o[2], k)]
+	return pose
 
 
 ## Keret a felszín egy pontján: y a felszínre merőleges, x a kamera jobb oldala felé (a nap ehhez igazodik).
@@ -3525,8 +3545,10 @@ func _lens(delta: float, snap: bool) -> void:
 	lens_mat.set_shader_parameter("zone", .06 if macro else (maxf(float(trees[focus].w), 1.0) if surf else 0.0))
 	var e := smoothstep(0.0, 1.0, orbit_zoom)
 	lens_mat.set_shader_parameter("band_y", .5)
-	lens_mat.set_shader_parameter("band", lerpf(.16, .06, e))
-	lens_mat.set_shader_parameter("tilt", lerpf(.45, 1.0, e))
+	# az átfogó nézetben szélesebb éles sáv, enyhébb elmosás (a szélső bolygók is olvashatók maradjanak)
+	var ovk := system.overview()
+	lens_mat.set_shader_parameter("band", lerpf(lerpf(.16, .06, e), .3, ovk))
+	lens_mat.set_shader_parameter("tilt", lerpf(.45, 1.0, e) * (1.0 - .75 * ovk))
 	# a fű a kamera és a nézett pont körül sűrű: leszállva a fa töve körül, kívülről (közelről) a nézett pont körül.
 	# A pont puhán vándorol, a szálak a bolygóhoz rögzítettek, csak a sűrűség változik (előnőnek / visszahúzódnak).
 	var gp := planet.surface_point(trees[focus].dir) if surf else look

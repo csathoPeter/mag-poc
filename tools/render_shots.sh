@@ -22,7 +22,7 @@
 #     leszállva) | releaseask (az elengedés megerősítése) | releaseNN (a 0. fa elengedése NN%-nál: 25 oszlik, 55 a fény
 #     felszáll, 92 a csillag kigyullad) | releaseplay / herbplay (valódi koppintásokkal; --state=fájl-lal a mentésbe is)
 #   Bolygók (M7): state,óra,birth / birthNN (megtelik, az új bolygó születése NN%-nál) | system / systemN / systemNzZ
-#     (N bolygó kicsinyítve, a középső aktív) | hopNN (átrepülés NN%-nál, ~74 a csere) | hopplay (valódi koppintás a kis
+#     (N bolygó kicsinyítve, a középső aktív; z-2 = átfogó nézet) | hopNN / hopNNzZ (átrepülés NN%-nál, ~74 a csere) | hopplay (valódi koppintás a kis
 #     bolygóra; --state-tel mentve) | hopsow (megtelt bolygóról elvetés: átrepülés az új bolygóra, ott hull le a mag)
 #   Alakítás (M8, planet vagy state, a 0. fán): shape | shapehi | shapecut / shapecutNN | shapeundo | shapedemoNN (a kötés
 #     utáni bemutató NN%-nál) | shapeselD (D napja kötözve, kiválasztva: napokra bontott sáv) | shapetieD (D napja
