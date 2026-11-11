@@ -35,6 +35,15 @@ A képek ([kepek_1.jpg](kepek_1.jpg), [kepek_2.jpg](kepek_2.jpg)) fej nélkül, 
   - A sötét 45-ös kép egy reggeli átúszás 0,6. másodperce.
 - **Tamás próbái (mind rendben):** `--playtest` (33 lépés), `--boardtest=60`, `--crosstest=100`, `--sharetest=500`, `--shapetest`, `--soundtest`.
 
+## Javítva (2026. 11. 11., az értékelés után)
+
+Péter döntése: a hibák javítva, a játékot tovább csiszolja, a perszónák későbbre elrakva ([PERSONAS.md](PERSONAS.md)).
+- **Kék törzs a megosztott képen:** nem a fény volt az oka, hanem a leszálláskor induló koppintás-fényhullám (3,2 mp). Ha ezalatt nyomtad meg a „Megosztom”-ot, a hullám kék fénye a kéregre került a képen. Most a képernyőkép előtt leáll (`main.gd stop_waves`).
+- **A batyu a „Levágom” gombon:** alakítás közben a batyu és a csillagjel rejtve (a `--playtest` ellenőrzi).
+- **A fa szövege a gombokon:** a gombsor helye a tördelt sorokkal számol, és ha nem férne el, a tábla feljebb csúszik.
+- **Átütő szöveg a megosztó lapon:** a lap 93%-ban fedő, és alatta a fa táblája rejtve.
+- **Sérült mentés:** már nem íródik felül csendben; félrekerül `….serult-<időbélyeg>` néven (a `--playtest` 34. lépése ellenőrzi).
+
 ## A közös prioritási lista
 
 Mind az öten aláírták. A záró körben kért módosítások be vannak építve, az értékelő nevével jelölve. Tamás becslése szerint a 0–6. pont 2–3 hét, ha minden pont külön, kis lépésben megy ki, és mindegyik bővíti a `--playtest`-et.
