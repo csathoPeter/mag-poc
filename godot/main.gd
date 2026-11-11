@@ -120,6 +120,8 @@ const LOD_DIST := 22.0
 const MID_EXTRA := 5.0
 const LOD_HYST := 3.0
 var lod_force := false
+## Képernyőképhez (--shot ...,lodK): a kiválasztott fa részletességi szintje rögzítve (-1 = automatikus).
+var shot_lod := -1
 var dbg_btn := {}
 
 # Automatikus mérés: végigpróbálja a beállításokat kint és leszállva, a végén táblázat + küldés GitHubra
@@ -217,6 +219,10 @@ var stars := SkyStars.new()
 var herb := Herbarium.new()
 # Bolygók (M7; a látvány és a váltás: planet_system.gd)
 var system := PlanetSystem.new()
+# Alakítás (M8): metszés és kötözés leszállva a fánál (shaping.gd)
+var shaping := Shaping.new()
+## ?alakit: amint a fák kinőttek, leszállás az első fára és az alakító mód (teszteléshez)
+var want_shape := false
 ## Hosszú nyomás a kiválasztott fán (ms): elengedés (megerősítéssel).
 const LONG_PRESS := 650
 
@@ -231,6 +237,11 @@ func _ready() -> void:
 			get_tree().quit()
 			return
 		# --crosstest[=párok]: a keresztezés önellenőrzése (csírák, rejtett szín, maghozás tempója)
+		# --shapetest: az alakítás önellenőrzése (üres lista = régi kimenet, levágás, kötözés, három szint, öröklés)
+		if a == "--shapetest":
+			print("SHAPETEST\n", Shaping.self_test())
+			get_tree().quit()
+			return
 		if a.begins_with("--crosstest"):
 			var pairs := int(a.get_slice("=", 1)) if a.contains("=") else 300
 			print("CROSSTEST\n", Breeding.self_test(pairs))
@@ -258,6 +269,8 @@ func _ready() -> void:
 	stars.arrived.connect(_on_star_arrived)
 	system.host = self
 	add_child(system)
+	shaping.host = self
+	add_child(shaping)
 	system.swap.connect(_hop_swap)
 	system.arrived.connect(_on_hop_arrived)
 	system.born.connect(_on_planet_born)
@@ -602,9 +615,11 @@ func clear_plants() -> void:
 
 
 ## Egy növény a jelenetbe, saját anyagokkal: a kertben minden fának más a színe és a növekedése.
-func spawn(g: Dictionary, at: Vector3, rot: float, size_mul: float, det: float) -> Dictionary:
+## shape: alakítási lista (M8, metszés, kötözés; csak a kirajzolásnál hat, a váz ugyanaz), day: a mai nap a kötözéshez.
+func spawn(g: Dictionary, at: Vector3, rot: float, size_mul: float, det: float, shape: Array = [], day := 0) -> Dictionary:
 	var pg := PlantGen.new()
 	pg.build(g, det)
+	pg.apply_shaping(shape, day)
 	var node := Node3D.new()
 	var mats: Array = []
 	var wm := ShaderMaterial.new()
@@ -650,7 +665,7 @@ func spawn(g: Dictionary, at: Vector3, rot: float, size_mul: float, det: float) 
 		m.set_shader_parameter("plant_h", 5.0)
 		m.set_shader_parameter("grow", 1.0 - pow(1.0 - start, 1.7))
 	plants_root.add_child(node)
-	var rec := {"node": node, "mats": mats, "t": start, "top": top, "s": s, "pg": pg}
+	var rec := {"node": node, "mats": mats, "t": start, "top": top, "s": s, "pg": pg, "det": det}
 	_set_tree_xf(rec)
 	plants.append(rec)
 	return rec
@@ -999,6 +1014,8 @@ func _process(delta: float) -> void:
 				_shot_stars(shot_args[5])
 			elif (shot_args[5] as String).begins_with("birth") or (shot_args[5] as String).begins_with("system") or (shot_args[5] as String).begins_with("hop"):
 				_shot_system(shot_args[5])
+			elif (shot_args[5] as String).begins_with("shape"):
+				_shot_shape(shot_args[5])
 			elif (shot_args[5] as String).begins_with("zoom"):
 				orbit_zoom = float((shot_args[5] as String).trim_prefix("zoom"))
 			elif (shot_args[5] as String).begins_with("macro"):
@@ -1014,6 +1031,11 @@ func _process(delta: float) -> void:
 						m_dist = .9
 			else:
 				_focus(int((shot_args[5] as String).trim_prefix("focus")) if (shot_args[5] as String).length() > 5 else 0)
+			# lodK: a kiválasztott fa ezen a részletességi szinten (0 részletes, 1 egyszerűsített, 2 távoli) – az alakítás
+			# mindhárom szinten ugyanaz kell legyen
+			if shot_args.size() > 6 and (shot_args[6] as String).begins_with("lod"):
+				shot_lod = int((shot_args[6] as String).trim_prefix("lod"))
+				_planet_lod()
 			# yawX: a kamera X radiánnal arrébb kerül a fa körül (vagy kívülről a bolygó körül), a fű ellenőrzéséhez
 			if shot_args.size() > 6 and (shot_args[6] as String).begins_with("yaw"):
 				var dy := float((shot_args[6] as String).trim_prefix("yaw"))
@@ -1037,6 +1059,8 @@ func _process(delta: float) -> void:
 				_shot_play_board()
 			elif shot_frames == 30:
 				_shot_click(crossing.pick, "Ezt nevelem", 1)
+		if shot_args.size() > 5 and shot_args[5] == "shapeplay":
+			_shot_shape_play()
 		if shot_frames == 3 and shot_args.size() > 5 and shot_args[5] == "boardplay":
 			_shot_play_board()
 		if shot_frames == 3 and shot_args.size() > 5 and (shot_args[5] as String).begins_with("helix"):
@@ -1052,7 +1076,7 @@ func _process(delta: float) -> void:
 			Input.parse_input_event(t2)
 		var last_frame := 8
 		if shot_args.size() > 5:
-			last_frame = 90 if shot_args[5] in ["crossplay", "hopplay", "hopsow"] else (130 if shot_args[5] in ["releaseplay", "herbplay"] else 40)
+			last_frame = 90 if shot_args[5] in ["crossplay", "hopplay", "hopsow", "shapeplay"] else (130 if shot_args[5] in ["releaseplay", "herbplay"] else 40)
 		if shot_frames == last_frame:
 			var highs := 0
 			for t in trees:
@@ -1176,7 +1200,8 @@ func _refresh_marks(fresh := -1) -> void:
 
 
 func _tree_item(t: Dictionary, focus_it: bool) -> Dictionary:
-	return {"dna": t.dna, "code": t.code, "dir": t.dir, "rot": t.rot, "size": t.size, "sid": t.id, "focus": focus_it}
+	# shape: a mentett fa alakítási listája (ugyanaz a tömb, így az alakítás egyből a rekordba kerül)
+	return {"dna": t.dna, "code": t.code, "dir": t.dir, "rot": t.rot, "size": t.size, "sid": t.id, "focus": focus_it, "shape": t.shaping}
 
 
 func _enter_planet(code: String, dnas: Array, founders: Array, bare := false) -> void:
@@ -1186,6 +1211,7 @@ func _enter_planet(code: String, dnas: Array, founders: Array, bare := false) ->
 	marks.clear()
 	hatching.reset()
 	tending.reset()
+	shaping.reset()
 	herb.close_now()
 	stars.rel = {}
 	stars.hidden_id = -1
@@ -1271,10 +1297,15 @@ func plant_new() -> void:
 
 
 func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
-	# három részletességi szint ugyanabból a vázból: részletes (közel), egyszerűsített, távoli
-	var far := spawn(gg, Vector3.ZERO, 0.0, item.size, .09)
-	var low := spawn(gg, Vector3.ZERO, 0.0, item.size, .22)
-	var high := spawn(gg, Vector3.ZERO, 0.0, item.size, 1.0)
+	# három részletességi szint ugyanabból a vázból: részletes (közel), egyszerűsített, távoli; az alakítási lista
+	# (M8) mindegyiken ugyanúgy hat
+	if not item.has("shape"):
+		item.shape = []
+	var shape: Array = item.shape
+	var day := GameState.today()
+	var far := spawn(gg, Vector3.ZERO, 0.0, item.size, .09, shape, day)
+	var low := spawn(gg, Vector3.ZERO, 0.0, item.size, .22, shape, day)
+	var high := spawn(gg, Vector3.ZERO, 0.0, item.size, 1.0, shape, day)
 	(high.node as Node3D).visible = false
 	(low.node as Node3D).visible = false
 	# árnyékot csak az egyszerűsített szint vet (a részletes fa helyett is, csak árnyékként): a puha árnyékon
@@ -1285,7 +1316,8 @@ func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
 	var pg: PlantGen = high.pg
 	var w := maxf(pg.bb_max.x - pg.bb_min.x, pg.bb_max.z - pg.bb_min.z) * float(high.s) * .5
 	var t := {"dir": item.dir, "rot": item.rot, "low": low, "high": high, "far": far, "lods": [high, low, far], "lod": 2, "shown": true, "high_on": false, "front": true,
-		"g": gg, "glow": Genes.glow(item.dna), "wave": -1.0, "h": 5.0 * float(item.size), "w": w, "sid": int(item.get("sid", -1))}
+		"g": gg, "glow": Genes.glow(item.dna), "wave": -1.0, "h": 5.0 * float(item.size), "w": w, "sid": int(item.get("sid", -1)),
+		"shape": shape, "shape_day": day}
 	trees.append(t)
 	_place_tree(t)
 	var col := Genes.hsl(gg.petal_h, .85, .62)
@@ -1382,6 +1414,9 @@ func _tag_text() -> void:
 			if gl.part == 0 and t.has("care") and float(t.care.cur.size) < .3:
 				light += " (ha virágzik)"
 	var care := tending.care_line(t)
+	var sh := shaping.tag_line(t)
+	if sh != "":
+		care = sh if care == "" else care + "\n" + sh
 	tag.text = "%s\n%s%s" % [_tree_title(t), care + "\n" if care != "" else "", light]
 
 
@@ -1403,6 +1438,10 @@ func _zoom(f: float) -> void:
 
 
 func _tap(pos: Vector2) -> void:
+	# alakító mód (M8): az ágakra koppintást a shaping.gd kezeli; ide a törzs és a fa melletti koppintás jut
+	if shaping.on:
+		shaping.tap(pos)
+		return
 	# kicsinyítve a többi bolygó: rákoppintva odarepülünk (M7)
 	if view == "orbit":
 		var mi := system.pick(pos)
@@ -1453,8 +1492,10 @@ func _macro_at(pos: Vector2) -> void:
 	var xf: Transform3D = (rec.node as Node3D).transform
 	var best := -1.0
 	var bp := Vector3.ZERO
-	for p in pg.flo_p:
-		var w: Vector3 = xf * p
+	for k in pg.flo_p.size():
+		if not pg.flower_live(k):
+			continue
+		var w: Vector3 = xf * pg.flo_p[k]
 		if cam.is_position_behind(w):
 			continue
 		var d := cam.unproject_position(w).distance_to(pos)
@@ -1472,6 +1513,15 @@ func _macro_at(pos: Vector2) -> void:
 func _planet_input(event: InputEvent) -> void:
 	if bench_on:
 		return
+	# alakító mód (M8): az ágon kezdett érintés (koppintás, húzás) az alakításé, a többi a kameráé
+	if shaping.on:
+		if event is InputEventScreenTouch:
+			if event.pressed and shaping.press(event.index, event.position):
+				return
+			if not event.pressed and shaping.release(event.index, event.position):
+				return
+		elif event is InputEventScreenDrag and shaping.drag(event.index, event.position):
+			return
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			touches[event.index] = event.position
@@ -1522,6 +1572,10 @@ func _planet_process(delta: float) -> void:
 		last_shape = planet.shape_k
 		for t in trees:
 			_place_tree(t)
+	if want_shape and queue.is_empty() and not trees.is_empty() and not hatching.active() and not fx.busy():
+		want_shape = false
+		_focus(0)
+		shaping.start()
 	_update_tod(delta, snap)
 	_planet_cam(delta, snap)
 	for t in trees:
@@ -1537,7 +1591,7 @@ func _planet_process(delta: float) -> void:
 		lod_timer = 0.0
 		_planet_lod()
 	# lebegő névtábla a kiválasztott fa fölött
-	var want := 1.0 if view == "surface" and focus >= 0 and trans_t > .5 and not macro and not herb.is_open() else 0.0
+	var want := 1.0 if view == "surface" and focus >= 0 and trans_t > .5 and not macro and not herb.is_open() and not shaping.on else 0.0
 	tag_alpha = want if snap else lerpf(tag_alpha, want, 1.0 - exp(-delta * (3.0 if want > 0.0 else 8.0)))
 	if focus >= 0:
 		var t: Dictionary = trees[focus]
@@ -1578,7 +1632,7 @@ func _planet_cam(delta: float, snap: bool) -> void:
 			want_eye = want_eye.normalized() * ground
 		want_look = target
 		want_up = n
-		if touches.is_empty() and shot_args.is_empty() and not bench_on and not stars.sky_on and not stars.busy():
+		if touches.is_empty() and shot_args.is_empty() and not bench_on and not stars.sky_on and not stars.busy() and not shaping.on:
 			s_yaw += delta * (.012 if macro else .03)
 	# csillagkép-nézet: a kamera kicsit felfordul az ég felé (a csillagkép a kép felső felébe kerül)
 	if absf(stars.tilt) > .0001:
@@ -1640,6 +1694,8 @@ func _planet_lod() -> void:
 		# mert ott a tiltshift úgyis elmossa
 		var mid_limit := (1e9 if view == "orbit" else s_dist + MID_EXTRA) + (LOD_HYST if int(t.lod) <= 1 else 0.0)
 		var lod := 0 if hi else (1 if float(t.d) < mid_limit else 2)
+		if shot_lod >= 0 and t.focused:
+			lod = shot_lod
 		var shown: bool = t.front or t.focused
 		if lod != int(t.lod) or shown != bool(t.get("shown", false)):
 			t.lod = lod
@@ -1716,6 +1772,8 @@ func _load_game(opts: Dictionary) -> void:
 		_debug_cross.call_deferred(opts.open == "kereszt=kesz")
 	elif opts.open == "csillag":
 		_debug_sky.call_deferred()
+	elif opts.open == "alakit":
+		want_shape = true
 
 
 ## Teszt: egy nappal előre (a kikelés, öntözés, a nap magja így telefonon is kipróbálható). Visszaállítás: ?nap=0.
@@ -1792,8 +1850,10 @@ func _state_digest() -> String:
 	var parts: Array = []
 	for t in p.trees:
 		var d: Vector3 = t.dir
-		parts.append("%s %s (%.4f %.4f %.4f) nap %d, öntözve %d, mag %d, %s" % [t.code, "-".join((t.dna as Array).map(func(x: int) -> String: return str(x))), d.x, d.y, d.z,
-			int(t.hatch), int(t.watered), int(t.gathered), Care.status_text(t, GameState.today(), game.garden_of(t))])
+		parts.append("%s %s (%.4f %.4f %.4f) nap %d, öntözve %d, mag %d, %s%s" % [t.code, "-".join((t.dna as Array).map(func(x: int) -> String: return str(x))), d.x, d.y, d.z,
+			int(t.hatch), int(t.watered), int(t.gathered), Care.status_text(t, GameState.today(), game.garden_of(t)),
+			"" if (t.shaping as Array).is_empty() else " · alakítás: " + ", ".join((t.shaping as Array).map(func(e: Dictionary) -> String:
+				return "%s %d. ág (nap %d)" % [e.op, int(e.branch), int(e.day)]))])
 	for sd in game.data.bag:
 		parts.append("táska: %s %s %s rejtett %d kód %s%s" % [sd.origin, GameState.seed_name(sd), sd.parents, int(sd.hidden), sd.code,
 			(" (csillagról: %s, %d)" % [sd.star_origin, int(sd.star_day)]) if str(sd.origin) == "csillag" else ""])
@@ -2027,6 +2087,150 @@ func _shot_care(mode: String) -> void:
 	print("CARE %s: nincs ilyen fa" % mode)
 
 
+## Képernyőkép az alakításhoz (M8), leszállva a 0. fára:
+##   shape: alakító mód, nincs kiemelés · shapehi: egy ág kiemelve · shapecut: levágva (a lehullás után) ·
+##   shapecutNN: a lehullás NN%-ánál · shapetieD: D napja kötözve (a kötés valódi húzás-úton: az ág pontja 150 képpontnyit
+##   lefelé), alakító mód nélkül, a zsinórral · shapedrag: húzás közben (zsinór az ujjig) · shapeundo: levágás, majd
+##   visszavonás · shapesave: a mentett fán levágás + kötözés (--state=fájl-lal mentve; újratöltve focus0-val nézd).
+## A próba-ág: egy 1. szintű ág, amelyik a képen oldalt a legjobban kilóg (így látszik a változás).
+func _shot_shape(mode: String) -> void:
+	_focus(0)
+	_planet_cam(0.0, true)
+	_planet_lod()
+	var t: Dictionary = trees[0]
+	var b := _shot_branch(t)
+	var pg: PlantGen = t.high.pg
+	print("SHAPE %s: %d. ág (szint %d, %d leszármazott ág), háromszög a részletes szinten: %d" % [mode, b, pg.br_level[b], pg.br_end[b] - b, (pg.idx_draw if not pg.cut_b.is_empty() else pg.idx).size() / 3])
+	if mode == "shapeplay":
+		return
+	if mode == "shapesave":
+		shaping.start()
+		shaping.cut(_shot_branch(t, b))
+		_shot_tie(t, b, 0)
+		shaping.stop()
+		print("SHAPE mentve: %s" % [Shaping.shape_of(t)])
+		return
+	if mode.begins_with("shapeday"):
+		# shapedayN: ma kötözve, aztán N napváltás a valódi úton (tending.refresh → shaping.on_new_day), alakító mód nélkül
+		_shot_tie(t, b, 0)
+		for k in int(mode.trim_prefix("shapeday")):
+			GameState.day_offset += 1
+			tending.refresh(true)
+			print("SHAPE nap %+d: %s" % [GameState.day_offset, shaping.tag_line(t)])
+		_tag_text()
+		return
+	if mode.begins_with("shapetie"):
+		_shot_tie(t, b, int(mode.trim_prefix("shapetie")))
+		shaping.stop()
+		_tag_text()
+		pg = t.high.pg
+		print("SHAPE kötés: %s, háromszög: %d" % [Shaping.shape_of(t), (pg.idx_draw if not pg.cut_b.is_empty() else pg.idx).size() / 3])
+		return
+	shaping.start()
+	if mode == "shapehi":
+		shaping.select(b)
+	elif mode == "shapedrag":
+		var c := cam.unproject_position((t.high.node as Node3D).transform * pg.branch_point(b, Shaping.TIE_U))
+		shaping.press(0, c)
+		shaping.drag(0, c + Vector2(30, 170))
+	elif mode.begins_with("shapecut") or mode == "shapeundo":
+		var spec := mode.trim_prefix("shapecut")
+		shaping.freeze_at = (float(spec) / 100.0 * Shaping.FALL_LEN) if spec != "" and mode != "shapeundo" else Shaping.FALL_LEN + 1.0
+		shaping.select(b)
+		shaping.cut(b)
+		pg = t.high.pg
+		print("SHAPE levágva: háromszög %d" % [(pg.idx_draw if not pg.cut_b.is_empty() else pg.idx).size() / 3])
+		if mode == "shapeundo":
+			shaping.undo()
+
+
+## Teszt (--shot ...,shapeplay): valódi érintés-események a bemeneten át: „Alakítás” → koppintás egy ágra (kiemelés) →
+## még egy (levágás) → húzás egy másik ágon (kötözés) → „Visszavonom” (a kötés lekerül) → koppintás az égre (kilépés).
+func _shot_shape_play() -> void:
+	if trees.is_empty():
+		return
+	var t: Dictionary = trees[0]
+	var pg: PlantGen = t.high.pg
+	var xf: Transform3D = (t.high.node as Node3D).transform
+	match shot_frames:
+		8:
+			_shot_click(shaping, "Alakítás", 0)
+		14, 22:
+			var b := _shot_branch(t)
+			_shot_touch(cam.unproject_position(xf * pg.branch_point(b, .6)), Vector2.ZERO)
+		16, 24, 34, 44, 54:
+			print("SHAPE play %d: mód %s, kiemelt %d, lista %s" % [shot_frames, shaping.on, shaping.sel, Shaping.shape_of(t)])
+		30:
+			var b2 := _shot_branch(t)
+			var c := cam.unproject_position(xf * pg.branch_point(b2, Shaping.TIE_U))
+			_shot_touch(c, Vector2(-30, 140))
+		40:
+			_shot_click(shaping, "Visszavonom", 0)
+		50:
+			_shot_touch(Vector2(get_viewport().get_visible_rect().size.x - 25.0, 470.0), Vector2.ZERO)
+
+
+## Teszt: egy ujjas érintés (le, ha drag nem nulla: húzás lépésekben, fel) a bemeneten át.
+func _shot_touch(at: Vector2, drag: Vector2) -> void:
+	var e := InputEventScreenTouch.new()
+	e.index = 0
+	e.position = at
+	e.pressed = true
+	Input.parse_input_event(e)
+	var p := at
+	if drag != Vector2.ZERO:
+		for k in 6:
+			var d := InputEventScreenDrag.new()
+			d.index = 0
+			d.relative = drag / 6.0
+			p += drag / 6.0
+			d.position = p
+			Input.parse_input_event(d)
+	var u := InputEventScreenTouch.new()
+	u.index = 0
+	u.position = p
+	u.pressed = false
+	Input.parse_input_event(u)
+	print("TOUCH %s → %s" % [at, p])
+
+
+## A képernyőképek próba-ága: 1. szintű, legalább 3 ágnyi leszármazottal, a képen a törzstől oldalt a legtávolabbi
+## csúccsal (skip: ezt ne, a következőt).
+func _shot_branch(t: Dictionary, skip := -1) -> int:
+	var pg: PlantGen = t.high.pg
+	var xf: Transform3D = (t.high.node as Node3D).transform
+	var base := cam.unproject_position(xf * pg.br_pts[0])
+	var best := -1
+	var best_s := -1.0
+	for b in pg.branch_count():
+		if pg.br_level[b] != 1 or b == skip or pg.br_end[b] - b < 2 or not pg.branch_live(b):
+			continue
+		var tip := cam.unproject_position(xf * pg.branch_point(b, 1.0))
+		var sc := absf(tip.x - base.x) + (pg.br_end[b] - b) * 2.0
+		if sc > best_s:
+			best_s = sc
+			best = b
+	return best
+
+
+## Kötözés a valódi húzás-úton, days nappal ezelőtt: az ág kötéspontja lefelé (és kicsit kifelé) húzva.
+func _shot_tie(t: Dictionary, b: int, days: int) -> void:
+	var was := shaping.on
+	if not was:
+		shaping.start()
+	var pg: PlantGen = t.high.pg
+	var xf: Transform3D = (t.high.node as Node3D).transform
+	var at := pg.branch_point(b, Shaping.TIE_U)
+	var c := cam.unproject_position(xf * at)
+	var side := signf(c.x - cam.unproject_position(xf * pg.br_pts[0]).x)
+	GameState.day_offset -= days
+	shaping.tie(b, at, c + Vector2(side * 40.0, 150.0))
+	GameState.day_offset += days
+	shaping.rebuild(t)
+	if not was:
+		shaping.stop()
+
+
 ## Teszt: koppintás (egér le-fel) a root alatti n-edik látható, ilyen feliratú gomb közepére.
 func _shot_click(root: Node, text: String, n: int) -> void:
 	var found: Array = root.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text == text and b.is_visible_in_tree())
@@ -2149,7 +2353,7 @@ func _shot_cross(mode: String) -> void:
 
 ## Hosszú nyomás a kiválasztott (leszállt) fán: az elengedés megerősítése nyílik (nem koppintás).
 func _long_press_check() -> void:
-	if view != "surface" or focus < 0 or taps.size() != 1 or touches.size() != 1:
+	if view != "surface" or focus < 0 or taps.size() != 1 or touches.size() != 1 or shaping.on:
 		return
 	var k: int = taps.keys()[0]
 	var tp: Dictionary = taps[k]

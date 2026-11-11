@@ -62,3 +62,16 @@ vec3 thirsty_col(vec3 c, float k) {
 	float l = dot(c, vec3(0.3, 0.5, 0.2));
 	return mix(c, vec3(l) * vec3(1.12, 1.02, 0.66) * 0.92, k);
 }
+
+#ifdef FALL
+// A levágott, lehulló ág (M8, shaping.gd): a fa anyagának változata (#define FALL), csak a lehullás alatt él.
+// fall_fade: 1 = látszik, 0 = eltűnt (pontrácsos áttűnés, így átlátszatlan marad, és a lencse is jól kezeli);
+// fall_t: a hullás előrehaladása (0–1), a levelek ettől szóródnak szét.
+uniform float fall_fade = 1.0;
+uniform float fall_t = 0.0;
+
+bool fall_gone(vec2 frag) {
+	float d = fract(52.9829189 * fract(dot(floor(frag), vec2(0.06711056, 0.00583715))));
+	return d > fall_fade;
+}
+#endif

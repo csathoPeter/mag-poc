@@ -24,4 +24,9 @@ void fragment() {
 	AO_LIGHT_AFFECT = 0.5;
 	float lines = smoothstep(0.8, 1.0, fine) * ridge;
 	EMISSION = glow_col * (glow_amt * part_on(2.0) * (lines * 4.0 + 0.15) + touch_wave(path_v / max_path) * 1.3);
+#ifdef FALL
+	if (fall_gone(FRAGCOORD.xy)) {
+		discard;
+	}
+#endif
 }

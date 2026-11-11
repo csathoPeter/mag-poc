@@ -101,6 +101,9 @@ static func launch_options() -> Dictionary:
 			"csillag":
 				# a csillagkép-nézet nyitva; ha még nincs csillag, teszt-csillagokkal (M6)
 				o.open = "csillag"
+			"alakit", "alakitas":
+				# leszállás az első fára, alakító mód bekapcsolva (M8, teszteléshez)
+				o.open = "alakit"
 			"nap":
 				# a „+” az URL-ben szóközként is megérkezhet
 				o.day = v.replace("%2B", "").replace("+", "").strip_edges().to_int()
@@ -388,12 +391,45 @@ func _fill_tree(t: Dictionary) -> Dictionary:
 		# koordinátáiban; az a virág elhalványul aznap) – naponta fánként legfeljebb egy mag
 		"gathered": int(t.get("gathered", -1)),
 		"gathered_at": _vec(t.get("gathered_at")) if t.get("gathered_at") != null else Vector3.ZERO,
-		# alakítási lista (metszés, kötözés): [{"op": "metszes"/"kotozes", "branch": int, "day": int, ...}]
-		"shaping": (t.get("shaping", []) as Array).duplicate(true) if t.get("shaping") is Array else [],
+		# alakítási lista (M8, plant_gen.gd apply_shaping, shaping.gd): [{"op": "metszes"/"kotozes", "branch": az ág
+		# indexe (a generálás sorrendje), "day": a művelet napja}], kötözésnél "from" / "to" (az ág elfordulása a tövénél,
+		# kvaternió [x, y, z, w], az ág eredeti keretében: a kötözéskori állás és a cél) és "prev" (újrakötésnél a régi
+		# kötés, a visszavonáshoz). Nem öröklődik: a magból kikelő fa üres listával indul.
+		"shaping": _shaping(t.get("shaping", [])),
 		"name": str(t.get("name", "")),
 		# lappangó virágszín (M5, rejtett gén; -1 = a virágszínéhez tartozó alapérték, lásd Breeding.LATENT)
 		"hidden": clampi(int(t.get("hidden", -1)), -1, 13),
 	}
+
+
+## Az alakítási lista a mentésből (a JSON a számokat lebegőpontosnak adja vissza: itt egészre / tömbre igazítjuk, és a
+## hibás bejegyzéseket kihagyjuk).
+static func _shaping(v: Variant) -> Array:
+	var out: Array = []
+	if not (v is Array):
+		return out
+	for e in v:
+		var x := _shape_entry(e)
+		if not x.is_empty():
+			out.append(x)
+	return out
+
+
+static func _shape_entry(e: Variant) -> Dictionary:
+	if not (e is Dictionary):
+		return {}
+	var d: Dictionary = e
+	var op := str(d.get("op", ""))
+	if op != PlantGen.OP_CUT and op != PlantGen.OP_TIE:
+		return {}
+	var x := {"op": op, "branch": int(d.get("branch", -1)), "day": int(d.get("day", 0))}
+	if op == PlantGen.OP_TIE:
+		x.from = PlantGen.quat_arr(PlantGen.quat_of(d.get("from")))
+		x.to = PlantGen.quat_arr(PlantGen.quat_of(d.get("to")))
+		var prev := _shape_entry(d.get("prev"))
+		if not prev.is_empty():
+			x.prev = prev
+	return x
 
 
 ## Hely a fának a bolygón (a bolygókódból és a hely sorszámából, a többi fától távol), és hozzáadás a bolygóhoz.
@@ -591,12 +627,16 @@ func _seed_of(t: Dictionary) -> Dictionary:
 		"hidden": Breeding.latent(t)})
 
 
-## A fa bolygójának kikelt fái (a maghozás tempójához, Care.can_gather). Üres, ha a fa nincs a mentésben.
+## A kert a maghozás tempójához (Care.can_gather): a játékos összes bolygójának kikelt fái (M8: közös, így több
+## bolygóval sem jön több mag – napi kb. 1–3 összesen). Üres, ha a fa nincs a mentésben.
 func garden_of(t: Dictionary) -> Array:
+	var found := false
+	var out: Array = []
 	for p in data.planets:
-		if (p.trees as Array).has(t):
-			return hatched(p)
-	return []
+		if not found and (p.trees as Array).has(t):
+			found = true
+		out.append_array(hatched(p))
+	return out if found else []
 
 
 ## Teszt („+2 mag” gomb, --shot ...,cross…): n gyűjtött mag a táskába a bolygó kikelt fáiról, egymás után más-más

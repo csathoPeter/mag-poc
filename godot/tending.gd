@@ -117,6 +117,8 @@ func attach(t: Dictionary) -> void:
 ## A mai nap szerinti kinézet minden fára (napváltáskor lassan átúszik; snap: azonnal).
 func refresh(snap := false) -> void:
 	day = GameState.today()
+	# a kötözött ágak egy nappal tovább hajlanak (M8)
+	host.shaping.on_new_day()
 	for t in host.trees:
 		if t.has("care"):
 			_retarget(t, snap)
@@ -182,15 +184,18 @@ static func _glint_flower(pg: PlantGen, code: String) -> Variant:
 	for p in pg.flo_p:
 		center += p
 	center /= pg.flo_p.size()
-	var best := 0
+	var best := -1
 	var best_s := -1e9
 	for i in pg.flo_p.size():
+		# a levágott ág virágain nem vár mag (M8)
+		if not pg.flower_live(i):
+			continue
 		var p: Vector3 = pg.flo_p[i]
 		var s := (p - center).dot(dir) + (p.y - center.y) * .6
 		if s > best_s:
 			best_s = s
 			best = i
-	return pg.flo_p[best]
+	return pg.flo_p[best] if best >= 0 else null
 
 
 # ---------------------------------------------------------------- Érintés
@@ -220,7 +225,10 @@ func _flower_at(t: Dictionary, pos: Vector2) -> Variant:
 	var xf: Transform3D = (t.high.node as Node3D).transform
 	var best: Variant = null
 	var bd := 90.0
-	for p in pg.flo_p:
+	for k in pg.flo_p.size():
+		if not pg.flower_live(k):
+			continue
+		var p: Vector3 = pg.flo_p[k]
 		var w: Vector3 = xf * p
 		if cam.is_position_behind(w):
 			continue
@@ -295,7 +303,7 @@ func care_line(t: Dictionary) -> String:
 	return Care.status_text(t.care.rec, GameState.today(), _garden(t.care.rec))
 
 
-## A fa bolygójának kikelt fái (a maghozás tempójához).
+## A kert: az összes bolygó kikelt fái (a maghozás közös tempójához, M8).
 func _garden(rec: Dictionary) -> Array:
 	return (host.game as GameState).garden_of(rec)
 

@@ -475,19 +475,31 @@ func _process(delta: float) -> void:
 	if show_chip:
 		chip.position = Vector2(vp.x - chip.size.x - 14.0, vp.y - chip.size.y - 22.0)
 		chip.queue_redraw()
-	# „Elengedem…” a lebegő tábla alatt (leszállva, amikor a tábla látszik)
+	# „Elengedem…” a lebegő tábla alatt (leszállva, amikor a tábla látszik), mellette balra az „Alakítás” (M8)
 	var show_rel := calm and _can_release() and float(host.tag_alpha) > .5
+	var shape_btn: Button = host.shaping.btn
+	var show_shape: bool = host.garden_mode == "planet" and not is_open() and host.ui_col.visible and float(host.tag_alpha) > .5 \
+		and host.shaping.can_start()
 	release_btn.visible = show_rel
-	if show_rel:
+	shape_btn.visible = show_shape
+	if show_rel or show_shape:
 		var tag: Label3D = host.tag
 		var cam: Camera3D = host.cam
 		var lines := tag.text.count("\n") + 1
 		var half := tag.pixel_size * tag.font_size * 1.3 * lines * .5
 		var bottom := tag.global_position - cam.global_transform.basis.y * half
 		var sp := cam.unproject_position(bottom) if not cam.is_position_behind(bottom) else Vector2(vp.x * .5, vp.y - 120.0)
-		release_btn.position = Vector2(floorf(clampf(sp.x - release_btn.size.x * .5, 10.0, vp.x - release_btn.size.x - 10.0)),
-			floorf(clampf(sp.y + 10.0, vp.y * .35, vp.y - release_btn.size.y - 100.0)))
-		release_btn.modulate.a = clampf((float(host.tag_alpha) - .5) * 2.0, 0.0, 1.0)
+		var w := (release_btn.size.x if show_rel else 0.0) + (shape_btn.size.x if show_shape else 0.0) + (8.0 if show_rel and show_shape else 0.0)
+		var x := floorf(clampf(sp.x - w * .5, 10.0, vp.x - w - 10.0))
+		var y := floorf(clampf(sp.y + 10.0, vp.y * .35, vp.y - release_btn.size.y - 100.0))
+		var a := clampf((float(host.tag_alpha) - .5) * 2.0, 0.0, 1.0)
+		if show_shape:
+			shape_btn.position = Vector2(x, y)
+			shape_btn.modulate.a = a
+			x += shape_btn.size.x + 8.0
+		if show_rel:
+			release_btn.position = Vector2(x, y)
+			release_btn.modulate.a = a
 	if not _flying.is_empty():
 		_flying.t = float(_flying.t) + delta
 		if float(_flying.t) >= FLY_LEN:

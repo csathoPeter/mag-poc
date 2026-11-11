@@ -99,10 +99,14 @@ static func gathered_today(t: Dictionary, day: int) -> bool:
 
 ## Tempó (M5): a kert egészében naponta kb. 1–3 mag legyen, akárhány fa van. Sok fánál nem minden virágzó fa hoz
 ## magot: a nap „magot érlelő” fái a virágzó fák közül az első K a fa kódjából és a napból számolt sorrendben
-## (determinisztikus, minden nap más fák). K ≈ 0,4 + 0,6·√n (n = a bolygó kikelt fái), legfeljebb 3; a tört részt
-## a nap dönti el (pl. 1,44 → hol 1, hol 2). 3 fánál így minden virágzó fa hoz, 10 fánál ~2,3, 30 fánál 3.
+## (determinisztikus, minden nap más fák). K ≈ 0,4 + 0,6·√n, legfeljebb 3; a tört részt a nap dönti el (pl. 1,44 →
+## hol 1, hol 2). 3 fánál így minden virágzó fa hoz, 10 fánál ~2,3, 30 fánál 3.
+## M8: a kert = a játékos összes bolygójának kikelt fái (GameState.garden_of), így a K közös: több bolygóval sem jön
+## naponta több mag, a magot érlelő fák bármelyik bolygón lehetnek.
 ## A szomjas fa is lehet a kiválasztott, de csak öntözés után ad magot (újabb ok a gondozásra).
 const SEEDS_MAX := 3.0
+## A nap magot érlelő fái (kulcs: nap + a kert fáinak kódjai és szakaszai), hogy a sok fánál se számoljuk újra fánként.
+static var _bearer_cache := {}
 
 
 ## Ennyi mag a cél naponta n kikelt fánál.
@@ -110,9 +114,16 @@ static func seeds_per_day(n: int) -> float:
 	return minf(SEEDS_MAX, .4 + .6 * sqrt(float(maxi(n, 1))))
 
 
-## A nap magot érlelő fáinak kódjai a kert (a bolygó kikelt fái) közül.
+## A nap magot érlelő fáinak kódjai a kert (az összes bolygó kikelt fái) közül.
 static func bearers(garden: Array, day: int) -> Array:
 	var bloom: Array = []
+	var key := [day, garden.size()]
+	for t in garden:
+		if stage(t, day).kind == BLOOM:
+			key.append(str(t.get("code", "")))
+	var kh := hash(key)
+	if _bearer_cache.has(kh):
+		return _bearer_cache[kh]
 	for t in garden:
 		if stage(t, day).kind == BLOOM:
 			bloom.append([str_hash("%s:mag:%d" % [str(t.get("code", "")), day]), str(t.get("code", ""))])
@@ -122,11 +133,14 @@ static func bearers(garden: Array, day: int) -> Array:
 	var out: Array = []
 	for i in mini(k, bloom.size()):
 		out.append(bloom[i][1])
+	if _bearer_cache.size() > 64:
+		_bearer_cache.clear()
+	_bearer_cache[kh] = out
 	return out
 
 
-## Érlel-e ma magot a fa (virágzik, és a kertben épp ő a nap magot érlelő fái között). garden: a bolygó kikelt fái
-## (üres = nincs korlát, pl. önellenőrzésben).
+## Érlel-e ma magot a fa (virágzik, és a kertben épp ő a nap magot érlelő fái között). garden: a kert (az összes bolygó
+## kikelt fái; üres = nincs korlát, pl. önellenőrzésben).
 static func bears_seed(t: Dictionary, day: int, garden: Array = []) -> bool:
 	if stage(t, day).kind != BLOOM:
 		return false
@@ -165,7 +179,7 @@ static func flower_look(t: Dictionary, day: int) -> Dictionary:
 	return out
 
 
-## Rövid állapot a lebegő táblára (a fa neve alatt). garden: a bolygó kikelt fái (a maghozáshoz).
+## Rövid állapot a lebegő táblára (a fa neve alatt). garden: a kert, az összes bolygó kikelt fái (a maghozáshoz).
 static func status_text(t: Dictionary, day: int, garden: Array = []) -> String:
 	if thirsty(t, day):
 		return "szomjas\nkoppints rá, és megöntözöd"

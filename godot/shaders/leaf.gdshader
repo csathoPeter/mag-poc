@@ -17,7 +17,22 @@ void vertex() {
 	if (droop > 0.0 && pl > 0.0) {
 		p = normalize(p - tree_up() * pl * droop * 0.9) * pl;
 	}
+#ifdef FALL
+	// a lehulló ág levelei szétszóródnak, és pörögve, imbolyogva lassabban hullanak
+	vec3 rnd = fract(sin(vec3(INSTANCE_CUSTOM.y * 91.7, INSTANCE_CUSTOM.z * 47.3, INSTANCE_CUSTOM.x * 13.1) + o * 3.7) * 4375.5) - 0.5;
+	vec3 up = tree_up();
+	vec3 sx = normalize(cross(up, vec3(0.37, 0.53, 0.76)));
+	vec3 sz = cross(up, sx);
+	float ft = fall_t * fall_t;
+	o += (sx * rnd.x * 1.4 + sz * rnd.z * 1.4 + up * (0.35 + rnd.y * 0.4)) * ft
+		+ (sx * sin(TIME * 3.1 + rnd.x * 9.0) + sz * cos(TIME * 2.7 + rnd.z * 9.0)) * 0.1 * fall_t;
+	float ang = fall_t * (rnd.y * 9.0 + 3.0);
+	vec3 ax = normalize(sx * rnd.z + sz * rnd.x + up * 0.3);
+	p = p * cos(ang) + cross(ax, p) * sin(ang) + ax * dot(ax, p) * (1.0 - cos(ang));
+	VERTEX = o + p;
+#else
 	VERTEX = o + p + sway(o, TIME) + droop_off(o);
+#endif
 	tint_v = INSTANCE_CUSTOM.y;
 	ao_v = INSTANCE_CUSTOM.z;
 	u_v = (INSTANCE_CUSTOM.x - 0.05) / 0.64;
@@ -34,4 +49,9 @@ void fragment() {
 	AO = ao_v;
 	AO_LIGHT_AFFECT = 0.45;
 	EMISSION = glow_col * (glow_amt * (part_on(1.0) * (rib * 2.2 + vein * 3.5 + 0.25) + 0.06) + touch_wave(u_v) * 0.9);
+#ifdef FALL
+	if (fall_gone(FRAGCOORD.xy)) {
+		discard;
+	}
+#endif
 }

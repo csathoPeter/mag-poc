@@ -315,14 +315,20 @@ func release(t: Dictionary, star_id: int) -> void:
 	var xf: Transform3D = (t.high.node as Node3D).transform
 	var pts: Array = []
 	var src: Array = pg.leaf_p if pg.leaf_p.size() > 0 else pg.flo_p
+	var from_leaves := pg.leaf_p.size() > 0
 	var r := RandomNumberGenerator.new()
 	r.seed = hash(str(g.code) + "csillag")
 	for i in MOTES:
 		var w: Vector3 = base + n * h * r.randf_range(.3, .9)
 		if src.size() > 0:
-			w = xf * (src[r.randi() % src.size()] as Vector3)
+			var k := r.randi() % src.size()
+			# a levágott ág (M8) helyén nincs mit fényként szétszórni
+			if (pg.leaf_live(k) if from_leaves else pg.flower_live(k)):
+				w = xf * (src[k] as Vector3)
 		if i % 5 == 0 and pg.flo_p.size() > 0:
-			w = xf * (pg.flo_p[r.randi() % pg.flo_p.size()] as Vector3)
+			var k := r.randi() % pg.flo_p.size()
+			if pg.flower_live(k):
+				w = xf * (pg.flo_p[k] as Vector3)
 		var hn := clampf((w - base).dot(n) / maxf(h, .1), 0.0, 1.0)
 		# a csúcsok (a magasabb, külső részek) oszlanak el előbb, ahogy a fa a csúcsaitól visszahúzódik
 		var tb := R_UNGROW0 + .1 + (1.0 - hn) * (R_UNGROW1 - R_UNGROW0 - .7) + r.randf() * .35

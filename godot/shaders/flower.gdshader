@@ -63,4 +63,9 @@ void fragment() {
 		BACKLIGHT = ALBEDO * 1.1;
 	}
 	EMISSION = glow_col * (glow_amt * (part_on(0.0) * (smoothstep(0.1, 0.9, UV.x) * 3.2 + 0.9) + 0.12) + touch_wave(u_v) * 1.2);
+#ifdef FALL
+	if (fall_gone(FRAGCOORD.xy)) {
+		discard;
+	}
+#endif
 }
