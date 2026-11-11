@@ -20,7 +20,7 @@ uniform vec3 tip_lin = vec3(0.32, 0.52, 0.17);
 uniform vec3 sss_lin = vec3(1.0, 0.71, 0.32);
 uniform vec3 glow_lin = vec3(0.21, 1.0, 0.6);
 uniform float night = 0.0;
-uniform float wind = 1.0;
+uniform float wind = 1.35;
 // A szél a bolygó körül kering e tengely körül.
 uniform vec3 wind_axis = vec3(0.3, 1.0, 0.2);
 
@@ -220,8 +220,10 @@ void vertex() {
 		vec3 cx = cross(ax, bx2);
 		float phi = atan(dot(rp, cx), dot(rp, bx2));
 		float along = dot(rp, ax);
-		float gust = 0.5 + 0.5 * sin(phi * 9.0 + along * 0.8 - TIME * 1.6);
-		gust *= 0.55 + 0.45 * sin(phi * 4.0 + along * 2.1 - TIME * 0.9);
+		// erősebb szél (2026. 11. 11.): nagyobb, lassabban gördülő lökések, köztük is marad egy kis lengés
+		float gust = 0.5 + 0.5 * sin(phi * 7.0 + along * 0.8 - TIME * 1.3);
+		gust *= 0.45 + 0.55 * (0.5 + 0.5 * sin(phi * 3.0 + along * 1.7 - TIME * 0.7));
+		gust = 0.15 + 0.85 * gust;
 		vec3 wdir = cross(ax, dir);
 		wdir = length(wdir) > 0.001 ? normalize(wdir) : vec3(1.0, 0.0, 0.0);
 		float strength = wind * gust;
@@ -230,12 +232,14 @@ void vertex() {
 		vec3 wl = transpose(rb) * wdir;
 		vec2 rd = vec2(sin(rnd1 * 6.2831), cos(rnd1 * 6.2831));
 		vec2 wd = normalize(wl.xz + vec2(1e-5));
-		vec2 d = normalize(mix(rd, wd, clamp(0.35 + strength * 0.6, 0.0, 0.95)));
+		vec2 d = normalize(mix(rd, wd, clamp(0.4 + strength * 0.5, 0.0, 0.95)));
 		mat3 ry = rot_y(atan(d.x, d.y));
 		// hajlás: minél magasabban van a pont, annál jobban (íves szál); minden szál a saját töve körül hajlik.
 		// A részletes szál a váltási távolság felé kiegyenesedik, így ott pont olyan, mint az egyszerű (nincs pattanás).
 		float straight = smoothstep(hi_dist - 2.5, hi_dist, dcam);
-		float bend = (mix(0.12, 0.42, rnd2) + strength * 0.55 + 0.08 * sin(TIME * 3.1 + rnd1 * 20.0) * strength) * mix(hf, 1.0, straight);
+		// hajlás: alap dőlés + a lökés + szálanként saját lengés (a lökésben erősebb); legfeljebb ~65°, hogy ne feküdjön le
+		float flutter = sin(TIME * 2.4 + rnd1 * 20.0) * 0.6 + sin(TIME * 4.1 + rnd2 * 13.0) * 0.4;
+		float bend = min(mix(0.12, 0.38, rnd2) + strength * 0.62 + flutter * (0.05 + 0.12 * strength), 1.15) * mix(hf, 1.0, straight);
 		mat3 r = ry * rot_x(bend);
 		vec3 base = vec3(CUSTOM0.x, 0.0, CUSTOM0.y);
 		vec3 side_l = normalize(cross(vec3(0.0, 1.0, 0.0), NORMAL));
@@ -285,7 +289,7 @@ void fragment() {
 	c *= mix(mix(0.45, 0.66, soft_k), 1.0, h);
 	c *= 0.9 + 0.2 * rnd_v;
 	// széllökés: a meghajló szálak csúcsa világosabb, így a hullámok végigfutnak a mezőn
-	c *= 1.0 + 0.32 * gust_v * h;
+	c *= 1.0 + 0.4 * gust_v * h;
 	// távolban egyszínűbb, hogy ne vibráljon
 	float far = exp(-length(VERTEX) * 0.035);
 	c = mix(mix(base_l, tip_l, 0.55) * 0.75, c, far);
