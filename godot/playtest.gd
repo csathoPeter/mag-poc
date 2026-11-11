@@ -306,6 +306,22 @@ func run() -> void:
 		await _settle("bolygóváltás (go)")
 	_check("bolygóváltás", {"active": 0})
 
+	# --- átfogó nézet (a kicsinyítés utolsó fokozata): minden bolygó látszik; az aktívra koppintva vissza közelre
+	host.orbit_zoom = PlanetSystem.ZOOM_ALL
+	await _frames(60)
+	_expect(host.system.overview() > .9, "az átfogó nézet kinyílt (%.2f)" % host.system.overview())
+	var seen := 0
+	for m in host.system.minis:
+		if (m.node as Node3D).visible:
+			seen += 1
+	_expect(seen == (game.data.planets as Array).size() - 1, "az átfogó nézetben minden bolygó látszik (%d)" % seen)
+	_touch(host.cam.unproject_position(host.planet.global_position))
+	await _frames(3)
+	_expect(float(host.orbit_zoom) >= 0.0 and host.view == "orbit", "koppintás az aktív bolygóra: vissza közelre")
+	await _frames(60)
+	_expect(host.system.overview() < .05, "az átfogó nézet bezárult")
+	_check("átfogó nézet", {"active": 0})
+
 	# --- megosztás: a saját fa mag-kódja barát magjaként (kétszer: másodszor nem jár)
 	var src: Dictionary = game.active_planet().trees[1]
 	var code := ShareCode.for_tree(src)
