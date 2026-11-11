@@ -685,14 +685,16 @@ func _process(delta: float) -> void:
 # ---------------------------------------------------------------- Önellenőrzés (--shapetest)
 
 ## Az M8 előtti generátor lenyomatai (üres alakítási listával a kimenetnek bitre ugyanennek kell lennie).
+## 2026. 11. 11. (puha stílus): a kéreg csúcsszínei változtak (nincs váltakozó oldal-árnyalás); a színek nélkül számolt
+## lenyomat mind a 18 esetben bitre egyezett a korábbival (váz, normálok, levelek, virágok változatlanok), ezért frissítve.
 ## Kulcs: kód, részletesség; a DNS a kód sorszámából (lásd _test_dna).
 const BASELINE := {
-	"proba-0 1.00": "23ed75e4ff3cc0c4", "proba-0 0.22": "b3671f78eb443846", "proba-0 0.09": "3a8118bf1117b58c",
-	"proba-3 1.00": "0da00a620fba3bd3", "proba-3 0.22": "5667a85790b0168b", "proba-3 0.09": "6cf4b5cad5889795",
-	"proba-6 1.00": "527ab21946f72491", "proba-6 0.22": "fe451f90868581c4", "proba-6 0.09": "84bd7cb014df0c98",
-	"proba-9 1.00": "903814c2297ccb30", "proba-9 0.22": "6ab5e5e5f163b2e3", "proba-9 0.09": "19045b56c8fa4b9f",
-	"proba-12 1.00": "a2a9e573123bbcab", "proba-12 0.22": "29978e17d13cf568", "proba-12 0.09": "fa0a6d3612d54447",
-	"proba-13 1.00": "1019d3ad31caf25a", "proba-13 0.22": "78ff8accc74952f8", "proba-13 0.09": "989cddbaeb69f80b",
+	"proba-0 1.00": "ddd4c6899116588a", "proba-0 0.22": "c4a85a12575fac2a", "proba-0 0.09": "3eef05f85660f102",
+	"proba-3 1.00": "48e6826c7782f32f", "proba-3 0.22": "5e4e1f059e612211", "proba-3 0.09": "f8e5a6d49e91552f",
+	"proba-6 1.00": "ed0daa7564fc70c8", "proba-6 0.22": "b10a551bbf19ef1b", "proba-6 0.09": "218b5bbab3795c7a",
+	"proba-9 1.00": "c36020e7470e5461", "proba-9 0.22": "3279dc24417bfb25", "proba-9 0.09": "fec7ce254873d172",
+	"proba-12 1.00": "3f196d1bb792018e", "proba-12 0.22": "1dab2296060b4193", "proba-12 0.09": "e9dba993a9f965fd",
+	"proba-13 1.00": "e3b1b34085991a9d", "proba-13 0.22": "8b887c604b5f6f48", "proba-13 0.09": "dcbc1119a907cc53",
 }
 
 

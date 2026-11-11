@@ -82,6 +82,9 @@ var bend_q := {}
 ## A lomb közepe és sugara (a levelek árnyékolásához), az alakítás előtti helyekből, hogy egy kötözés ne színezze át
 ## a többi levelet.
 var leaf_center := Vector3.ZERO
+## A lombkorona befoglaló doboza a levelet hordozó ágak pontjaiból (crown()); a váz minden szinten azonos, így ez is.
+var crown_lo := Vector3.INF
+var crown_hi := -Vector3.INF
 var leaf_far := .001
 
 
@@ -165,6 +168,10 @@ func _branch(p0: Vector3, d0: Vector3, length: float, rad: float, lvl: int, path
 		p += d * step
 	max_path = maxf(max_path, ps[segs])
 	br_pts.append_array(pts)
+	if lvl >= max_level - 1:
+		for q in pts:
+			crown_lo = crown_lo.min(q)
+			crown_hi = crown_hi.max(q)
 
 	var sides: int = SIDES[lvl] if detail >= 1.0 else (SIDES_LOW[lvl] if detail >= FAR else SIDES_FAR[lvl])
 	var base := n
@@ -192,7 +199,8 @@ func _branch(p0: Vector3, d0: Vector3, length: float, rad: float, lvl: int, path
 			pos.append(c + v * rr)
 			nor.append(v)
 			uvs.append(Vector2(ca, sa))
-			var sh := shade * (.9 if s % 2 == 1 else 1.1)
+			# gyűrűnként csak enyhe árnyalat-eltérés (a váltakozó oldalak csíkos, szögletes hatást adtak)
+			var sh := lerpf(1.0, shade, .5)
 			var bc: Color = g.bark
 			col.append(Color(bc.r * sh, bc.g * sh, bc.b * sh))
 			c0.append(c.x); c0.append(c.y); c0.append(c.z); c0.append(ps[i])
@@ -310,8 +318,23 @@ func leaf_mesh() -> ArrayMesh:
 	return m
 
 
-## A levél anyagának forma-paraméterei (M11): a részletes szinten a shader rajzolja a körvonalat (lásd leaf_mesh()).
+## A lombkorona ellipszoidja a fa saját keretében (közép, félátmérők): a levelek fénye ennek a felszínét követi, így a
+## korona egy puha tömbként árnyékolódik, nem levelenként szögletesen. A levelet hordozó ágakból számoljuk, nem a
+## levelekből: a váz minden részletességi szinten ugyanaz, így a korona sem ugrik szintváltáskor, és a metszés sem változtatja.
+func crown() -> AABB:
+	if crown_lo.x > crown_hi.x:
+		return AABB(Vector3(-1, bb_max.y * .4, -1), Vector3(2, bb_max.y * .6, 2))
+	var m := Vector3.ONE * float(g.leaf_len) * .7
+	return AABB(crown_lo - m, crown_hi - crown_lo + m * 2.0)
+
+
+## A levél anyagának forma-paraméterei (M11): a részletes szinten a shader rajzolja a körvonalat (lásd leaf_mesh()),
+## és a korona ellipszoidja a puha lombfényhez.
 func leaf_shape_params(m: ShaderMaterial) -> void:
+	var cb := crown()
+	m.set_shader_parameter("crown_c", cb.get_center())
+	m.set_shader_parameter("crown_e", (cb.size * .5).max(Vector3.ONE * .25))
+	m.set_shader_parameter("crown_on", 1.0)
 	m.set_shader_parameter("leaf_cut", 1.0 if detail >= 1.0 else 0.0)
 	m.set_shader_parameter("leaf_pow", float(g.leaf_pow))
 	m.set_shader_parameter("leaf_kind", int((g.dna as Array)[2]))

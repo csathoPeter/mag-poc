@@ -1,6 +1,7 @@
 shader_type spatial;
 render_mode world_vertex_coords, cull_disabled;
 #include "res://shaders/common.gdshaderinc"
+#include "res://shaders/soft_light.gdshaderinc"
 uniform vec3 base : source_color = vec3(0.2, 0.5, 0.2);
 uniform vec3 tip : source_color = vec3(0.4, 0.7, 0.3);
 // Levélforma (M11): a részletes szinten (leaf_cut = 1) a körvonalat a shader rajzolja a levélforma-génből (SDF), a mesh
@@ -10,6 +11,12 @@ uniform float leaf_cut = 0.0;
 uniform float leaf_pow = 1.0;
 // a levélforma-gén (genes.gd LEAF) sorszáma: 5 szív, 6 csúcsos, 9 karéjos, 10 csipkés, 11 tölgyes, 12 ujjas, 13 tollas
 uniform int leaf_kind = 3;
+// A lombkorona ellipszoidja a fa saját keretében (plant_gen.crown()); crown_on = 0: a levél egyedül (levéltábla).
+uniform vec3 crown_c = vec3(0.0, 3.0, 0.0);
+uniform vec3 crown_e = vec3(2.0);
+uniform float crown_on = 0.0;
+varying vec3 crown_w;
+varying float crown_k;
 varying float tint_v;
 varying float ao_v;
 varying float u_v;
@@ -49,6 +56,13 @@ void vertex() {
 	u_v = (INSTANCE_CUSTOM.x - 0.05) / 0.64;
 	// a levéllemez mennyire néz felfelé (a dérhez), kétoldalú levélnél mindegy, melyik oldala
 	up_v = abs(dot(normalize(NORMAL), tree_up()));
+	// puha lomb: a korona felszínének normálja a levél helyén (az ellipszoid gradiense); a belső levelek kevésbé követik
+	vec3 q = ((tree_inv * vec4(MODEL_MATRIX[3].xyz, 1.0)).xyz - crown_c) / crown_e;
+	crown_w = mat3(tree_xf) * (q / crown_e);
+	crown_k = crown_on * soft_k * 0.78 * smoothstep(0.12, 0.65, length(q));
+#ifdef FALL
+	crown_k = 0.0;
+#endif
 }
 
 // A levél félszélessége a hossz mentén (0–1, a legszélesebb ponthoz mérve): ugyanaz az alapforma, mint a mesh-é,
@@ -104,15 +118,23 @@ void fragment() {
 	alb = season_leaf(alb, tint_v, s / max(w, 1e-3), up_v);
 	alb = thirsty_col(alb, thirst * 0.55);
 	ALBEDO = col_out(ao_direct(alb, ao_v, 0.45));
+	// a levél fénye a korona egészét követi (egy puha tömb), nem a saját állását
+	NORMAL = normalize(mix(soft_face(NORMAL, VIEW), normalize((VIEW_MATRIX * vec4(crown_w, 0.0)).xyz), crown_k));
 	ROUGHNESS = 0.55;
-	SPECULAR = 0.32;
-	BACKLIGHT = alb * vec3(1.0, 1.0, 0.75) * (0.9 * backlight_k());
 	AO = ao_v;
 	AO_LIGHT_AFFECT = 0.45;
-	EMISSION = col_out(col_in(glow_col) * (glow_amt * (part_on(1.0) * (rib * 2.2 + vein * 3.5 + 0.25) + 0.06) + touch_wave(u_v) * 0.9));
+	// peremfény: a korona széle a légkör és a saját színe keverékével dereng (a körvonal helyett)
+	EMISSION = col_out(col_in(glow_col) * (glow_amt * (part_on(1.0) * (rib * 2.2 + vein * 3.5 + 0.25) + 0.06) + touch_wave(u_v) * 0.9)
+		+ soft_rim(NORMAL, VIEW, 0.3 * crown_on) * alb);
 #ifdef FALL
 	if (fall_gone(FRAGCOORD.xy)) {
 		discard;
 	}
 #endif
+}
+
+void light() {
+	vec3 sp;
+	DIFFUSE_LIGHT += soft_light(NORMAL, LIGHT, VIEW, ATTENUATION, LIGHT_COLOR, 0.75, 0.25, sp) * light_albedo_fix(ALBEDO);
+	SPECULAR_LIGHT += sp;
 }

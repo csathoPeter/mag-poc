@@ -1,6 +1,7 @@
 shader_type spatial;
 render_mode world_vertex_coords, cull_disabled;
 #include "res://shaders/common.gdshaderinc"
+#include "res://shaders/soft_light.gdshaderinc"
 uniform vec3 petal : source_color = vec3(0.9, 0.5, 0.6);
 uniform vec3 petal_tip : source_color = vec3(0.95, 0.7, 0.8);
 uniform vec3 throat : source_color = vec3(0.9, 0.7, 0.3);
@@ -56,14 +57,14 @@ void fragment() {
 		ROUGHNESS = 0.8;
 	} else {
 		vec3 c = mix(col_in(throat), mix(col_in(petal), col_in(petal_tip), smoothstep(0.25, 1.0, UV.x)), smoothstep(0.0, 0.34, UV.x)) * tint_v;
-		c *= 0.94 + 0.1 * sin(UV.y * 22.0);
+		// a régi csíkok a durva rácson cikcakkosak voltak; puha stílusban a szirom széle felé enyhén világosodik
+		c *= mix(0.94 + 0.1 * sin(UV.y * 22.0), 0.95 + 0.08 * UV.y * UV.x, soft_k);
 		// bimbóban a szirmok töve zöldes, hervadáskor fakó, barnás krém
 		c = mix(c, vec3(0.32, 0.46, 0.22), bud_v * 0.5 * (1.0 - UV.x * 0.6));
 		c = mix(c, vec3(dot(c, vec3(0.33))) * vec3(1.05, 0.92, 0.74), fade_v * 0.7);
 		vec3 alb = thirsty_col(c, thirst * 0.3);
 		ALBEDO = col_out(alb);
 		ROUGHNESS = 0.5;
-		SPECULAR = 0.3;
 		BACKLIGHT = alb * (1.1 * backlight_k());
 	}
 	EMISSION = col_out(col_in(glow_col) * (glow_amt * (part_on(0.0) * (smoothstep(0.1, 0.9, UV.x) * 3.2 + 0.9) + 0.12) + touch_wave(u_v) * 1.2));
@@ -72,4 +73,11 @@ void fragment() {
 		discard;
 	}
 #endif
+}
+
+void light() {
+	// a szirom vékony: hátulról erősen átsüt
+	vec3 sp;
+	DIFFUSE_LIGHT += soft_light(NORMAL, LIGHT, VIEW, ATTENUATION, LIGHT_COLOR, 1.0, 0.3, sp) * light_albedo_fix(ALBEDO);
+	SPECULAR_LIGHT += sp;
 }
