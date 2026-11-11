@@ -174,7 +174,8 @@ func setup(planet_code: String, plant_dnas: Array, founding: Array = [], is_bare
 	noise.frequency = terrain.freq
 	noise.fractal_type = FastNoiseLite.FRACTAL_RIDGED if terrain.ridged else FastNoiseLite.FRACTAL_FBM
 	patch.seed = hash(code + "folt")
-	blade_hi = _clump_mesh([0.0, .33, .66], [.05, .043, .029], float(cover.w), hash(code + "szal"))
+	# puha stílus: a részletes szál vége tompább (a felső sor magasabban és szélesebben, a hegy rövid)
+	blade_hi = _clump_mesh([0.0, .4, .78], [.05, .047, .036], float(cover.w), hash(code + "szal"))
 	blade_lo = _clump_mesh([0.0], [.05], float(cover.w), hash(code + "szal"))
 	for g in groups:
 		g.n_hi = []
@@ -286,6 +287,17 @@ func _snap() -> void:
 	_apply()
 
 
+## A fű páfrány-változata: ugyanaz a shader #define FROND-dal (levélkékre tagolt szál, discard-dal – csak itt).
+static var _frond: Shader
+
+
+static func _frond_shader() -> Shader:
+	if _frond == null:
+		_frond = Shader.new()
+		_frond.code = GRASS.code.replace("shader_type spatial;", "shader_type spatial;\n#define FROND")
+	return _frond
+
+
 func _apply() -> void:
 	body.scale = Vector3.ONE * radius
 	var deco := float(cur.deco)
@@ -297,6 +309,12 @@ func _apply() -> void:
 	atmo_mat.set_shader_parameter("atmo", cur.atmo)
 	atmo_mat.set_shader_parameter("strength", lerpf(1.0, .8, night))
 	var gc: Color = cur.grass
+	# páfrányos bolygón a fű levélkés változata (#define FROND); a paraméterek az anyagon maradnak
+	var want: Shader = _frond_shader() if cover.get("name", "") == "páfrányos" else GRASS
+	if grass_mat.shader != want:
+		grass_mat.shader = want
+		hi_mat.shader = want
+		hi_mat.set_shader_parameter("hi_layer", true)
 	for m in [grass_mat, hi_mat]:
 		var gm := m as ShaderMaterial
 		gm.set_shader_parameter("base_col", Color(gc.r * .45, gc.g * .5, gc.b * .45))

@@ -14,6 +14,9 @@ uniform float bloom_open = 1.0;
 uniform float bloom_fade = 0.0;
 uniform float bloom_drop = 0.0;
 uniform vec4 pick = vec4(0.0);
+// Kerek szirom (puha stílus): a részletes szinten (petal_cut = 1) a körvonalat a shader rajzolja (plant_gen.petal_half),
+// a mesh csak befoglaló burok; UV.y a legnagyobb félszélességhez mért oldaltávolság.
+uniform float petal_cut = 0.0;
 varying float kind_v;
 varying float fade_v;
 varying float bud_v;
@@ -52,6 +55,9 @@ void vertex() {
 }
 
 void fragment() {
+	if (kind_v < 0.5 && petal_cut > 0.5 && UV.y > sqrt(max(sin(PI * pow(clamp(UV.x, 0.0, 1.0), 0.75)), 0.0))) {
+		discard;
+	}
 	if (kind_v > 0.5) {
 		ALBEDO = col_out(col_in(stamen));
 		ROUGHNESS = 0.8;

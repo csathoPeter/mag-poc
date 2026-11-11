@@ -340,6 +340,16 @@ func leaf_shape_params(m: ShaderMaterial) -> void:
 	m.set_shader_parameter("leaf_kind", int((g.dna as Array)[2]))
 
 
+## A szirom félszélessége a hossz mentén (0–1), lekerekített véggel és tővel (puha stílus); ugyanez a flower.gdshaderben.
+static func petal_half(t: float) -> float:
+	return sqrt(maxf(sin(PI * pow(clampf(t, 0.0, 1.0), .75)), 0.0))
+
+
+## A virág anyagának forma-paraméterei: a részletes szinten a shader vágja ki a kerek szirmot (lásd flower_mesh()).
+func flower_shape_params(m: ShaderMaterial) -> void:
+	m.set_shader_parameter("petal_cut", 1.0 if detail >= 1.0 else 0.0)
+
+
 func flower_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -354,12 +364,20 @@ func flower_mesh() -> ArrayMesh:
 		for i in rows + 1:
 			var t := float(i) / rows
 			var w := pow(maxf(sin(PI * pow(t, .75)), 0.0), .7) * wid
+			if detail >= 1.0:
+				# puha stílus: a részletes szinten a kerek szirom körvonalát a flower.gdshader rajzolja (petal_half),
+				# a mesh csak befoglaló burok (a szomszédos sorok közti legszélesebb pont, kicsit ráhagyva)
+				w = 0.0
+				for k in 9:
+					w = maxf(w, petal_half(t + (k - 4) / 4.0 / rows))
+				w *= wid * 1.05
 			var rad := t * plen * cc
 			var y := t * plen * sc + t * t * plen * .28 * sc - t * t * plen * .18
 			for s in [-1, 0, 1]:
 				var z: float = s * w
 				st.set_color(Color(0, 0, 0))
-				st.set_uv(Vector2(t, absf(float(s))))
+				# UV.y: a főértől mért oldaltávolság a szirom legnagyobb félszélességéhez mérve (a távoli szinten a sor széle 1)
+				st.set_uv(Vector2(t, absf(float(s)) * (w / wid if detail >= 1.0 else 1.0)))
 				st.add_vertex(Vector3(rad * ca - z * sa, y + absf(float(s)) * w * .22, rad * sa + z * ca))
 		count[0] += (rows + 1) * 3
 		for i in rows:

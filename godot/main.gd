@@ -707,6 +707,7 @@ func spawn(g: Dictionary, at: Vector3, rot: float, size_mul: float, det: float, 
 	if pg.flo_p.size() > 0:
 		var fm := ShaderMaterial.new()
 		fm.shader = FLOWER
+		pg.flower_shape_params(fm)
 		fm.set_shader_parameter("petal", Genes.hsl(g.petal_h, g.petal_s, g.petal_l))
 		fm.set_shader_parameter("petal_tip", Genes.hsl(g.petal_tip_h, g.petal_s * .9, minf(.92, g.petal_l + .12)))
 		fm.set_shader_parameter("throat", Genes.hsl(g.center_h, .7, .55))

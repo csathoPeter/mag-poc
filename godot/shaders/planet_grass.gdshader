@@ -261,6 +261,14 @@ void vertex() {
 }
 
 void fragment() {
+#ifdef FROND
+	// páfrány (puha stílus, a planet.gd a #define FROND változatot adja): a szál széle levélkékre tagolt, nem egy széles
+	// fűrészfog. Külön változat, mert a discard a sima fűnél is lassítaná a rajzolást (telefonon a korai mélységteszt kiesik).
+	float lobe = 0.12 + 0.88 * pow(abs(sin(hf_v * PI * 4.5 + 0.35 + hf_v * hf_v * 3.0)), 0.35);
+	if (abs(UV.x * 2.0 - 1.0) > lobe) {
+		discard;
+	}
+#endif
 	// lekerekített normál: a szál két széle kicsit kifelé néz
 	NORMAL = normalize(NORMAL + side_v * (UV.x * 2.0 - 1.0) * 0.45);
 	NORMAL = mix(NORMAL, soft_face(NORMAL, VIEW), soft_k);
