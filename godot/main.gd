@@ -194,9 +194,10 @@ var board := BoardView.new()
 var bag := SeedBag.new()
 ## Melyik nap feladványa van nyitva a táblán (-1 = egyik sem).
 var board_day := -1
-var ui_col: VBoxContainer
-var daily_btn: Button
-var bag_btn: Button
+## A diegetikus felület gyökere (M12, hud.gd): a nagy pillanatok és a lapok alatt ez rejtőzik el egyben
+var ui_col: Control
+## a magos táska batyuja (a „mag a táskába repül” animációk célpontja)
+var bag_btn: Control
 
 # A nagy pillanat (seed_fx.gd: kettős spirál, a mag hullása), a kelésre váró magok jele (seed_marks.gd),
 # a másnapi kikelés (hatching.gd). Itt csak a bekötés van.
@@ -232,6 +233,11 @@ var share := Share.new()
 ## Vendégként egy barát bolygóján (?bolygo=…): a link tartalma (ShareCode.decode_planet), üres = a saját kert.
 ## Vendégként semmi nem íródik a mentésbe (saved_view = hamis), csak a kért mag kerül a táskába.
 var guest: Dictionary = {}
+## Diegetikus felület (M12): a nap magja, a táska, a suttogás, a „…” lap, fejlesztői mód; első indítás és reggel
+var hud := Hud.new()
+var guide := Guide.new()
+## Reggeli jelzés (guide.gd): a bolygó lassan e felé az irány felé fordul (null = nincs)
+var look_q: Variant = null
 ## Hosszú nyomás a kiválasztott fán (ms): elengedés (megerősítéssel).
 const LONG_PRESS := 650
 
@@ -300,7 +306,9 @@ func _ready() -> void:
 	sound.host = self
 	add_child(sound)
 	fx.helix_done.connect(_on_helix_done)
-	fx.sow_landed.connect(func() -> void: _refresh_marks(sow_id))
+	fx.sow_landed.connect(func() -> void:
+		_refresh_marks(sow_id)
+		guide.event("sowed"))
 	space_mat.shader = SPACE_SKY
 	space_mat.set_shader_parameter("nebula", _nebula_texture())
 	_build_world()
@@ -465,39 +473,23 @@ func _build_grass() -> void:
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
-	var root := MarginContainer.new()
-	root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for side in ["left", "right", "top", "bottom"]:
-		root.add_theme_constant_override("margin_" + side, 18)
-	layer.add_child(root)
-	var col := VBoxContainer.new()
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(col)
-	ui_col = col
+	# a diegetikus felület (M12, hud.gd): a nap magja, a táska batyuja, a „…” lap, a suttogó bolygónév; fent a
+	# fejlesztői sávok (alapból rejtve: ?debug vagy hármas koppintás a bal felső sarokba)
+	hud.host = self
+	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(hud)
+	ui_col = hud
+	bag_btn = hud.pouch
+	var col := hud.dbg_box
 	stats_l.add_theme_font_size_override("font_size", 12)
 	stats_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	stats_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .6))
+	stats_l.visible = false
 	col.add_child(stats_l)
-	name_l.add_theme_font_size_override("font_size", 30)
-	# hosszabb felirat (pl. „… – egy barát bolygója”, M10) két sorba törik
-	name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	name_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .6))
-	col.add_child(name_l)
-	traits_l.add_theme_font_size_override("font_size", 13)
-	traits_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .6))
-	traits_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(traits_l)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	col.add_child(row)
-	daily_btn = _button(row, "A nap magja", open_daily)
-	bag_btn = _button(row, "Táska", func() -> void: open_bag())
-	tod_btn = _button(row, "Napszak", func() -> void:
-		tod_i = (tod_i + 1) % TOD_PRESETS.size()
-		tod_btn.text = TOD_NAMES[tod_i])
-	tod_btn.text = TOD_NAMES[tod_i]
-	sound.make_toggle(row)
+	col.add_child(hud.dbg_rows)
+	col = hud.dbg_rows
+	# a bolygó neve és leírása: vékony, világító suttogás, ami elhalványul (hud.gd)
+	hud.style_whisper(name_l, traits_l)
 	var dbg := HBoxContainer.new()
 	dbg.add_theme_constant_override("separation", 3)
 	col.add_child(dbg)
@@ -532,6 +524,10 @@ func _build_ui() -> void:
 	dbg2.add_theme_constant_override("separation", 3)
 	col.add_child(dbg2)
 	btn.day = _small_button(dbg2, "nap +0", _next_day)
+	# napszak (M12: alapból a valódi idő, a váltó csak fejlesztői módban): valódi idő → hajnal → nappal → alkony → éjjel
+	tod_btn = _small_button(dbg2, TOD_NAMES[tod_i], func() -> void:
+		tod_i = (tod_i + 1) % TOD_PRESETS.size()
+		tod_btn.text = TOD_NAMES[tod_i])
 	# teszt: két gyűjtött mag a kert fáiról (a keresztezés kipróbálásához, napok várakozása nélkül)
 	btn.seeds = _small_button(dbg2, "+2 mag", _debug_seeds)
 	# teszt: három csillag az égre (a csillagkép és a herbárium kipróbálásához)
@@ -572,6 +568,8 @@ func _build_ui() -> void:
 		joy.draw_arc(c, JOY_R, 0.0, TAU, 56, Color(1, 1, 1, .55), 2.0, true)
 		joy.draw_circle(c + joy_knob, 27.0, Color(1, 1, 1, .62)))
 	layer.add_child(joy)
+	guide.host = self
+	layer.add_child(guide)
 	layer.add_child(herb)
 	layer.add_child(board)
 	layer.add_child(bag)
@@ -1055,6 +1053,9 @@ func _process(delta: float) -> void:
 			for c in find_children("*", "CanvasLayer", true, false):
 				(c as CanvasLayer).visible = false
 			tag.visible = false
+		# debug (bármelyik elem a 6. után): fejlesztői mód (mérőszámok, apró gombsorok) a képen (M12)
+		if shot_frames == 1 and shot_args.size() > 6 and shot_args.slice(6).has("debug"):
+			hud.set_debug(true, false)
 		if shot_frames == 1 and garden_mode == "planet" and shot_args.size() > 5:
 			if shot_args[5] == "plant":
 				plant_new()
@@ -1119,6 +1120,9 @@ func _process(delta: float) -> void:
 				_shot_share(shot_args[5])
 			elif (shot_args[5] as String).begins_with("zoom"):
 				orbit_zoom = float((shot_args[5] as String).trim_prefix("zoom"))
+			elif shot_args[5] in ["first", "menu", "faded", "debugtap", "hud"] or (shot_args[5] as String).begins_with("tip") \
+					or (shot_args[5] as String).begins_with("morning"):
+				_shot_hud(shot_args[5])
 			elif (shot_args[5] as String).begins_with("macro"):
 				_focus(0)
 				_planet_cam(0.0, true)
@@ -1162,6 +1166,18 @@ func _process(delta: float) -> void:
 				_shot_click(crossing.pick, "Ezt nevelem", 1)
 		if shot_args.size() > 5 and shot_args[5] == "shapeplay":
 			_shot_shape_play()
+		if shot_args.size() > 5 and shot_args[5] == "menu" and shot_frames == 4:
+			hud.open_menu(true)
+		if shot_args.size() > 5 and shot_args[5] == "debugtap" and shot_frames in [3, 4, 5]:
+			# hármas koppintás a bal felső sarokba (valódi érintés-események) → fejlesztői mód
+			for down in [true, false]:
+				var e := InputEventScreenTouch.new()
+				e.index = 0
+				e.position = Vector2(30, 30)
+				e.pressed = down
+				Input.parse_input_event(e)
+			if shot_frames == 5:
+				print.call_deferred("HUD debug: %s" % hud.debug)
 		if shot_args.size() > 5 and shot_frames > 1:
 			_shot_share_late(shot_args[5])
 		if shot_frames == 3 and shot_args.size() > 5 and shot_args[5] == "boardplay":
@@ -1347,6 +1363,7 @@ func _enter_planet(code: String, dnas: Array, founders: Array, bare := false) ->
 	herb.close_now()
 	stars.rel = {}
 	stars.hidden_id = -1
+	look_q = null
 	garden_mode = "planet"
 	view = "orbit"
 	focus = -1
@@ -1388,8 +1405,8 @@ func _planet_texts() -> void:
 		traits_l.text = "%s\nVendégségben vagy: csak nézheted, a kerted nem változik. Koppints egy fára, és kérj róla magot." % planet.describe()
 		return
 	name_l.text = planet.planet_name()
-	var more := saved_view and not game.data.is_empty() and (game.data.planets as Array).size() > 1
-	traits_l.text = planet.describe() + "\nHúzd: forgatás · csípd: közelítés%s · koppints egy fára" % (" · kicsinyítsd: a többi bolygód" if more else "")
+	# a kezelés tippjei (húzás, csípés, koppintás) az első indításkor a világban jelennek meg (guide.gd), egyszer
+	traits_l.text = planet.describe()
 
 
 ## Új fa a bolygón: a bolygó-DNS változik, a bolygó lassan nő, a kamera odarepül a csírához.
@@ -1517,6 +1534,8 @@ func _focus(i: int) -> void:
 	if absf(up_hint.dot(t.dir)) > .98:
 		up_hint = Basis(orbit_q).x
 	orbit_q = Basis.looking_at(-(t.dir as Vector3), up_hint).get_rotation_quaternion()
+	look_q = null
+	guide.did("tree")
 	_tag_text()
 
 
@@ -1560,6 +1579,8 @@ func _zoom(f: float) -> void:
 	if view == "orbit":
 		# több bolygónál 0 alá is: a kamera hátrébb húzódik, és előtűnnek a többi bolygók (planet_system.gd)
 		orbit_zoom = clampf(orbit_zoom - log(f) * 1.1, system.min_zoom(), 1.0)
+		if orbit_zoom < -.05:
+			guide.did("zoomout")
 	elif macro:
 		m_dist *= f
 		if m_dist > 2.6:
@@ -1665,6 +1686,9 @@ func _planet_input(event: InputEvent) -> void:
 			touches[event.index] = event.position
 			taps[event.index] = {"pos": event.position, "t": Time.get_ticks_msec(), "moved": false}
 			spin = Vector2.ZERO
+			look_q = null
+			# a bolygó neve visszajön, ha már elhalványult (M12)
+			hud.wake()
 		else:
 			touches.erase(event.index)
 			var tp: Variant = taps.get(event.index)
@@ -1682,6 +1706,8 @@ func _planet_input(event: InputEvent) -> void:
 				var a := rel * -.0055 * lerpf(1.0, .4, orbit_zoom)
 				orbit_q = (orbit_q * Quaternion(Vector3.UP, a.x) * Quaternion(Vector3.RIGHT, a.y)).normalized()
 				spin = spin.lerp(a * 60.0, .5)
+				if rel.length() > 2.0:
+					guide.did("drag")
 			else:
 				s_yaw -= rel.x * (.004 if macro else .008)
 				s_pitch = clampf(s_pitch + rel.y * .006, .04, 1.2)
@@ -1692,6 +1718,7 @@ func _planet_input(event: InputEvent) -> void:
 			var d: float = (pts[0] as Vector2).distance_to(pts[1])
 			if pinch_last > 0.0:
 				_zoom(pinch_last / d)
+				guide.did("drag")
 			pinch_last = d
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -1740,12 +1767,29 @@ func _planet_process(delta: float) -> void:
 	tag.outline_modulate = Color(.12, .08, .22, tag_alpha * .55)
 
 
+## Reggeli jelzés (guide.gd): a bolygó lassan úgy fordul, hogy ez az irány (egy fa helye) a kép közepére kerüljön.
+func turn_to(d: Vector3) -> void:
+	var up_hint := Basis(orbit_q).y
+	if absf(up_hint.dot(d)) > .98:
+		up_hint = Basis(orbit_q).x
+	look_q = Basis.looking_at(-d, up_hint).get_rotation_quaternion()
+	if not shot_args.is_empty():
+		orbit_q = look_q
+		look_q = null
+
+
 func _planet_cam(delta: float, snap: bool) -> void:
 	var want_eye: Vector3
 	var want_look: Vector3
 	var want_up: Vector3
 	if view == "orbit" or focus < 0:
-		if touches.is_empty():
+		if touches.is_empty() and look_q != null:
+			# reggeli jelzés (M12): a bolygó lassan a szomjas / virágzó fa felé fordul
+			orbit_q = orbit_q.slerp(look_q, 1.0 - exp(-delta * 1.1)).normalized()
+			spin = Vector2.ZERO
+			if orbit_q.angle_to(look_q) < .01:
+				look_q = null
+		elif touches.is_empty():
 			# a bolygó lassan forog tovább, kivéve a nagy pillanatok alatt (a mag helye maradjon a kép közepén)
 			if spin.length() < .02 and not bench_on and not fx.busy() and not hatching.active() and not stars.sky_on and not system.busy():
 				spin = spin.lerp(Vector2(.03, 0), 1.0 - exp(-delta * .5))
@@ -1904,12 +1948,23 @@ func _load_game(opts: Dictionary) -> void:
 		(p.trees as Array).size(), GameState.day_label(GameState.today()), GameState.day_offset])
 	# barát bolygója (M10): vendégként, a mentés nem változik; hibás linknél a saját kert, üzenettel
 	var g: Dictionary = ShareCode.decode_planet(opts.bolygo, GameState.today()) if opts.bolygo != "" else {}
+	# fejlesztői mód (M12): a mentésből (flags.debug); ?debug / ?debug=0 felülírja és elmenti
+	var dbg_on := bool(game.data.flags.get("debug", false))
+	if opts.debug != null:
+		dbg_on = bool(opts.debug)
+		if game.persist:
+			game.data.flags.debug = dbg_on
+			game.save()
+	hud.set_debug(dbg_on, false)
 	if bool(g.get("ok", false)):
 		show_guest_planet(g)
 	else:
 		show_saved_planet()
 		if g.has("err"):
 			traits_l.text = str(g.err)
+		# első indítás: csendes tippek; új nap: reggeli pillanat (guide.gd). Képernyőképnél nincs (determinisztikus kép).
+		if not shot:
+			guide.begin(fresh)
 	# barát magja kóddal (M10): a mag a táskába, „Kaptál egy magot”; a paraméter lekerül az URL-ből (újratöltve ne kérdezzen újra)
 	if opts.mag != "":
 		share.receive_code.call_deferred(opts.mag, true)
@@ -1934,6 +1989,8 @@ func _next_day() -> void:
 	GameState.day_offset += 1
 	game.save()
 	_sync_game_dbg()
+	# reggel (M12): puha fátyol, a kikelés után a gondozási jelzés, a nap magja hív
+	guide.new_day()
 	if saved_view:
 		var want: Array = []
 		for t in game.hatched(game.active_planet()):
@@ -2053,6 +2110,7 @@ func open_daily_day(day: int) -> void:
 	var when := "mindenkinek ugyanez a tábla" if day == today else "kihagyott nap, még elérhető"
 	board.open(DnaBoard.daily(day), "A nap magja", "%s · %s" % [GameState.day_label(day), when], saved)
 	ui_col.visible = false
+	guide.did("daily")
 
 
 func open_bag(highlight := -1, msg := "") -> void:
@@ -2065,6 +2123,7 @@ func open_bag(highlight := -1, msg := "") -> void:
 	board.close()
 	bag.open(game, highlight, msg)
 	ui_col.visible = false
+	guide.did("bag")
 
 
 ## A gombsor a nagy pillanatok (spirál, elvetés, kikelés) alatt eltűnik, utána puhán visszaúszik
@@ -2148,8 +2207,7 @@ func _on_helix_done() -> void:
 ## A virágról szedett mag a táskába ért: a gomb felvillan, a száma nő.
 func _on_seed_arrived(_seed_id: int) -> void:
 	_sync_daily()
-	bag_btn.modulate = Color(1.7, 1.5, 1.05)
-	create_tween().tween_property(bag_btn, "modulate", Color.WHITE, .9).set_trans(Tween.TRANS_SINE)
+	hud.bump()
 
 
 ## Elvetés a táskából: az aktív (mentett) bolygóra, holnap kel ki. A kamera a bolygó felé fordul, a mag fénypontként
@@ -2181,7 +2239,7 @@ func _sow(seed_id: int, animate := true) -> void:
 	var p := game.active_planet()
 	var where: String = planet.planet_name() if saved_view else str(p.code)
 	var az := "az" if "AEIOUÁÉÍÓÖŐÚÜŰ".contains(where.left(1).to_upper()) else "a"
-	traits_l.text = "Elvetve: %s %s %s bolygón. Holnap kel ki. (Próbához: „nap +1”.)" % [Genes.latin_name(t.dna), az, where]
+	traits_l.text = "Elvetve: %s %s %s bolygón. Holnap kel ki.%s" % [Genes.latin_name(t.dna), az, where, " (Próbához: „nap +1”.)" if hud.debug else ""]
 	sow_id = int(t.id)
 	if not saved_view:
 		retreat(show_saved_planet)
@@ -2201,6 +2259,29 @@ func _sow(seed_id: int, animate := true) -> void:
 	spin = Vector2.ZERO
 	trans_t = 0.0
 	fx.play_sow(planet.surface_point(d), d, "%s\nholnap itt kel ki" % Genes.latin_name(t.dna))
+
+
+## Teszt (--shot ...,state,óra,MÓD): a diegetikus felület (M12). hud: a normál kép (a suttogás látszik); faded: a
+## suttogás már elhalványult; menu: a jobb felső „…” lap nyitva; first: első indítás (a „húzd” tipp); tipX: az X tipp
+## (daily, tree, bag, tomorrow, planets) teljes fényerővel; morning / morningT: a reggeli pillanat T mp-nél (alapból 7:
+## a jelzés és a nap magjának hívása; 0.5 körül a fátyol; --nap=+3-mal szomjas fa); debugtap: hármas koppintás a bal
+## felső sarokba (valódi érintés-események) → fejlesztői mód.
+func _shot_hud(mode: String) -> void:
+	if mode == "menu":
+		# (a 4. képkockában nyílik, lásd _process: az 1. képkocka próba-érintése a világra koppintásként becsukná)
+		pass
+	elif mode == "first":
+		guide.force = "drag"
+	elif mode.begins_with("tip"):
+		guide.force = mode.trim_prefix("tip")
+		if guide.force == "planets" and not game.data.is_empty() and (game.data.planets as Array).size() < 2:
+			var p := game.new_planet()
+			p.born_seen = true
+			system.sync()
+	elif mode.begins_with("morning"):
+		guide.start_morning()
+		var spec := mode.trim_prefix("morning")
+		guide.morning_freeze = float(spec) if spec != "" else 7.0
 
 
 ## Teszt (--shot ...,state,óra,MÓD): megosztás (M10). share: a 0. fa leszállva, „Megosztom” → a lap a keretezett
@@ -2897,14 +2978,15 @@ func _shot_hop(mode: String) -> void:
 
 ## A gombok felirata: hány mag és megfejtetlen nap vár a táskában.
 func _sync_daily() -> void:
-	if daily_btn == null:
+	if bag_btn == null:
 		return
 	if game.data.is_empty():
-		bag_btn.text = "Táska"
+		hud.sync_counts(0, 0, false, false)
 		return
-	var n: int = (game.data.bag as Array).size() + game.daily_open_days().size() + (0 if game.pending_sprouts().is_empty() else 1)
-	bag_btn.text = "Táska (%d)" % n if n > 0 else "Táska"
-	daily_btn.text = "A nap magja" + (" (kész)" if game.daily_done(GameState.today()) else "")
+	var today := GameState.today()
+	# a táska batyuján: magok (arany), megfejtetlen korábbi napok (menta; a mai a nap magja fény), várakozó csírák
+	var days := game.daily_open_days().filter(func(d: int) -> bool: return d != today).size()
+	hud.sync_counts((game.data.bag as Array).size(), days, not game.pending_sprouts().is_empty(), game.daily_done(today))
 
 
 # ---------------------------------------------------------------- Mérés

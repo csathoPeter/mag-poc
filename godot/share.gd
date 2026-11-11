@@ -107,9 +107,9 @@ void fragment() {
 var host
 
 ## Lebegő gombok: a fa táblája alatt („Megosztom” / vendégként „Magot kérek”; a herbarium.gd helyezi el a többi
-## mellé), kívülről a saját bolygón „Bolygóm megosztása”, vendégként „Vissza a kertembe”.
+## mellé), vendégként alul középen „Vissza a kertembe”. A „Bolygóm megosztása” (M12 óta) a jobb felső „…” lapon
+## van (hud.gd).
 var tree_btn: Button
-var planet_btn: Button
 var home_btn: Button
 
 ## Képernyőképhez: a „Kaptál egy magot” pillanat ennél az időnél áll (-1 = fut).
@@ -177,7 +177,6 @@ func _ready() -> void:
 	_build_preview_world()
 	tree_btn = _float_button("Megosztom", _on_tree_btn, BoardView.C_FREE)
 	tree_btn.custom_minimum_size = Vector2(112, 36)
-	planet_btn = _float_button("Bolygóm megosztása", share_planet, BoardView.C_FREE)
 	home_btn = _float_button("Vissza a kertembe", go_home, C_FRIEND)
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval(JS, true)
@@ -504,7 +503,7 @@ func share_planet() -> void:
 ## A játék képe a felület nélkül (a gombsor, a lebegő tábla és a gombok egy képkockára eltűnnek).
 func _capture_screen() -> Image:
 	_capturing = true
-	var hide: Array = [host.ui_col, host.herb.release_btn, host.shaping.btn, tree_btn, planet_btn, home_btn, host.herb.chip, host.tag]
+	var hide: Array = [host.ui_col, host.herb.release_btn, host.shaping.btn, tree_btn, home_btn, host.herb.chip, host.tag]
 	var was: Array = hide.map(func(n) -> bool: return bool(n.visible))
 	for n in hide:
 		n.visible = false
@@ -827,17 +826,12 @@ func _process(delta: float) -> void:
 	if host == null:
 		return
 	var vp := get_viewport_rect().size
-	# kívülről a saját bolygón: „Bolygóm megosztása” bal lent; vendégként „Vissza a kertembe”
-	var calm: bool = host.garden_mode == "planet" and host.ui_col.visible and not busy() and not host.herb.is_open() and not host.fx.busy() \
-		and not host.hatching.active() and not host.stars.busy() and not host.system.busy() and not host.bench_on and not host.retreating
-	var show_planet: bool = calm and host.saved_view and host.view == "orbit" and not host.trees.is_empty() and host.guest.is_empty()
+	# vendégként alul középen „Vissza a kertembe” (bal lent a táska batyuja, jobb lent a csillagjel)
 	var show_home: bool = not host.guest.is_empty() and host.ui_col.visible and not busy() and not host.retreating
-	planet_btn.visible = show_planet
 	home_btn.visible = show_home
-	for b in [planet_btn, home_btn]:
-		if (b as Button).visible:
-			(b as Button).size = (b as Button).get_combined_minimum_size()
-			(b as Button).position = Vector2(14.0, vp.y - (b as Button).size.y - 30.0)
+	if show_home:
+		home_btn.size = home_btn.get_combined_minimum_size()
+		home_btn.position = Vector2(floorf((vp.x - home_btn.size.x) * .5), vp.y - home_btn.size.y - 30.0)
 	if _sheet.visible:
 		_sheet.reset_size()
 		_sheet.position = Vector2(floorf((vp.x - _sheet.size.x) * .5), floorf(maxf(8.0, (vp.y - _sheet.size.y) * .5)))

@@ -25,6 +25,8 @@ extends RefCounted
 ## 5 (M7): bolygón "born_seen" (a születését látta-e már a játékos; a régi mentésben igaz).
 ## 6 (M10): magon "share" (barát magjánál a kapott mag-kód), "share_day" (ha a barát a nap magját küldte: annak napja),
 ##    "from" (honnan kaptad, pl. a barát bolygójának neve); flags.got: a már megkapott mag-kódok (kétszer nem jár).
+## M12 (verzióváltás nélkül, a flags-ben): flags.debug (fejlesztői mód), flags.tips (a már látott első-indítás tippek
+##    azonosítói), flags.seen_day (az utolsó megnyitás napja: ha ma későbbi, reggeli pillanat).
 const VERSION := 6
 const SAVE_PATH := "user://mag_mentes.json"
 const BACKUP_SUFFIX := ".bak"
@@ -78,7 +80,7 @@ static func day_label(day: int) -> String:
 ##   mag: barát mag-kódja (`?mag=KOD`, M10: a mag a táskába kerül, „Kaptál egy magot”); bolygo: barát bolygójának linkje
 ##   (`?bolygo=…`, M10: vendégként nézhető, a mentés nem változik).
 static func launch_options() -> Dictionary:
-	var o := {"state": "", "player": "", "wipe": false, "day": null, "open": "", "mag": "", "bolygo": "", "evszak": ""}
+	var o := {"state": "", "player": "", "wipe": false, "day": null, "open": "", "mag": "", "bolygo": "", "evszak": "", "debug": null}
 	var pairs: Array = []
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--"):
@@ -115,6 +117,9 @@ static func launch_options() -> Dictionary:
 			"evszak":
 				# az évszak rögzítése teszteléshez (M11): tavasz, nyar, osz, tel; auto = a dátum szerint
 				o.evszak = v
+			"debug":
+				# fejlesztői mód (M12): mérőszámok és teszt-gombsorok; ?debug=0 kikapcsolja (mentve)
+				o.debug = v != "0" and v != "ki"
 			"nap":
 				# a „+” az URL-ben szóközként is megérkezhet
 				o.day = v.replace("%2B", "").replace("+", "").strip_edges().to_int()

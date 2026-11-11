@@ -30,6 +30,10 @@
 #   Megosztás (M10, state): share | shareseed | shareherb | sharedaily | shareplanet (a lap a keretezett képpel; a kép a
 #     kimenet mellé is: *_kep.jpg) | gift / giftNN („Kaptál egy magot”) | guest / guestfocus / guestask (a saját bolygó
 #     linkje vendégként, „Magot kérek”) | codeentry | codebad; URL-paraméterek: MAG_ARGS="--mag=KOD" vagy "--bolygo=…"
+#   Felület (M12, state): hud (normál kép) | faded (a suttogás elhalványult) | menu (a „…” lap) | first (első indítás: a
+#     „húzd” tipp) | tipdaily / tiptree / tipbag / tiptomorrow / tipplanets | morning / morningT (reggel T mp-nél; 0.6: fátyol,
+#     7: jelzés + a nap magjának hívása; --nap=+3-mal szomjas fa) | debugtap (hármas koppintás → fejlesztői mód);
+#     bármelyik lövés 7.+ elemeként „debug”: a fejlesztői sávokkal, pl. state,23,hud,debug
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 G="$HOME/godot-bin/godot"
