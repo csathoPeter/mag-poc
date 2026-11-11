@@ -1,14 +1,13 @@
 class_name Herbarium
 extends Control
-## Herbárium (M6): az égbolt csillagai egyben a játékos emlékei (2026. 11. 11. óta a játékoséi, nem bolygónként). A
-## felület elemei (a csillagok rajza: sky_stars.gd):
-##  - „Felnézek az égboltra”: a jobb alsó sarok gombja. A kamera felnéz, az ég elsötétül, és egy képernyőn látszik az
-##    összes csillag; fent „Az égboltod · N csillag”, alul „Vissza a bolygóra”.
-##  - Csillag-lap: egy csillagra koppintva (felnézve, vagy a bolygó mögötti égen is) a kamera felnéz, gyűrű jelöli a
-##    csillagot, alul lebegő lap: a csillag fája kis forgó 3D-előnézetben (mint a csíraválasztóban), fajnév,
-##    tulajdonságok, eredet (melyik bolygóról), dátum. „‹ ›” (vagy húzás jobbra-balra az égen) lapoz a csillagok között,
-##    így a kis pontokra sem kell pontosan koppintani. „Visszahozom”: a csillagból mag lesz, ami a táskába hull.
-##    „Bezár”: vissza az égbolthoz.
+## Herbárium (M6): a csillagok egyben a játékos emlékei (2026. 11. 11. óta a játékoséi, nem bolygónként). A felület
+## elemei (a csillagok és a kozmosz: sky_stars.gd, cosmos.gd):
+##  - Kozmosz: a kicsinyítés utolsó fokozata (a bolygók után tovább csípve kifelé). Fent „A csillagaid · N csillag”,
+##    lent „Vissza a bolygókhoz”.
+##  - Csillag-lap: egy csillagra koppintva (a kozmoszban, vagy a bolygó mögötti égen is) gyűrű jelöli, alul lebegő lap:
+##    a csillag fája kis forgó 3D-előnézetben (mint a csíraválasztóban), fajnév, tulajdonságok, eredet (melyik
+##    bolygóról), dátum. „‹ ›” (vagy húzás jobbra-balra) lapoz a csillagok között, így a kis pontokra sem kell pontosan
+##    koppintani; a kozmoszban a kép a csillag felé tolódik. „Visszahozom”: a csillagból mag lesz, ami a táskába hull.
 ##  - Elengedés: leszállva a fa lebegő táblája alatt halvány „Elengedem…” (vagy hosszan nyomva a fát), utána
 ##    megerősítés – véletlenül nem lehet. A fa fénnyé oszlik és felszáll (sky_stars.gd), a végén a lapja nyílik.
 ##  - Az égről hozott mag fénye a 2D rétegben ívben a Táska gombjába repül.
@@ -31,8 +30,6 @@ const FLY_LEN := 1.3
 var host
 ## A lap ezt a csillagot mutatja (-1 = zárva).
 var star_id := -1
-## Felnézve: az égbolt-nézet nyitva (a lappal vagy nélküle).
-var looking := false
 ## Képernyőképhez: az előnézet azonnal kinőve.
 var snap := false
 
@@ -60,9 +57,7 @@ var _ask := PanelContainer.new()
 var _ask_body := Label.new()
 var _ask_tree := -1
 
-## A jobb alsó sarok „Felnézek az égboltra” gombja (csillagjellel) és a lebegő tábla alatti „Elengedem…”.
-var chip := Button.new()
-## Felnézve, lap nélkül: fent a cím és a csillagok száma, alul „Vissza a bolygóra”.
+## A kozmoszban, lap nélkül: fent a cím és a csillagok száma, alul „Vissza a bolygókhoz”.
 var _top := VBoxContainer.new()
 var _top_title := Label.new()
 var _top_sub := Label.new()
@@ -93,7 +88,7 @@ func _ready() -> void:
 	_head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_head.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	head.add_child(_head)
-	var close_b := BoardView.make_button(head, "Bezár", close_card, BoardView.C_DIM)
+	var close_b := BoardView.make_button(head, "Bezár", close, BoardView.C_DIM)
 	close_b.size_flags_horizontal = Control.SIZE_SHRINK_END
 	close_b.custom_minimum_size = Vector2(78, 34)
 	close_b.add_theme_font_size_override("font_size", 13)
@@ -191,7 +186,7 @@ func _ready() -> void:
 	acol.add_child(arow)
 	BoardView.make_button(arow, "Mégse", _on_cancel, BoardView.C_DIM)
 	BoardView.make_button(arow, "Elengedem", _on_confirm, C_STAR)
-	# --- felnézve: cím fent, „Vissza a bolygóra” lent
+	# --- a kozmoszban: cím fent, „Vissza a bolygókhoz” lent
 	_top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_top.add_theme_constant_override("separation", 2)
 	_top.visible = false
@@ -205,23 +200,13 @@ func _ready() -> void:
 		(l as Label).add_theme_constant_override("shadow_offset_y", 1)
 		(l as Label).add_theme_constant_override("shadow_outline_size", 6)
 		_top.add_child(l)
-	_top_title.text = "Az égboltod"
-	_back = BoardView.make_button(self, "Vissza a bolygóra", close, C_LAVENDER)
+	_top_title.text = "A csillagaid"
+	_back = BoardView.make_button(self, "Vissza a bolygókhoz", func() -> void: host.back_from_stars(), C_LAVENDER)
 	_back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_back.custom_minimum_size = Vector2(190, 46)
 	_back.focus_mode = Control.FOCUS_NONE
 	_back.visible = false
-	# --- „Felnézek az égboltra” és az „Elengedem…”
-	chip.flat = true
-	chip.custom_minimum_size = Vector2(CHIP_W, 52)
-	chip.size = chip.custom_minimum_size
-	chip.focus_mode = Control.FOCUS_NONE
-	for st in ["normal", "hover", "pressed", "focus", "disabled"]:
-		chip.add_theme_stylebox_override(st, StyleBoxEmpty.new())
-	chip.draw.connect(_draw_chip)
-	chip.pressed.connect(_on_chip)
-	chip.visible = false
-	add_child(chip)
+	# --- az „Elengedem…”
 	release_btn = BoardView.make_button(self, "Elengedem…", ask_release, C_LAVENDER)
 	release_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	release_btn.custom_minimum_size = Vector2(128, 36)
@@ -238,9 +223,9 @@ func _ready() -> void:
 	_fly_layer.add_child(_fly)
 
 
-## Nyitva van-e az égbolt-nézet, a lap vagy a megerősítés (a világ ilyenkor nem forog magától, a gombsor rejtve).
+## Nyitva van-e a lap vagy a megerősítés (a világ ilyenkor nem forog magától, a gombsor rejtve).
 func is_open() -> bool:
-	return looking or _card.visible or _ask.visible
+	return _card.visible or _ask.visible
 
 
 func card_open() -> bool:
@@ -253,30 +238,14 @@ func asking() -> bool:
 
 # ---------------------------------------------------------------- Csillag-lap
 
-## Felnézek az égboltra: a kamera felfordul, az ég elsötétül, az összes csillag egy képernyőn (lap nélkül).
-func look_up() -> void:
-	_enter_sky()
-	host.stars.open_sky(-1)
-	_hide_card()
-	Sound.fx("select")
-
-
-func _enter_sky() -> void:
-	host.board.close()
-	host.bag.visible = false
-	host.ui_col.visible = false
-	if not looking:
-		looking = true
-		_top.modulate = Color(1, 1, 1, 0)
-		create_tween().tween_property(_top, "modulate:a", 1.0, .8)
-
-
-## A lap a csillaggal (felnézve; a gyűrű jelöli). msg: felső üzenet (pl. „… csillag lett”).
+## A lap a csillaggal (gyűrű jelöli; a kozmoszban a kép felé tolódik). msg: felső üzenet (pl. „… csillag lett”).
 func open(id: int, msg := "") -> void:
 	var stars: SkyStars = host.stars
 	if stars._find(id).is_empty():
 		return
-	_enter_sky()
+	host.board.close()
+	host.bag.visible = false
+	host.ui_col.visible = false
 	stars.open_sky(id)
 	var was := _card.visible
 	_card.visible = true
@@ -287,7 +256,7 @@ func open(id: int, msg := "") -> void:
 		create_tween().tween_property(_card, "modulate:a", 1.0, .45)
 
 
-## Vissza a bolygóra: a kamera visszafordul, a gombsor visszajön.
+## A lap bezárása (a kamera ott marad, ahol van – a kozmoszban a csillagok közt), a gombsor visszajön.
 func close() -> void:
 	close_now()
 	host._overlay_closed()
@@ -295,24 +264,13 @@ func close() -> void:
 
 ## Bezárás jelzés nélkül (bolygóváltáskor, méréskor).
 func close_now() -> void:
-	looking = false
 	_ask.visible = false
-	_hide_card()
-	if host != null:
-		host.stars.close_sky()
-
-
-## A lap bezárása: felnézve marad, az égbolt az összes csillaggal.
-func close_card() -> void:
-	_hide_card()
-	host.stars.select(-1)
-
-
-func _hide_card() -> void:
 	_card.visible = false
 	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	star_id = -1
 	_drop_plant()
+	if host != null:
+		host.stars.close_sky()
 
 
 ## Lapozás a csillagok között (sorszám szerint, körbe).
@@ -340,7 +298,7 @@ func _show(id: int, msg: String) -> void:
 	for k in ord.size():
 		if int(ord[k].id) == id:
 			idx = k + 1
-	_head.text = "Az égbolt csillagai · %d / %d" % [idx, ord.size()]
+	_head.text = "A csillagaid · %d / %d" % [idx, ord.size()]
 	_name.text = Genes.latin_name(st.dna)
 	_traits.text = Genes.traits_text(st.dna)
 	_origin.text = origin_text(st)
@@ -435,7 +393,7 @@ func ask_release() -> void:
 		return
 	_ask_tree = int(t.sid)
 	var p := game.active_planet()
-	var body := "%s fénnyé válik, és csillag lesz az égbolton. A helye felszabadul.\nBármikor visszahozhatod: nézz fel az égboltra, és koppints a csillagára." % Genes.latin_name(rec.dna)
+	var body := "%s fénnyé válik, és csillag lesz a csillagaid között. A helye felszabadul.\nBármikor visszahozhatod: csípd kifelé a képet a bolygóidon túl, és koppints a csillagára." % Genes.latin_name(rec.dna)
 	if not (p.founders as Array).is_empty() and (p.founders[0] as Array) == (rec.dna as Array):
 		body += "\n\nŐ alapította a bolygót: a bolygó formája, talaja és holdjai megmaradnak, a színei a többi fából állnak össze."
 	_ask_body.text = body
@@ -495,45 +453,6 @@ func _draw_fly() -> void:
 		_fly.draw_circle(q, r, Color(SeedFx.C_SEED.lerp(Color.WHITE, .3), .95 * a))
 
 
-# ---------------------------------------------------------------- „Felnézek az égboltra”
-
-const CHIP_W := 222.0
-const CHIP_TEXT := "Felnézek az égboltra"
-
-
-func _on_chip() -> void:
-	look_up()
-
-
-## A gomb: lekerekített, áttetsző sötét kapszula, bal oldalt a pislákoló csillagjel (a csillagok számával), mellette a
-## felirat.
-func _draw_chip() -> void:
-	var sz := chip.size
-	var n: int = host.stars.ordered().size()
-	var night := clampf(float(host.night), 0.0, 1.0)
-	var pulse := .85 + .15 * sin(_t * 1.6)
-	var col := C_STAR.lerp(Color(.85, .9, 1.0), night * .4)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(.10, .07, .22, .46)
-	sb.border_color = Color(col, .32)
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(int(sz.y * .5))
-	chip.draw_style_box(sb, Rect2(Vector2.ZERO, sz))
-	var c := Vector2(sz.y * .5 + 2.0, sz.y * .5)
-	chip.draw_circle(c, 15.0 * pulse, Color(col, .14))
-	chip.draw_circle(c, 8.0 * pulse, Color(col, .3))
-	# négyágú csillag (a webes betűkészletben nincs ✦, ezért rajzolva)
-	for d in [Vector2(1, 0), Vector2(0, 1)]:
-		var pts := PackedVector2Array([c - d * 13.0, c + Vector2(-d.y, d.x) * 2.8, c + d * 13.0, c - Vector2(-d.y, d.x) * 2.8])
-		chip.draw_colored_polygon(pts, Color(col, .95))
-	chip.draw_circle(c, 2.6, Color(1, 1, 1, .95))
-	var font := chip.get_theme_default_font()
-	if n > 0:
-		chip.draw_string(font, c + Vector2(7, 19), str(n), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1, .8))
-	chip.draw_string(font, Vector2(sz.y + 4.0, sz.y * .5 + 5.0), CHIP_TEXT, HORIZONTAL_ALIGNMENT_LEFT, sz.x - sz.y - 10.0, 14,
-		Color(col.lerp(Color.WHITE, .55), .95))
-
-
 # ---------------------------------------------------------------- Képkockánként
 
 func _process(delta: float) -> void:
@@ -549,33 +468,27 @@ func _process(delta: float) -> void:
 	if _ask.visible:
 		_ask.reset_size()
 		_ask.position = ((vp - _ask.size) * .5).floor()
-	# felnézve, lap nélkül: a cím fent, a „Vissza a bolygóra” lent
-	var overview: bool = looking and not _card.visible and not host.stars.busy()
-	# (nyitott lapnál a lap fejléce mondja, hányadik csillag)
-	_top.visible = looking and not _card.visible
-	_back.visible = overview
-	if looking:
+	# a kozmoszban, lap nélkül: a cím fent, a „Vissza a bolygókhoz” lent
+	var calm: bool = host.garden_mode == "planet" and host.saved_view and not is_open() and host.ui_col.visible and not host.fx.busy() \
+		and not host.hatching.active() and not host.stars.busy() and not host.bench_on
+	var in_space: bool = calm and host.view == "orbit" and host.stars.cosmos() > .75 and not host.system.busy()
+	_top.visible = in_space
+	_back.visible = in_space
+	if in_space:
 		var n: int = host.stars.ordered().size()
 		var top_y := 22.0 + (float(host.hud.dbg_box.size.y) + 6.0 if host.hud.debug and float(host.hud.dbg_box.size.y) > 2.0 else 0.0)
-		_top_sub.text = ("%d csillag. Koppints egyre: a fája, és visszahozhatod." % n) if n > 0 else \
+		_top_sub.text = ("%d csillag · húzd: körbenézel · koppints egyre: a fája" % n) if n > 0 else \
 			"Még nincs csillagod. Ha egy fát elengedsz, fénnyé válik, és itt ragyog tovább."
 		_top_title.custom_minimum_size = Vector2(minf(vp.x - 40.0, 420.0), 0)
 		_top_sub.custom_minimum_size = Vector2(minf(vp.x - 40.0, 420.0), 0)
 		_top.reset_size()
 		_top.position = Vector2(floorf((vp.x - _top.size.x) * .5), top_y)
-	if overview:
+		var a := clampf((host.stars.cosmos() - .75) * 6.0, 0.0, 1.0)
+		_top.modulate.a = a
+		_back.modulate.a = a
 		_back.size = _back.get_combined_minimum_size()
 		_back.position = Vector2(floorf((vp.x - _back.size.x) * .5), vp.y - _back.size.y - 26.0)
 	queue_redraw()
-	# „Felnézek az égboltra”: ha semmi más nincs nyitva (csillag nélkül is: az üres égbolt elmondja, mi kerül oda)
-	var calm: bool = host.garden_mode == "planet" and host.saved_view and not is_open() and host.ui_col.visible and not host.fx.busy() \
-		and not host.hatching.active() and not host.stars.busy() and not host.bench_on
-	# (az átfogó nézetben – minden bolygó egyszerre – nem)
-	var show_chip: bool = calm and not host.macro and not host.shaping.on and host.system.overview() < .5
-	chip.visible = show_chip
-	if show_chip:
-		chip.position = Vector2(vp.x - chip.size.x - 12.0, vp.y - chip.size.y - 22.0)
-		chip.queue_redraw()
 	# „Elengedem…” a lebegő tábla alatt (leszállva, amikor a tábla látszik), mellette balra az „Alakítás” (M8), jobbra
 	# a „Megosztom” (M10; vendégként a barát bolygóján „Magot kérek”)
 	var show_rel: bool = calm and _can_release() and float(host.tag_alpha) > .5 and not host.share.busy()
@@ -637,10 +550,10 @@ func _draw() -> void:
 		draw_rect(get_viewport_rect(), Color(.04, .02, .10, .42 * _ask.modulate.a))
 
 
-# ---------------------------------------------------------------- Érintés felnézve (égbolt-nézet)
+# ---------------------------------------------------------------- Érintés nyitott lapnál
 
-## Felnézve: az égre koppintva csillagot választ (a lapja nyílik); a lap mellett jobbra-balra húzva lapoz. (A lap és a
-## „Vissza” gombjai maguk kezelik a koppintást.)
+## Nyitott lapnál: egy másik csillagra koppintva azt mutatja; jobbra-balra húzva lapoz. (A lap gombjai maguk kezelik a
+## koppintást.)
 func sky_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:

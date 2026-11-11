@@ -530,7 +530,23 @@ static func quat_of(v: Variant) -> Quaternion:
 	return Quaternion.IDENTITY
 
 
+## A kvaternió a mentéshez: 5 tizedesre kerekítve, úgy, hogy a betöltés (quat_of: normálás, aztán újra ez) ugyanazt adja
+## vissza – különben egy határon lévő érték (pl. 0,866025 → 0,86603, normálva 0,86602) betöltéskor elmozdulna, és a
+## mentés nem egyezne a memóriával. Ezért addig normál és kerekít, amíg a kerekített alak nem változik (1–2 kör).
 static func quat_arr(q: Quaternion) -> Array:
+	var a := _snap4(q)
+	for i in 4:
+		var n := Quaternion(a[0], a[1], a[2], a[3])
+		if n.length() <= .0001:
+			break
+		var b := _snap4(n.normalized())
+		if b == a:
+			break
+		a = b
+	return a
+
+
+static func _snap4(q: Quaternion) -> Array:
 	return [snappedf(q.x, .00001), snappedf(q.y, .00001), snappedf(q.z, .00001), snappedf(q.w, .00001)]
 
 

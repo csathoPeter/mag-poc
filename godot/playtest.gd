@@ -79,18 +79,19 @@ func run() -> void:
 	game = host.game
 	await _settle("indulás")
 	_check("új játék: 1 bolygó, 3 kezdő fa, üres táska", {"planets": 1, "trees0": 3, "bag": 0, "stars": 0})
-	# üres táska (csak a mai mag vár benne), 0 csillag: a csillagjel rejtve
+	# üres táska (csak a mai mag vár benne), 0 csillag
 	await _press(host.hud.pouch)
 	_expect(host.bag.visible, "a batyura koppintva nyílik a táska")
 	await _close_bag()
-	# „Felnézek az égboltra” csillag nélkül is: az üres égbolt elmondja, mi kerül oda
-	_expect(host.herb.chip.visible, "a „Felnézek az égboltra” gomb látszik")
-	await _press(host.herb.chip)
-	await _frames(10)
-	_expect(host.herb.looking and host.stars.sky_on, "felnézve az égboltra")
-	await _click(host.herb, "Vissza a bolygóra")
-	await _settle("vissza a bolygóra")
-	_expect(not host.herb.looking and host.herb.chip.visible, "vissza a bolygóra: a gomb újra látszik")
+	# csípés kifelé a bolygón túl: a kozmosz (csillag nélkül is: a cím elmondja, mi kerül oda), aztán vissza
+	await _zoom_to_stars()
+	_expect(host.stars.cosmos() > .9 and host.cosmos.visible, "kicsinyítve a kozmosz (%.2f)" % host.stars.cosmos())
+	_expect(host.herb._top.visible and host.herb._top_sub.text.begins_with("Még nincs csillagod"), "a kozmosz címe csillag nélkül")
+	await _click(host.herb, "Vissza a bolygókhoz")
+	await _settle("vissza a bolygókhoz")
+	await _until(func() -> bool: return host.stars.cosmos() < .004, "a kozmosz bezárul")
+	await _frames(2)
+	_expect(host.stars.cosmos() < .05 and not host.cosmos.visible, "vissza a bolygóhoz: a kozmosz bezárult")
 
 	# --- 1. nap: a nap magja a fénylő magra koppintva, kitöltés koppintásokkal, spirál, táska
 	await _solve_daily()
@@ -189,14 +190,15 @@ func run() -> void:
 		_touch(Vector2(200, 300))
 		await _until(func() -> bool: return not host.stars.busy(), "az elengedés vége")
 		await _until(func() -> bool: return host.herb.card_open(), "a csillag lapja")
+		_expect(host.stars.cosmos() > .5, "az elengedés után a kamera a kozmoszban (%.2f)" % host.stars.cosmos())
 		_check("elengedés: a fa csillag lett", {"trees0": trees_before - 1, "stars": stars_before + 1})
 		var st: Dictionary = game.find_star(host.herb.star_id)
 		_expect(str(st.get("code", "")) == str(rel.code), "a csillag a fa kódjával")
 		_expect(str(st.get("planet", "")) == str(game.active_planet().code), "a csillag emlékszik a bolygójára")
-		# a lap bezárása: felnézve marad (az égbolt), aztán egy koppintás a csillagra újra nyitja
+		# a lap bezárása: a kozmoszban marad, aztán egy koppintás a csillagra újra nyitja
 		await _click(host.herb, "Bezár")
 		await _frames(30)
-		_expect(host.herb.looking and not host.herb.card_open(), "Bezár: felnézve marad, lap nélkül")
+		_expect(host.stars.cosmos() > .5 and not host.herb.card_open(), "Bezár: a kozmoszban marad, lap nélkül")
 		_touch(host.stars.screen_pos(int(st.id)))
 		await _frames(5)
 		_expect(host.herb.card_open() and host.herb.star_id == int(st.id), "koppintás a csillagra: a lapja")
@@ -207,6 +209,10 @@ func run() -> void:
 		_check("visszahozás: mag a táskában, a csillag eltűnt", {"bag": bag_before + 1, "stars": stars_before})
 		var cs := _bag_of("csillag")
 		_expect(str(cs.get("code", "")) == str(rel.code), "a csillagról hozott mag a fa kódjával")
+		await _click(host.herb, "Vissza a bolygókhoz")
+		await _settle("vissza a kozmoszból")
+		await _until(func() -> bool: return host.stars.cosmos() < .01, "a kozmosz bezárul")
+		_expect(host.stars.cosmos() < .05, "vissza a bolygóhoz")
 
 	# --- alakítás: levágás, kötözés, visszavonás, kilépés; csípés kifelé alakító módban
 	var sh: Dictionary = _find_tree(func(t: Dictionary) -> bool: return int(t.hatch) <= GameState.today())
@@ -216,7 +222,7 @@ func run() -> void:
 		await _click(host.shaping, "Alakítás")
 		_expect(host.shaping.on, "alakító mód")
 		await get_tree().process_frame
-		_expect(not host.hud.pouch.visible and not host.herb.chip.visible, "alakítás közben a batyu és a csillagjel rejtve (a lap gombjait ne takarja)")
+		_expect(not host.hud.pouch.visible, "alakítás közben a batyu rejtve (a lap gombjait ne takarja)")
 		_expect(not host.hud.orb.visible, "alakító módban a nap magja rejtve")
 		var t: Dictionary = host.trees[host.focus]
 		var b: int = host._shot_branch(t)
@@ -257,7 +263,7 @@ func run() -> void:
 		await _frames(3)
 		_expect(not host.shaping.on and host.view == "orbit", "csípés kifelé alakító módban: kilép az alakításból is")
 		_expect(not host.shaping._panel.visible, "az alakítás lapja eltűnt")
-		_touch_drag(Vector2(20, 400), Vector2.ZERO)
+		_touch_drag(_empty_spot(), Vector2.ZERO)
 		await _settle("alakítás vége")
 
 	# --- a kötözés napról napra hajlik
@@ -310,7 +316,7 @@ func run() -> void:
 	_check("fa nélküli bolygó újraépítve", {"trees1": 0})
 
 	# --- bolygóváltás koppintással a kis bolygóra
-	host.orbit_zoom = host.system.min_zoom()
+	host.orbit_zoom = PlanetSystem.ZOOM_ALL
 	await _frames(40)
 	var mp: Vector2 = host.system.screen_pos(0)
 	_touch(mp)
@@ -337,6 +343,16 @@ func run() -> void:
 	await _frames(60)
 	_expect(host.system.overview() < .05, "az átfogó nézet bezárult")
 	_check("átfogó nézet", {"active": 0})
+	# tovább kifelé: a kozmosz több bolygóval (az átfogó nézet után); koppintás a bolygórendszerre: vissza az átfogó nézetbe
+	await _zoom_to_stars()
+	_expect(host.stars.cosmos() > .9 and float(host.orbit_zoom) < PlanetSystem.ZOOM_ALL, "több bolygóval az átfogó nézet után a kozmosz")
+	_expect(host.herb._top.visible and not host.hud.orb.visible, "a kozmoszban a cím látszik, a nap magja rejtve")
+	_touch(host.cam.unproject_position(host.planet.global_position))
+	await _frames(60)
+	_expect(is_equal_approx(float(host.orbit_zoom), PlanetSystem.ZOOM_ALL) and host.stars.cosmos() < .1, "koppintás a bolygókra: vissza az átfogó nézetbe")
+	host.orbit_zoom = host.ORBIT_ZOOM
+	await _settle("vissza közelre")
+	_check("kozmosz több bolygóval", {"active": 0})
 
 	# --- megosztás: a saját fa mag-kódja barát magjaként (kétszer: másodszor nem jár)
 	var src: Dictionary = game.active_planet().trees[1]
@@ -371,7 +387,7 @@ func run() -> void:
 	await _click(host.share, "Tovább nézem")
 	_check("vendégként kért mag", {"bag": bag_before + 1})
 	_expect(JSON.stringify(GameState._plain(game.data.planets), "", true, true) == planets_json, "vendégként a bolygók nem változtak")
-	_touch_drag(Vector2(20, 400), Vector2.ZERO)
+	_touch_drag(_empty_spot(), Vector2.ZERO)
 	await _frames(5)
 	await _click(host.share, "Vissza a kertembe")
 	await _settle("vissza a kertbe")
@@ -641,6 +657,22 @@ func _gather(t: Dictionary) -> void:
 
 
 ## Leszállás egy mentett fához: koppintás a fára (ha nem talál, a _focus úton, megjegyzéssel).
+## Egy üres hely a képen (se fa, se csillag – a csillagok körös-körül vannak az égen): koppintás ide semmit nem nyit.
+func _empty_spot() -> Vector2:
+	for p in [Vector2(20, 400), Vector2(20, 300), Vector2(370, 300), Vector2(20, 500), Vector2(370, 500), Vector2(195, 120)]:
+		if host.stars.pick(p) < 0:
+			return p
+	return Vector2(20, 400)
+
+
+## Csípés kifelé (a _zoom útján, mint két ujjal) a bolygókon túl, a kozmoszig.
+func _zoom_to_stars() -> void:
+	for k in 12:
+		host._zoom(2.0)
+		await _frames(2)
+	await _frames(70)
+
+
 func _land(t: Dictionary) -> void:
 	await _settle("leszállás előtt")
 	var i := _scene_index(t)

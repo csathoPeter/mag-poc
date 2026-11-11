@@ -407,11 +407,12 @@ static func pull(z: float) -> float:
 	return 1.0 + PULL * clampf(-z, 0.0, -ZOOM_MIN)
 
 
-## Meddig lehet kicsinyíteni: ha van több bolygó, 0 alá, egészen az átfogó nézetig (születés közben a megszokottig).
+## Meddig lehet kicsinyíteni: 0 alá, a többi bolygón (több bolygónál az átfogó nézeten) túl a kozmoszig, a csillagok
+## közé (sky_stars.gd); születés és váltás közben a megszokottig.
 func min_zoom() -> float:
-	if not minis.is_empty():
-		return ZOOM_ALL
-	return ZOOM_MIN if busy() else 0.0
+	if busy():
+		return ZOOM_MIN
+	return host.stars.stars_zoom()
 
 
 func busy() -> bool:
@@ -443,7 +444,7 @@ func pick(pos: Vector2) -> int:
 		var o := cam.global_position
 		var dir := (w - o).normalized()
 		var planet: Planet = host.planet
-		if SkyStars._hits(o, dir, planet.global_position, planet.radius) and o.distance_to(planet.global_position) < o.distance_to(w):
+		if SkyStars._hits(o, dir, 1e9, planet.global_position, planet.radius * planet.radius) and o.distance_to(planet.global_position) < o.distance_to(w):
 			continue
 		var c := cam.unproject_position(w)
 		var rpx := c.distance_to(cam.unproject_position(w + cam.global_transform.basis.x * float(m.r) * MINI_SCALE))
@@ -519,7 +520,8 @@ func _process(delta: float) -> void:
 		if absf(ov - ov_want) < .001:
 			ov = ov_want
 	_place(delta)
-	var na := _smooth((ov - .55) / .4) if not busy() else 0.0
+	# a nevek a kozmoszban elhalványulnak (ott a bolygók kicsik, a csillagoké a kép)
+	var na: float = _smooth((ov - .55) / .4) * (1.0 - float(host.stars.cosmos())) if not busy() else 0.0
 	_names_a = na if snap else lerpf(_names_a, na, 1.0 - exp(-delta * (3.0 if na > _names_a else 8.0)))
 	_names.visible = _names_a > .01
 	if _names.visible:

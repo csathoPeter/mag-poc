@@ -20,7 +20,7 @@ extends Control
 ## ui_col, fx, hatching, stars, system, herb, share, crossing, shaping, board, bag, bench_on, retreating, cam, planet,
 ## shot_args, traits_l, tod_i, tod, _tod_target(), _tree_mid(), turn_to().
 
-const ORDER := ["drag", "daily", "tree", "bag", "tomorrow", "planets"]
+const ORDER := ["drag", "daily", "tree", "bag", "tomorrow", "planets", "stars"]
 const TEXT := {
 	"drag": "Húzd: forgatás · csípd: közelítés",
 	"daily": "Koppints a fénylő magra:\na nap magja",
@@ -28,9 +28,10 @@ const TEXT := {
 	"bag": "A magjaid a táskában",
 	"tomorrow": "Holnap visszajöhetsz:\nkikel, amit ma elvetsz",
 	"planets": "Csípd kifelé: a többi bolygód",
+	"stars": "Csípd tovább kifelé:\na csillagaid",
 }
 ## Mozdulat → az a tipp, amit kivált (vagy fölöslegessé tesz).
-const ACTION := {"drag": "drag", "daily": "daily", "tree": "tree", "bag": "bag", "zoomout": "planets"}
+const ACTION := {"drag": "drag", "daily": "daily", "tree": "tree", "bag": "bag", "zoomout": "planets", "zoomstars": "stars"}
 ## Egy tipp legalább ennyi ideig látszik (ha közben megtette is), és legfeljebb ennyi ideig vár.
 const MIN_SHOW := 2.6
 const MAX_SHOW := 16.0
@@ -162,6 +163,10 @@ func _want(id: String) -> bool:
 			return _pending.has("tomorrow")
 		"planets":
 			return host.view == "orbit" and (host.game.data.planets as Array).size() > 1
+		"stars":
+			# ha már van csillag, és a bolygók utolsó lépcsőjén vagyunk
+			return host.view == "orbit" and not (host.game.data.stars as Array).is_empty() \
+				and float(host.orbit_zoom) <= host.stars.start_zoom() + .15 and host.stars.cosmos() < .2
 	return false
 
 
@@ -346,6 +351,12 @@ func _draw() -> void:
 			for s in [-1.0, 1.0]:
 				draw_circle(c + Vector2(s * (10.0 + u * 34.0), -34.0 + s * -(4.0 + u * 10.0)), 6.0, Color(C_TIP, .38 * a * (1.0 - u * .6)))
 			_text(c + Vector2(0, 10), TEXT.planets, a)
+		"stars":
+			var c := vp * Vector2(.5, .72)
+			var u := fmod(_t * .5, 1.0)
+			for s in [-1.0, 1.0]:
+				draw_circle(c + Vector2(s * (10.0 + u * 34.0), -34.0 + s * -(4.0 + u * 10.0)), 6.0, Color(C_TIP, .38 * a * (1.0 - u * .6)))
+			_text(c + Vector2(0, 10), TEXT.stars, a)
 
 
 ## Vékony, világító felirat középre igazítva (több sor is).
