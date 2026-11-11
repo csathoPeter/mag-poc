@@ -3597,7 +3597,8 @@ func _lens(delta: float, snap: bool) -> void:
 	lens_mat.set_shader_parameter("band_y", .5)
 	# az átfogó nézetben szélesebb éles sáv, enyhébb elmosás (a szélső bolygók is olvashatók maradjanak)
 	var ovk := system.overview()
-	lens_mat.set_shader_parameter("band", lerpf(lerpf(.16, .06, e), .3, ovk))
+	# az éles sáv félszélessége (a kép magasságának arányában): közelről is a kép ~harmada éles marad
+	lens_mat.set_shader_parameter("band", lerpf(lerpf(.26, .18, e), .3, ovk))
 	lens_mat.set_shader_parameter("tilt", lerpf(.45, 1.0, e) * (1.0 - .75 * ovk))
 	# a fű a kamera és a nézett pont körül sűrű: leszállva a fa töve körül, kívülről (közelről) a nézett pont körül.
 	# A pont puhán vándorol, a szálak a bolygóhoz rögzítettek, csak a sűrűség változik (előnőnek / visszahúzódnak).
