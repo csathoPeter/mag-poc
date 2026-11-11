@@ -4,6 +4,8 @@ shader_type sky;
 // A színátmenet a fény irányához igazodik, nem a "fent"-hez, mert a bolygót bármerre lehet forgatni.
 uniform float night = 0.0;
 uniform float dusk = 0.0;
+// a kozmosz (a kicsinyítés utolsó fokozata, sky_stars.gd): mély, sötét űr, fényes háttércsillagok
+uniform float cosmos = 0.0;
 uniform vec3 day_a : source_color = vec3(1.0, 0.87, 0.78);
 uniform vec3 day_b : source_color = vec3(0.76, 0.74, 0.96);
 uniform vec3 day_c : source_color = vec3(0.72, 0.93, 0.9);
@@ -68,7 +70,10 @@ void sky() {
 	vec3 ni = mix(col_in(night_b), col_in(night_a), smoothstep(0.3, 0.75, n1) * 0.8 + l * 0.25);
 	ni += vec3(0.32, 0.14, 0.45) * smoothstep(0.52, 0.85, n2) * 0.3;
 	vec3 c = mix(mix(day, du, dusk), ni, night);
+	vec3 deep = mix(col_in(night_b) * 0.6, col_in(night_a) * 0.55, smoothstep(0.3, 0.8, n1) * 0.7);
+	deep += vec3(0.22, 0.1, 0.35) * smoothstep(0.55, 0.88, n2) * 0.22;
+	c = mix(c, deep, cosmos);
 	float s = stars(d, 170.0, 0.975) + stars(d, 60.0, 0.993) * 1.6;
-	c += vec3(0.95, 0.95, 1.0) * s * mix(0.08, 1.0, night);
+	c += vec3(0.95, 0.95, 1.0) * s * mix(mix(0.08, 1.0, night), 0.8, cosmos);
 	COLOR = col_out(c);
 }

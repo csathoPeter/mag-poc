@@ -255,6 +255,8 @@ var ui_moment := false
 ## Csillagok (M6; a játékoséi, szétszórva az égbolton): felnézés, elengedés, visszahozás (sky_stars.gd), és a herbárium lapja,
 ## az „Elengedem…” és a megerősítés (herbarium.gd).
 var stars := SkyStars.new()
+## A kozmosz háttere (csillagpor, ködök, galaxisok; a kicsinyítés utolsó fokozatában, cosmos.gd).
+var cosmos := Cosmos.new()
 var herb := Herbarium.new()
 # Bolygók (M7; a látvány és a váltás: planet_system.gd)
 var system := PlanetSystem.new()
@@ -331,6 +333,8 @@ func _ready() -> void:
 	add_child(crossing)
 	stars.host = self
 	add_child(stars)
+	add_child(cosmos)
+	cosmos.visible = false
 	stars.gone.connect(_on_release_gone)
 	stars.arrived.connect(_on_star_arrived)
 	system.host = self
@@ -1001,8 +1005,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			stars.skip()
 			system.skip()
 		return
-	# felnézve (égbolt-nézet, herbárium): koppintás csillagra, húzás jobbra-balra = lapozás
-	if herb.looking:
+	# nyitott csillag-lap (herbárium): koppintás másik csillagra, húzás jobbra-balra = lapozás
+	if herb.card_open():
 		herb.sky_input(event)
 		return
 	if garden_mode == "planet":
@@ -1188,7 +1192,7 @@ func _process(delta: float) -> void:
 			elif shot_args[5] in ["thirsty", "bloom", "bud", "wilt"] or (shot_args[5] as String).begins_with("water") or (shot_args[5] as String).begins_with("gather"):
 				_shot_care(shot_args[5])
 			elif (shot_args[5] as String).begins_with("sky") or (shot_args[5] as String).begins_with("herb") or (shot_args[5] as String).begins_with("release") \
-					or (shot_args[5] as String).begins_with("look"):
+					or (shot_args[5] as String).begins_with("cosmos"):
 				_shot_stars(shot_args[5])
 			elif (shot_args[5] as String).begins_with("birth") or (shot_args[5] as String).begins_with("system") or (shot_args[5] as String).begins_with("hop"):
 				_shot_system(shot_args[5])
@@ -1228,7 +1232,7 @@ func _process(delta: float) -> void:
 					orbit_q = (orbit_q * Quaternion(Vector3.UP, dy)).normalized()
 		if shot_frames == 3 and shot_args.size() > 5 and (shot_args[5] as String).begins_with("stars"):
 			crossing.pick.choose(0)
-		if shot_args.size() > 5 and shot_args[5] in ["releaseplay", "herbplay", "lookplay"]:
+		if shot_args.size() > 5 and shot_args[5] in ["releaseplay", "herbplay"]:
 			_shot_stars_play(shot_args[5])
 		if shot_args.size() > 5 and (shot_args[5] as String).begins_with("hop"):
 			_shot_hop(shot_args[5])
@@ -1657,9 +1661,12 @@ func _tag_text() -> void:
 func _zoom(f: float) -> void:
 	if view == "orbit":
 		# több bolygónál 0 alá is: a kamera hátrébb húzódik, és előtűnnek a többi bolygók (planet_system.gd)
+		# a bolygók után tovább kifelé: a csillagok (kozmosz, sky_stars.gd)
 		orbit_zoom = clampf(orbit_zoom - log(f) * 1.1, system.min_zoom(), 1.0)
 		if orbit_zoom < -.05:
 			guide.did("zoomout")
+		if orbit_zoom < stars.start_zoom() - .5:
+			guide.did("zoomstars")
 	elif macro:
 		m_dist *= f
 		if m_dist > 2.6:
@@ -1677,6 +1684,15 @@ func _tap(pos: Vector2) -> void:
 	# alakító mód (M8): az ágakra koppintást a shaping.gd kezeli; ide a törzs és a fa melletti koppintás jut
 	if shaping.on:
 		shaping.tap(pos)
+		return
+	# kozmosz: csillagra koppintva a lapja; a bolygókra koppintva vissza hozzájuk
+	if view == "orbit" and stars.cosmos() > .5:
+		var cs := stars.pick(pos)
+		if cs >= 0:
+			herb.open(cs)
+			return
+		if system.pick(pos) >= 0 or system.pick_active(pos):
+			back_from_stars()
 		return
 	# kicsinyítve a többi bolygó: rákoppintva odarepülünk (M7)
 	if view == "orbit":
@@ -1788,7 +1804,8 @@ func _planet_input(event: InputEvent) -> void:
 		if touches.size() == 1:
 			var rel: Vector2 = event.relative
 			if view == "orbit":
-				var a := rel * -.0055 * lerpf(1.0, .4, maxf(orbit_zoom, PlanetSystem.ZOOM_MIN))
+				# a kozmoszban lassabban (a kamera messze kering: a csillagok parallaxisa így követhető)
+				var a := rel * -.0055 * lerpf(1.0, .4, maxf(orbit_zoom, PlanetSystem.ZOOM_MIN)) * lerpf(1.0, .45, stars.cosmos())
 				orbit_q = (orbit_q * Quaternion(Vector3.UP, a.x) * Quaternion(Vector3.RIGHT, a.y)).normalized()
 				spin = spin.lerp(a * 60.0, .5)
 				if rel.length() > 2.0:
@@ -1904,12 +1921,8 @@ func _planet_cam(delta: float, snap: bool) -> void:
 		want_up = n
 		if touches.is_empty() and shot_args.is_empty() and not bench_on and not stars.sky_on and not stars.busy() and not shaping.on:
 			s_yaw += delta * (.012 if macro else .03)
-	# felnézés az égboltra: a kamera felfordul az ég felé (a bolygó a kép aljára csúszik)
-	if absf(stars.tilt) > .0001:
-		var fwd := want_look - want_eye
-		var right := fwd.cross(want_up)
-		if right.length() > .001:
-			want_look = want_eye + fwd.rotated(right.normalized(), stars.tilt)
+	# a kozmoszban szélesebb látószög (álló képen is beférjen a csillagok héja)
+	cam.fov = lerpf(40.0, SkyStars.COSMOS_FOV, stars.cosmos())
 	# átmenetkor lassú, puha mozgás; utána gyorsan követi az ujjat
 	var rate := 2.2 if trans_t < 2.5 else 12.0
 	var k := 1.0 if snap else 1.0 - exp(-delta * rate)
@@ -1925,8 +1938,12 @@ func _planet_cam(delta: float, snap: bool) -> void:
 	look = look.lerp(want_look, k)
 	up_v = up_v.slerp(want_up.normalized(), k).normalized()
 	cam.look_at_from_position(eye, look, up_v)
-	# az átfogó nézetben a kamera messzebb lehet a megszokott 400-nál
+	# az átfogó nézetben a kamera messzebb lehet a megszokott 400-nál; a kozmoszban a galaxisokig ellát
 	cam.far = maxf(400.0, eye.distance_to(look) * 1.6 + 60.0)
+	if stars.cosmos() > 0.0:
+		cam.far = maxf(cam.far, eye.distance_to(look) + 3000.0)
+	space_mat.set_shader_parameter("cosmos", stars.cosmos())
+	cosmos.set_fade(stars.cosmos(), str(game.data.get("player", "")) if not game.data.is_empty() else "")
 	sun.directional_shadow_max_distance = 26.0 if view == "surface" else eye.distance_to(look) + planet.radius * 1.2
 	_lens(delta, snap)
 	# a nap a kamerához (kint) vagy a fához (lent) igazodik, így a látható oldal mindig meg van világítva
@@ -2979,7 +2996,9 @@ func _on_release_gone(t: Dictionary) -> void:
 	planet.remove_plant(dna)
 	if focus >= 0:
 		_unfocus()
-	stars.open_sky(int(stars.rel.get("star", -1)))
+	# a kamera kihúzódik a kozmoszba: a fény a csillagok közé száll
+	orbit_zoom = stars.stars_zoom()
+	trans_t = 0.0
 	_planet_texts()
 
 
@@ -2988,7 +3007,7 @@ func _on_star_arrived(id: int) -> void:
 	var s := stars._find(id)
 	if s.is_empty():
 		return
-	herb.open(id, "%s csillag lett az égbolton. Bármikor visszahozhatod." % Genes.latin_name(s.rec.dna))
+	herb.open(id, "%s csillag lett a csillagaid között. Bármikor visszahozhatod." % Genes.latin_name(s.rec.dna))
 
 
 ## „Visszahozom”: a csillagból mag lesz a táskában (eredet „csillag”), a csillag felvillan és elhalványul, a mag fénye
@@ -3020,10 +3039,10 @@ func _debug_stars() -> void:
 	game.debug_stars(3)
 	game.save()
 	stars.sync()
-	traits_l.text = "Három teszt-csillag az égen. Koppints rájuk, vagy a „Felnézek az égboltra” gombra."
+	traits_l.text = "Három teszt-csillag. Csípd kifelé a bolygóidon túl: ott vannak a csillagaid között."
 
 
-## Teszt (`?csillag`): felnézve az égboltra; ha még nincs csillag, öt teszt-csillaggal.
+## Teszt (`?csillag`): a kozmosz, a csillagok között; ha még nincs csillag, öt teszt-csillaggal.
 func _debug_sky() -> void:
 	if game.data.is_empty() or not saved_view or bench_on:
 		return
@@ -3031,22 +3050,32 @@ func _debug_sky() -> void:
 		game.debug_stars(5)
 		game.save()
 		stars.sync()
-	herb.look_up()
+	view = "orbit"
+	focus = -1
+	orbit_zoom = stars.stars_zoom()
+	trans_t = 0.0
 
 
-## Teszt (--shot ...,state,óra,MÓD): csillagok. Ha a bolygón 6-nál kevesebb csillag van, teszt-csillagokkal pótolja
-## (--state-tel ezek a mentésbe is bekerülnek). skyZ: kívülről, Z közelséggel (alapból a szokásos); skyland: leszállva
-## a 0. fához (a fa mögötti égen); herb / herbN: felnézve, az N. (alapból a legutóbbi) csillag lapjával;
-## herbland: ugyanez leszállva; look / lookland: felnézve az égboltra (lap nélkül, kívülről / leszállva); lookN: N
-## csillaggal (teszt-csillagokkal pótolva); lookplay: valódi koppintással a „Felnézek az égboltra” gombra; releaseask: leszállva a 0. fához, az elengedés megerősítése; releaseNN: a 0. fa
-## elengedése, az idővonal NN%-ánál (≈30: oszlik, 55: a fény felszáll, 92: a csillag kigyullad, a lap nyílik);
-## releaseplay / herbplay: valódi koppintásokkal végig (lásd _shot_stars_play).
+## Teszt (--shot ...,state,óra,MÓD): csillagok. Ha 6-nál kevesebb csillag van, teszt-csillagokkal pótolja (--state-tel
+## ezek a mentésbe is bekerülnek). skyZ: kívülről, Z közelséggel (alapból a szokásos); skyland: leszállva a 0. fához (a
+## fa mögötti égen); cosmos / cosmosN / cosmosNyA: a kozmosz (a kicsinyítés utolsó fokozata), N csillagig
+## teszt-csillagokkal, A radiánnal körbefordítva;
+## herb / herbN: a kozmoszban az N. (alapból a legutóbbi) csillag lapjával; herbland: a lap leszállva; releaseask:
+## leszállva a 0. fához, az elengedés megerősítése; releaseNN: a 0. fa elengedése, az idővonal NN%-ánál (≈30: oszlik,
+## 55: a fény felszáll, a kamera kihúzódik, 92: a csillag kigyullad, a lap nyílik); releaseplay / herbplay: valódi
+## koppintásokkal végig (lásd _shot_stars_play).
 func _shot_stars(mode: String) -> void:
-	stars.snap = not mode.ends_with("play")
+	stars.snap = not mode.ends_with("play") and not mode.begins_with("release")
 	herb.snap = true
 	var want := 6
-	if mode.begins_with("look") and mode.trim_prefix("look").is_valid_int():
-		want = int(mode.trim_prefix("look"))
+	if mode.begins_with("cosmos"):
+		# cosmosNyA: N csillag, a kamera A radiánnal körbefordítva (a parallaxis és a háttér más irányból)
+		var spec := mode.trim_prefix("cosmos")
+		if spec.contains("y"):
+			orbit_q = (orbit_q * Quaternion(Vector3.UP, float(spec.get_slice("y", 1)))).normalized()
+			spec = spec.get_slice("y", 0)
+		if spec.is_valid_int():
+			want = int(spec)
 	if not mode.begins_with("release") and (game.data.stars as Array).size() < want:
 		game.debug_stars(want - (game.data.stars as Array).size())
 		game.save()
@@ -3055,14 +3084,15 @@ func _shot_stars(mode: String) -> void:
 		var spec := mode.trim_prefix("sky")
 		orbit_zoom = float(spec) if spec != "" else ORBIT_ZOOM
 		return
-	if mode in ["skyland", "herbland", "lookland", "releaseask", "releaseplay", "herbplay"] or mode.begins_with("release"):
-		if mode != "herbplay" and not trees.is_empty():
+	if mode in ["skyland", "herbland", "releaseask", "releaseplay"] or mode.begins_with("release"):
+		if not trees.is_empty():
 			_focus(0)
 			_planet_cam(0.0, true)
-	if mode.begins_with("look"):
-		if mode != "lookplay":
-			herb.look_up()
-		return
+	if mode.begins_with("cosmos") or (mode.begins_with("herb") and mode != "herbland"):
+		system.snap = true
+		orbit_zoom = stars.stars_zoom()
+		if mode.begins_with("cosmos"):
+			return
 	if mode.begins_with("herb") and mode != "herbplay":
 		var ord := stars.ordered()
 		var spec := mode.trim_prefix("herb")
@@ -3082,8 +3112,8 @@ func _shot_stars(mode: String) -> void:
 
 
 ## Teszt: valódi koppintások. releaseplay: „Elengedem…” a lebegő tábla alatt → „Elengedem” a megerősítésben → a fa
-## fénnyé válik, felszáll, a lap nyílik. herbplay: a jobb alsó „Felnézek az égboltra” → koppintás a legutóbbi
-## csillagra → „›” → „Visszahozom” (a mag a táskába). lookplay: csak a gomb (felnézve marad).
+## fénnyé válik, felszáll, a kamera kihúzódik, a lap nyílik. herbplay: a kozmoszban koppintás a legutóbbi csillagra →
+## „›” → „Visszahozom” (a mag a táskába).
 func _shot_stars_play(mode: String) -> void:
 	if mode == "releaseplay":
 		if shot_frames == 8:
@@ -3091,11 +3121,7 @@ func _shot_stars_play(mode: String) -> void:
 		elif shot_frames == 12:
 			_shot_click(herb, "Elengedem", 0)
 	else:
-		if shot_frames == 6:
-			_shot_click_at(herb.chip.get_global_rect().get_center(), "Felnézek az égboltra" if herb.chip.visible else "Felnézek (nem látszik)")
-		elif mode == "lookplay":
-			return
-		elif shot_frames == 12:
+		if shot_frames == 12:
 			var ord := stars.ordered()
 			if not ord.is_empty():
 				_shot_click_at(stars.screen_pos(int(ord[ord.size() - 1].id)), "a legutóbbi csillag")
@@ -3532,7 +3558,17 @@ func _orbit_pose(z: float) -> Array:
 	if k > 0.0:
 		var o := system.overview_pose()
 		pose = [(pose[0] as Vector3).lerp(o[0], k), (pose[1] as Vector3).lerp(o[1], k), (pose[2] as Vector3).lerp(o[2], k)]
-	return pose
+	# tovább kifelé: a kozmosz, a csillagok közt (sky_stars.gd)
+	return stars.cosmos_pose(pose)
+
+
+## A kozmoszból vissza a bolygókhoz („Vissza a bolygókhoz”, vagy koppintás a bolygórendszerre): több bolygónál az
+## átfogó nézetbe, egynél a megszokott bolygó-nézetbe.
+func back_from_stars() -> void:
+	herb.close_now()
+	orbit_zoom = PlanetSystem.ZOOM_ALL if not system.minis.is_empty() else ORBIT_ZOOM
+	trans_t = 0.0
+	_overlay_closed()
 
 
 ## Keret a felszín egy pontján: y a felszínre merőleges, x a kamera jobb oldala felé (a nap ehhez igazodik).

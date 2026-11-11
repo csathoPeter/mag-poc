@@ -460,7 +460,7 @@ func share_star(id: int) -> void:
 	var code := ShareCode.for_tree(st)
 	_working = true
 	var img: Image = await _render_preview(st.dna, str(st.code))
-	_open_seed_sheet(st.dna, code, img, "Csillag az égboltomon: %s." % Genes.latin_name(st.dna))
+	_open_seed_sheet(st.dna, code, img, "Az egyik csillagom: %s." % Genes.latin_name(st.dna))
 
 
 func _open_seed_sheet(dna: Array, code: String, photo: Image, text: String) -> void:
@@ -508,7 +508,7 @@ func share_planet() -> void:
 func _capture_screen() -> Image:
 	_capturing = true
 	host.stop_waves()
-	var hide: Array = [host.ui_col, host.herb.release_btn, host.shaping.btn, tree_btn, home_btn, host.herb.chip, host.tag]
+	var hide: Array = [host.ui_col, host.herb.release_btn, host.shaping.btn, tree_btn, home_btn, host.tag]
 	var was: Array = hide.map(func(n) -> bool: return bool(n.visible))
 	for n in hide:
 		n.visible = false
@@ -836,7 +836,7 @@ func _process(delta: float) -> void:
 	if host == null:
 		return
 	var vp := get_viewport_rect().size
-	# vendégként alul középen „Vissza a kertembe” (bal lent a táska batyuja, jobb lent a csillagjel)
+	# vendégként alul középen „Vissza a kertembe” (bal lent a táska batyuja)
 	var show_home: bool = not host.guest.is_empty() and host.ui_col.visible and not busy() and not host.retreating
 	home_btn.visible = show_home
 	if show_home:
