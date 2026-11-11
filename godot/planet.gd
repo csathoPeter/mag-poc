@@ -51,6 +51,11 @@ const FACES := [Vector3.UP, Vector3.DOWN, Vector3.LEFT, Vector3.RIGHT, Vector3.F
 ## Holdak száma és gyűrű az alapító szirmaiból.
 const MOONS := [0, 1, 1, 2, 0, 1, 2, 3, 1, 0, 2, 1, 0, 1]
 const RINGED := [false, false, true, false, false, false, false, false, true, false, false, true, false, false]
+## A csupasz, alapító nélküli bolygó (M7) színei: halvány gyöngyház gömb, fehéres-levendula pára, sima felszín,
+## fű, holdak és gyűrű nélkül. Az első kikelt fa adja meg a jellegét (add_plant: lassan átúszik).
+const BARE_ROCK := Color(.64, .62, .72)
+const BARE_GRASS := Color(.70, .69, .79)
+const BARE_ATMO := Color(.86, .85, .96)
 
 var code := ""
 var dnas: Array = []
@@ -64,6 +69,15 @@ var target := {}
 var cur := {}
 var night := 0.0
 var amp := .06
+## A bolygó legalább ennyi növényhez méreteződik (M6: az eddigi legtöbb kikelt fa), így egy fa elengedésekor nem
+## zsugorodik össze, és a fák közti távolság sem fogy el. A próba-bolygón 0.
+var min_plants := 0
+## az alapításkori növények DNS-e (setup); ha minden fát elengedtek, a bolygó színei is ezekből jönnek
+var founders: Array = []
+## Csupasz bolygó (M7): még nincs látott fája; az első kikelt fánál (add_plant) felveszi a jellegét.
+var bare := false
+## A domborzat megjelenése 0–1 (csupasz: 0, sima gömb); a felszín és a fák helye is ezzel számol.
+var shape_k := 1.0
 
 var noise := FastNoiseLite.new()
 var patch := FastNoiseLite.new()
@@ -143,10 +157,15 @@ func _ready() -> void:
 
 
 ## Új bolygó: a domborzat, a felszíntakaró és a holdak az alapítóból, a többi a növényekből.
-func setup(planet_code: String, plant_dnas: Array) -> void:
+## founding: az alapításkori növények DNS-e (a mentésből). Ezekből jön a darabos jelleg és a domborzat magassága,
+## így újratöltéskor (több fával) is ugyanaz a bolygó áll össze. Üres = a mostani növények az alapítók.
+## is_bare (M7): csupasz, alapító nélküli bolygó – sima, halvány gömb; a jelleg (founding) már kiszámolva, csak rejtve.
+func setup(planet_code: String, plant_dnas: Array, founding: Array = [], is_bare := false) -> void:
 	code = planet_code
-	dnas = plant_dnas.duplicate()
-	var founder: Array = dnas[0]
+	bare = is_bare
+	var base: Array = founding if not founding.is_empty() else plant_dnas
+	founders = base.duplicate()
+	var founder: Array = base[0]
 	terrain = TERRAIN[Genes.TERMET[founder[3]][0]]
 	cover = COVER[COVER_OF_LEAF[founder[2]]]
 	moon_count = MOONS[founder[1]]
@@ -164,8 +183,12 @@ func setup(planet_code: String, plant_dnas: Array) -> void:
 		(g.lo as MultiMeshInstance3D).multimesh.mesh = blade_lo
 	for m in [grass_mat, hi_mat]:
 		(m as ShaderMaterial).set_shader_parameter("seed", hash(code + "fu") & 0xffffff)
+	dnas = base.duplicate()
 	_compute()
 	amp = target.amp
+	if not plant_dnas.is_empty():
+		dnas = plant_dnas.duplicate()
+		_compute()
 	_snap()
 	_build_surface()
 	_build_grass()
@@ -175,48 +198,80 @@ func setup(planet_code: String, plant_dnas: Array) -> void:
 
 
 ## Új növény a bolygón: a célértékek változnak, a bolygó lassan átúszik az új kinézetbe.
+## Csupasz bolygón (M7) az első növény adja meg a jellegét: a domborzat kiemelkedik, a színek, a fű, a holdak megjelennek.
 func add_plant(dna: Array) -> void:
+	if bare:
+		bare = false
+		dnas.clear()
 	dnas.append(dna)
 	_compute()
 	_tile_bounds()
 
 
+## Elengedett növény (M6): a színek a megmaradt növényekből állnak össze (lassan átúszik). A darabos jelleg és a
+## domborzat az alapítóból jön (setup), így nem változik; az első megmaradt növény veszi át az alapító súlyát.
+## Ha nem marad növény, a színek is az alapítóból jönnek (mint újratöltéskor).
+func remove_plant(dna: Array) -> void:
+	var i := dnas.find(dna)
+	if i < 0:
+		return
+	dnas.remove_at(i)
+	if dnas.is_empty():
+		dnas = founders.duplicate()
+	_compute()
+	_tile_bounds()
+
+
 func _compute() -> void:
-	var n := dnas.size()
+	radius_target = radius_for(maxi(dnas.size(), min_plants))
+	target = look_of(dnas, float(terrain.amp))
+	# csupasz bolygó (M7): halvány gyöngyház, sima, fű, holdak és gyűrű nélkül; a jelleg az első fával jön elő
+	target.shape = 0.0 if bare else 1.0
+	target.deco = 0.0 if bare else 1.0
+	if bare:
+		target.atmo = BARE_ATMO
+		target.grass = BARE_GRASS
+		target.rock = BARE_ROCK
+		target.moon = BARE_ATMO
+
+
+## A bolygó-DNS színei és méretei a növényekből (az első az alapító, súlya 1/3). A háttérben látszó kis bolygók
+## (planet_system.gd) is ezt használják, így ugyanolyan színűek, mint a teljes bolygó.
+static func look_of(plant_dnas: Array, terrain_amp: float) -> Dictionary:
+	var n := plant_dnas.size()
 	var ws: Array = []
 	for i in n:
 		ws.append((1.0 if n == 1 else 1.0 / 3.0) if i == 0 else (2.0 / 3.0) / (n - 1))
-	var fl := _avg_hsl(ws, func(d: Array) -> Array: return Genes.FLOWER[d[0]])
-	var fo := _avg_hsl(ws, func(d: Array) -> Array: return Genes.FOLIAGE[d[5]])
-	var ba := _avg_hsl(ws, func(d: Array) -> Array: return Genes.BARK[d[4]])
+	var fl := _avg_hsl(plant_dnas, ws, func(d: Array) -> Array: return Genes.FLOWER[d[0]])
+	var fo := _avg_hsl(plant_dnas, ws, func(d: Array) -> Array: return Genes.FOLIAGE[d[5]])
+	var ba := _avg_hsl(plant_dnas, ws, func(d: Array) -> Array: return Genes.BARK[d[4]])
 	var tall := 0.0
 	var petals := 0.0
 	var leaf := 0.0
 	for i in n:
-		var d: Array = dnas[i]
+		var d: Array = plant_dnas[i]
 		tall += ws[i] * float(Genes.TERMET[d[3]][2])
 		petals += ws[i] * float(d[1] % 6) / 5.0
 		leaf += ws[i] * float(Genes.LEAF[d[2]][1])
-	radius_target = 3.6 + .85 * sqrt(float(n))
-	target = {
+	return {
 		"atmo": Genes.hsl(fl.x, minf(fl.y, .8) * .85, .72),
 		"atmo_h": fl.x,
 		"grass": Genes.hsl(fo.x, fo.y * .8, lerpf(fo.z, .6, .3)),
 		"rock": Genes.hsl(ba.x, ba.y * .7, lerpf(ba.z, .62, .35)),
 		"moon": Genes.hsl(fl.x + .5, .35, .8),
-		"amp": float(terrain.amp) * lerpf(.8, 1.25, clampf((tall - .7) / .6, 0.0, 1.0)),
+		"amp": terrain_amp * lerpf(.8, 1.25, clampf((tall - .7) / .6, 0.0, 1.0)),
 		"moon_size": lerpf(.1, .2, petals),
 		"blade": lerpf(.8, 1.25, clampf((leaf - .22) / .32, 0.0, 1.0)),
 	}
 
 
 ## Súlyozott HSL-átlag; az árnyalat körkörös (szín-kerék), hogy a piros és a lila átlaga ne zöld legyen.
-func _avg_hsl(ws: Array, pick: Callable) -> Vector3:
+static func _avg_hsl(plant_dnas: Array, ws: Array, pick: Callable) -> Vector3:
 	var c := Vector2.ZERO
 	var s := 0.0
 	var l := 0.0
-	for i in dnas.size():
-		var row: Array = pick.call(dnas[i])
+	for i in plant_dnas.size():
+		var row: Array = pick.call(plant_dnas[i])
 		var a := float(row[1]) * TAU
 		c += Vector2(cos(a), sin(a)) * ws[i] * (.25 + float(row[2]))
 		s += ws[i] * float(row[2])
@@ -227,11 +282,14 @@ func _avg_hsl(ws: Array, pick: Callable) -> Vector3:
 func _snap() -> void:
 	radius = radius_target
 	cur = target.duplicate()
+	shape_k = float(cur.shape)
 	_apply()
 
 
 func _apply() -> void:
 	body.scale = Vector3.ONE * radius
+	var deco := float(cur.deco)
+	surf_mat.set_shader_parameter("shape", shape_k)
 	surf_mat.set_shader_parameter("rock", cur.rock)
 	surf_mat.set_shader_parameter("grass", cur.grass)
 	surf_mat.set_shader_parameter("atmo", cur.atmo)
@@ -248,7 +306,8 @@ func _apply() -> void:
 		gm.set_shader_parameter("night", night)
 		gm.set_shader_parameter("planet_pos", global_position)
 		gm.set_shader_parameter("planet_r", radius)
-		gm.set_shader_parameter("blade_h", float(cover.h) * float(cur.blade))
+		# csupasz bolygón (M7) nincs fű: a szálak a jelleg megjelenésekor nőnek ki
+		gm.set_shader_parameter("blade_h", float(cover.h) * float(cur.blade) * deco * deco * deco)
 		gm.set_shader_parameter("near_w", NEAR_DENS * float(cover.dens) * grass_mult)
 		gm.set_shader_parameter("base_w", _base_u() / (radius * radius))
 		gm.set_shader_parameter("cam_r", CAM_R)
@@ -260,7 +319,10 @@ func _apply() -> void:
 	motes_mat.set_shader_parameter("glow_col", Genes.hsl(cur.atmo_h + .45, .7, .7))
 	moon_mat.albedo_color = cur.moon
 	for m in moons:
-		(m.mesh as Node3D).scale = Vector3.ONE * radius * float(cur.moon_size) * float(m.k)
+		(m.mesh as Node3D).scale = Vector3.ONE * maxf(radius * float(cur.moon_size) * float(m.k) * deco, .001)
+		(m.mesh as Node3D).visible = deco > .01
+	ring.scale = Vector3.ONE * maxf(deco, .001)
+	ring.visible = ringed and deco > .01
 
 
 func set_night(v: float) -> void:
@@ -279,6 +341,12 @@ func _process(delta: float) -> void:
 		cur[key] = (cur[key] as Color).lerp(target[key], k)
 	for key in ["moon_size", "blade"]:
 		cur[key] = lerpf(cur[key], target[key], k)
+	# a jelleg megjelenése (M7): előbb a domborzat emelkedik ki, aztán a fű, a holdak és a gyűrű
+	for key in ["shape", "deco"]:
+		var to := float(target[key])
+		var sp := .45 if key == "shape" else .32
+		cur[key] = move_toward(float(cur[key]), to, delta * sp) if absf(float(cur[key]) - to) > .0005 else to
+	shape_k = _ease(float(cur.shape))
 	cur.atmo_h = target.atmo_h
 	_apply()
 	for m in moons:
@@ -293,7 +361,12 @@ func _height_fixed(dir: Vector3) -> float:
 
 
 func surface_point(dir: Vector3) -> Vector3:
-	return dir * radius * (1.0 + _height_fixed(dir))
+	return dir * radius * (1.0 + _height_fixed(dir) * shape_k)
+
+
+static func _ease(x: float) -> float:
+	var v := clampf(x, 0.0, 1.0)
+	return v * v * (3.0 - 2.0 * v)
 
 
 func _unit_point(dir: Vector3) -> Vector3:
@@ -309,10 +382,20 @@ func _normal(dir: Vector3) -> Vector3:
 	return n if n.dot(dir) > 0.0 else -n
 
 
+## A bolygó sugara n növénnyel (minden új fával kicsit nő).
+static func radius_for(n: int) -> float:
+	return 3.6 + .85 * sqrt(float(maxi(n, 1)))
+
+
 ## Hely a következő fának: determinisztikus a bolygó kódjából és a sorszámból, a többi fától távol.
 func pick_spot(index: int, taken: Array) -> Vector3:
+	return spot_for(code, index, taken, radius_target)
+
+
+## Ugyanez bolygó nélkül (a mentés is ezzel ad helyet a fáknak).
+static func spot_for(planet_code: String, index: int, taken: Array, rad: float) -> Vector3:
 	var r := RandomNumberGenerator.new()
-	r.seed = hash(code + "hely" + str(index))
+	r.seed = hash(planet_code + "hely" + str(index))
 	var best := Vector3.UP
 	var best_d := -1.0
 	for i in 160:
@@ -322,7 +405,7 @@ func pick_spot(index: int, taken: Array) -> Vector3:
 		var md := 9.0
 		for q in taken:
 			md = minf(md, dir.distance_to(q))
-		if md * radius_target > 3.4:
+		if md * rad > 3.4:
 			return dir
 		if md > best_d:
 			best_d = md
@@ -732,14 +815,21 @@ func _build_ring() -> void:
 
 
 func planet_name() -> String:
+	return name_for(code)
+
+
+## A bolygó neve a kódjából (a háttérben látszó kis bolygókhoz is, lásd planet_system.gd).
+static func name_for(planet_code: String) -> String:
 	var r := RandomNumberGenerator.new()
-	r.seed = hash(code + "nev")
+	r.seed = hash(planet_code + "nev")
 	var a := ["Ael", "Bri", "Cel", "Dor", "Eli", "Fae", "Ila", "Lio", "Mir", "Nai", "Ori", "Sel", "Tal", "Ves"]
 	var b := ["ra", "nde", "sa", "ra", "lune", "thea", "mira", "nis", "vel", "dora"]
 	return "%s%s" % [a[r.randi() % a.size()], b[r.randi() % b.size()]]
 
 
 func describe() -> String:
+	if bare:
+		return "csupasz, fiatal bolygó · még nincs alapító fája · az első kikelő fa adja meg a jellegét"
 	var parts: Array = []
 	parts.append("%s légkör" % _nearest_flower(float(target.atmo_h)))
 	parts.append(str(terrain.name))

@@ -118,3 +118,59 @@ static func glow(dna: Array) -> Dictionary:
 	var parts := ["virágai", "levélerei", "kérge"]
 	var part := key % 3
 	return {"strength": clampf((gc - 3) / 6.0, 0.0, 1.0), "part": part, "part_name": parts[part]}
+
+
+## Egy gén egy változatának neve (a táblás felület és a magos táska mutatja), pl. allele_name(0, 2) = „rózsa”.
+static func allele_name(gene: int, k: int) -> String:
+	match gene:
+		0:
+			return FLOWER[k][0]
+		1:
+			var petals := 4 + k % 6
+			var cup: float = [15.0, 32.0, 48.0, 62.0][k % 4]
+			return "%d szirom%s%s" % [petals, ", telt" if k >= 6 and k < 12 else "", ", harangos" if cup >= 48.0 else ""]
+		2:
+			return LEAF[k][0]
+		3:
+			return TERMET[k][1]
+		4:
+			return BARK[k][0]
+		_:
+			return FOLIAGE[k][0]
+
+
+## A színes gének (virágszín, kéreg, lomb) változatának színe a felülethez (sRGB); a többinél átlátszó.
+static func allele_color(gene: int, k: int) -> Color:
+	var t: Array = FLOWER[k] if gene == 0 else BARK[k] if gene == 4 else FOLIAGE[k] if gene == 5 else []
+	if t.is_empty():
+		return Color(0, 0, 0, 0)
+	return hsl(t[1], t[2], t[3])
+
+
+## Fajnév a DNS-ből: ugyanaz a DNS mindig ugyanazt a nevet kapja (a nap magja így megosztható: „nekem is Calitheora rosea lett”).
+## A második tag a virágszínből jön (rokon növények osztoznak rajta), a nemzetségnév a többi génből.
+const EPITHET := ["corallina", "cerasina", "rosea", "purpurea", "violacea", "lilacina", "azurea", "caerulea", "viridula", "citrina", "aurea", "persica", "nivea", "nocturna"]
+
+
+static func latin_name(dna: Array) -> String:
+	var x := 0
+	for i in range(1, 6):
+		x = x * 14 + int(dna[i])
+	var a := ["Aur", "Sil", "Vel", "Lun", "Cor", "Ther", "Myr", "Hel", "Nym", "Ast", "Zeph", "Ori", "Cal", "Thal"]
+	var b := ["and", "ith", "ol", "an", "er", "ys", "am", "ion", "ul", "en"]
+	var c := ["ia", "ella", "ora", "ina", "ara", "ea", "anthe"]
+	var parts: Array = []
+	for list in [a, b, c]:
+		# egyszerű, motorfüggetlen keverés (LCG), hogy a név minden eszközön ugyanaz legyen
+		x = (x * 1103515245 + 12345) & 0x7fffffff
+		parts.append(list[(x >> 8) % list.size()])
+	var genus := "%s%s%s" % [parts[0], parts[1], parts[2]]
+	# kettőzött magánhangzó a tagok határán (pl. Ori+ion) helyett egy
+	for v in ["aa", "ee", "ii", "oo", "uu", "yy"]:
+		genus = genus.replace(v, v.substr(1))
+	return "%s %s" % [genus, EPITHET[int(dna[0])]]
+
+
+## Rövid leírás a fő tulajdonságokból (magos táska, tábla vége).
+static func traits_text(dna: Array) -> String:
+	return "%s · %s levél · %s virág · %s lomb" % [TERMET[dna[3]][1], LEAF[dna[2]][0], FLOWER[dna[0]][0], FOLIAGE[dna[5]][0]]
