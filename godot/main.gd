@@ -123,6 +123,9 @@ var lod_force := false
 ## Képernyőképhez (--shot ...,lodK): a kiválasztott fa részletességi szintje rögzítve (-1 = automatikus).
 var shot_lod := -1
 var dbg_btn := {}
+## Puha stílus be/ki (a fejlesztői „puha”/„régi” gomb, ?stilus=regi, a mérés „soft” kulcsa); _soft_globals() alkalmazza.
+var soft_on := true
+var _soft_last: Array = []
 
 # Automatikus mérés: végigpróbálja a beállításokat kint és leszállva, a végén táblázat + küldés GitHubra
 const BENCH_SETTLE := 1.2
@@ -155,6 +158,7 @@ const BENCH_STEPS := [
 	["kint", "ragyogás ki", {"glow": false}],
 	["kint", "ég sima", {"sky": 1}],
 	["kint", "AA ki", {"aa": false}],
+	["kint", "régi stílus", {"soft": false}],
 	["lent", "alap", {}],
 	["lent", "75%", {"scale": .75}],
 	["lent", "60%", {"scale": .6}],
@@ -166,6 +170,7 @@ const BENCH_STEPS := [
 	["lent", "ég sima", {"sky": 1}],
 	["lent", "tilt ki", {"tilt": false}],
 	["lent", "AA ki", {"aa": false}],
+	["lent", "régi stílus", {"soft": false}],
 	["lent", "minden ki, 50%", {"scale": .5, "grass": false, "hi": 1, "shadow": false, "glow": false, "sky": 1, "tilt": false, "aa": false}],
 ]
 var bench_on := false
@@ -324,6 +329,7 @@ func _ready() -> void:
 			bench_cli = true
 	# évszak (M11): ?evszak=… rögzíti; a próba-képek (--shot=…,planet / leaves, --bench) alapból nyár, összehasonlíthatók
 	Seasons.forced = Seasons.parse(opts.evszak)
+	soft_on = opts.stilus != "regi"
 	seasons.neutral = bench_cli or (shot_args.size() > 1 and shot_args[1] != "state")
 	add_child(seasons)
 	# képernyőképnél, parancssori mérésnél és a végigjátszásnál (--playtest) nincs hang (nem számol, nem szól)
@@ -542,6 +548,10 @@ func _build_ui() -> void:
 	btn.stars = _small_button(dbg2, "+csillag", _debug_stars)
 	# teszt (M7): a bolygó feltöltése kikelt fákkal → megtelik, mellette új bolygó születik
 	btn.fill = _small_button(dbg2, "tele", _debug_fill)
+	# puha stílus be/ki: a régi és az új kép összehasonlítása egy koppintással
+	btn.soft = _small_button(dbg2, "puha", func() -> void:
+		soft_on = not soft_on
+		_sync_dbg())
 	btn.more = _small_button(dbg2, "…", func() -> void:
 		dbg_btn.row3.visible = not dbg_btn.row3.visible
 		dbg_btn.more.text = "×" if dbg_btn.row3.visible else "…")
@@ -614,6 +624,8 @@ func _sync_dbg() -> void:
 	dbg_btn.sk.text = SKY_MODES[sky_i]
 	dbg_btn.tl.text = "tilt be" if tilt_ok else "tilt ki"
 	dbg_btn.aa.text = "AA ki" if get_viewport().msaa_3d == Viewport.MSAA_DISABLED else "AA 2x"
+	if dbg_btn.has("soft"):
+		dbg_btn.soft.text = "puha" if soft_on else "régi"
 
 
 func _small_button(parent: Container, text: String, cb: Callable) -> Button:
@@ -754,6 +766,8 @@ func _shot_leaves() -> void:
 		lm.set_shader_parameter("tip", Genes.hsl(g.leaf_tip_h, g.leaf_s * .9, g.leaf_l + .12))
 		lm.set_shader_parameter("amp", 0.0)
 		pg.leaf_shape_params(lm)
+		# a levéltáblán egyenként, korona nélkül
+		lm.set_shader_parameter("crown_on", 0.0)
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
 		mi.material_override = lm
@@ -1752,6 +1766,7 @@ func _planet_process(delta: float) -> void:
 		_focus(0)
 		shaping.start()
 	_update_tod(delta, snap)
+	_soft_globals()
 	_planet_cam(delta, snap)
 	for t in trees:
 		if float(t.wave) >= 0.0:
@@ -1937,6 +1952,30 @@ func _update_tod(delta: float, snap: bool) -> void:
 	env.ambient_light_energy = lerpf(1.2, 1.6, night)
 	if crossed:
 		_tag_text()
+
+
+## Puha stílus (soft_light.gdshaderinc): az árnyék és a peremfény színe a bolygó légköréből és a napszakból.
+## Nappal lilás-barackos pára, alkonyatkor mélyebb rózsaszín-lila, éjjel sötét ibolya; a „puha” gomb (soft_on) kikapcsolja,
+## ekkor nagyjából a régi kép (Lambert-fény, éles kéregminta, kontrasztosabb környezet) látszik az összehasonlításhoz.
+func _soft_globals() -> void:
+	var atmo: Color = planet.cur.get("atmo", Color(.8, .72, .9)) if planet != null and not planet.cur.is_empty() else Color(.8, .72, .9)
+	var day_c := Color(.62, .58, .9).lerp(atmo, .5)
+	var dusk_c := Color(.75, .42, .7)
+	var night_c := Color(.16, .2, .5)
+	var c := day_c.lerp(dusk_c, dusk * .6).lerp(night_c, maxf(night, 0.0))
+	var k := lerpf(.07, .04, maxf(night, 0.0))
+	var tint := Vector3(c.r, c.g, c.b) * k
+	var rim := atmo.lerp(Color(.55, .7, 1.0), maxf(night, 0.0) * .7)
+	var rim_v := Vector3(rim.r, rim.g, rim.b) * lerpf(.55, .3, maxf(night, 0.0))
+	var key := [tint, rim_v, soft_on]
+	if key == _soft_last:
+		return
+	_soft_last = key
+	RenderingServer.global_shader_parameter_set("shade_tint", tint)
+	RenderingServer.global_shader_parameter_set("rim_col", rim_v)
+	RenderingServer.global_shader_parameter_set("soft_k", 1.0 if soft_on else 0.0)
+	env.adjustment_contrast = .97 if soft_on else 1.06
+	sun.shadow_opacity = .6 if soft_on else .78
 
 
 # ---------------------------------------------------------------- Játékállapot (bekötés; a logika a state.gd-ben)
@@ -3064,6 +3103,7 @@ func _bench_cfg(cfg: Dictionary) -> void:
 	lod_force = cfg.get("force", false)
 	planet.set_grass_mult(cfg.get("gmul", 1.0))
 	sun.shadow_enabled = cfg.get("shadow", true)
+	soft_on = cfg.get("soft", true)
 	env.glow_enabled = cfg.get("glow", true)
 	sky_i = cfg.get("sky", 0)
 	space_mat.set_shader_parameter("mode", sky_i)

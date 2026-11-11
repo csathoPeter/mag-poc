@@ -3,6 +3,7 @@ shader_type spatial;
 // A fű alatti talaj maga is fűszínű, szálas mintájú (mint a sűrű fű árnyékos belseje), így a szálak közti hézag nem kopasz.
 #include "res://shaders/color_space.gdshaderinc"
 #include "res://shaders/season.gdshaderinc"
+#include "res://shaders/soft_light.gdshaderinc"
 uniform vec3 rock : source_color = vec3(0.6, 0.55, 0.6);
 uniform vec3 grass : source_color = vec3(0.5, 0.7, 0.5);
 uniform vec3 atmo : source_color = vec3(0.8, 0.7, 0.9);
@@ -47,7 +48,8 @@ void fragment() {
 	vec3 rock_l = col_in(rock);
 	vec3 grass_l = col_in(grass);
 	vec3 atmo_l = col_in(atmo);
-	vec3 meadow = grass_l * mix(0.42, 0.85, fine) * (0.85 + 0.3 * patch_v);
+	// a talaj a fű tövének színéhez igazodik (puha stílusban kisebb kontraszttal, hogy a hézag ne üssön el)
+	vec3 meadow = grass_l * mix(mix(0.42, 0.85, fine), mix(0.5, 0.78, fine), soft_k) * (0.85 + 0.3 * patch_v);
 	// évszak (M11): tavasszal üdébb, ősszel melegebb (okkeres) a felszíntakaró; télen deres, fehéres
 	float ml = season_luma(meadow);
 	meadow = mix(meadow, meadow * vec3(1.02, 1.18, 0.92), season.x * 0.6);
