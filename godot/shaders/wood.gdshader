@@ -10,7 +10,12 @@ void vertex() {
 	float b = CUSTOM0.w / max_path * 0.64;
 	float g = smoothstep(b, b + 0.045, grow);
 	float t = smoothstep(b, b + 0.42, grow);
-	VERTEX = mix(prev, c, g) + (VERTEX - c) * (0.22 * g + 0.78 * t) + sway(c, TIME) + droop_off(c);
+	// fejlődés: a még ki nem nőtt gyűrű az előzőre húzódik (az ág ott ér véget), a friss rész vékonyabb
+	float bd = CUSTOM1.w;
+	float ga = smoothstep(bd, bd + 0.025, age);
+	// a hajtás vége hegyesre fut (a friss rész vékony), és a fiatal fa egésze is karcsúbb
+	float ka = mix(0.1, 1.0, smoothstep(bd, bd + 0.15, age)) * mix(0.55, 1.0, age);
+	VERTEX = mix(prev, c, g * ga) + (VERTEX - c) * (0.22 * g + 0.78 * t) * ga * ka + sway(c, TIME) + droop_off(c);
 	path_v = CUSTOM0.w;
 }
 

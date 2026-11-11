@@ -25,6 +25,9 @@ varying float up_v;
 void vertex() {
 	vec3 o = MODEL_MATRIX[3].xyz;
 	float g = smoothstep(INSTANCE_CUSTOM.x, INSTANCE_CUSTOM.x + 0.07, grow);
+	// fejlődés: a levél akkor bújik ki, amikor az ága odaér, és még pár napig nő
+	float bd = INSTANCE_CUSTOM.w;
+	g *= smoothstep(bd, bd + 0.04, age) * mix(0.55, 1.0, smoothstep(bd, bd + 0.12, age));
 	// évszak: ősszel néhány, télen sok levél lehullott (példányonként rögzített sorrendben, puhán)
 	float keep = fract(float(INSTANCE_ID) * 0.7548777 + 0.137);
 	g *= smoothstep(0.0, 0.015, keep - season_thin());

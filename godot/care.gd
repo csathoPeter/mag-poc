@@ -10,6 +10,12 @@ extends RefCounted
 ## első bimbója a kikelés után YOUTH_DAYS + (slot mod 3) nappal jön (2–4 nap), utána 9 naponta.
 
 const THIRST_DAYS := 3
+## Fejlődés (2026. 11. 11.): a kikelt fa csemeteként indul (AGE0), és GROW_DAYS növő nap alatt fejlődik ki; eleinte
+## gyorsabban, a végén lassabban. A szomjas napokon nem nő (DESIGN: „az elhanyagolt növény nem fejlődik tovább”).
+const GROW_DAYS := 21
+const AGE0 := .45
+## A fa teljes méretéhez képest a csemete ekkora (a látszó váz ezen felül is kisebb: ami még nem nőtt ki, nem látszik).
+const SIZE0 := .55
 const CYCLE := 9
 const BUD_DAYS := 2
 const WILT_DAYS := 1
@@ -64,6 +70,55 @@ static func droop(t: Dictionary, day: int) -> float:
 	if d < THIRST_DAYS:
 		return 0.0
 	return minf(1.0, .75 + .125 * float(d - THIRST_DAYS))
+
+
+## Hány napot nőtt a fa a megadott napig (a kikelés napja után; a szomjas napok nem számítanak). A mentésben a "grown"
+## a már lezárt napok száma "grown_day"-ig (-1: a kikeléstől számol); öntözéskor lezárjuk (commit_growth), mert az
+## öntözés napja átírja, melyik nap számít szomjasnak. A hiányzó mező (régi mentés) = kifejlett fa.
+static func growth_days(t: Dictionary, day: int) -> int:
+	var grown := int(t.get("grown", GROW_DAYS))
+	if grown >= GROW_DAYS:
+		return GROW_DAYS
+	var from := maxi(int(t.get("grown_day", -1)), int(t.get("hatch", 0)))
+	# a nem szomjas napok (from, day] között: amíg day - last_water < THIRST_DAYS
+	var until := mini(day, last_water(t) + THIRST_DAYS - 1)
+	return mini(GROW_DAYS, grown + maxi(0, until - from))
+
+
+## Öntözés előtt: a tegnapig eltelt napok növése rögzítve (a mai nap már az új öntözés szerint számít).
+static func commit_growth(t: Dictionary, today: int) -> void:
+	if int(t.get("grown", GROW_DAYS)) >= GROW_DAYS:
+		return
+	var upto := today - 1
+	if upto <= maxi(int(t.get("grown_day", -1)), int(t.get("hatch", 0))):
+		return
+	t.grown = growth_days(t, upto)
+	t.grown_day = upto
+
+
+## A fa kora a shadernek (0–1, 1 = kifejlett): csemetéből indul, eleinte gyorsabban nő.
+static func maturity(t: Dictionary, day: int) -> float:
+	var x := float(growth_days(t, day)) / GROW_DAYS
+	if x >= 1.0:
+		return 1.0
+	return AGE0 + (1.0 - AGE0) * (1.0 - pow(1.0 - x, 1.7))
+
+
+## A fa méret-szorzója a korából (a csomópont mérete; a kifejlett fán 1).
+static func size_of(age: float) -> float:
+	return lerpf(SIZE0, 1.0, clampf(age, 0.0, 1.0))
+
+
+## Rövid szöveg a fejlődésről a táblára (üres, ha kifejlett).
+static func growth_text(t: Dictionary, day: int) -> String:
+	var g := growth_days(t, day)
+	if g >= GROW_DAYS:
+		return ""
+	var left := GROW_DAYS - g
+	var what := "csemete" if g < GROW_DAYS / 3 else ("fiatal fa" if g < GROW_DAYS * 2 / 3 else "már majdnem kifejlett")
+	if thirsty(t, day):
+		return "%s · amíg szomjas, nem nő" % what
+	return "%s · még %d napig nő" % [what, left]
 
 
 ## Az első bimbó napja (a kezdő fáknál nincs ilyen korlát).
@@ -181,13 +236,14 @@ static func flower_look(t: Dictionary, day: int) -> Dictionary:
 
 ## Rövid állapot a lebegő táblára (a fa neve alatt). garden: a kert, az összes bolygó kikelt fái (a maghozáshoz).
 static func status_text(t: Dictionary, day: int, garden: Array = []) -> String:
+	var gt := growth_text(t, day)
 	if thirsty(t, day):
-		return "szomjas\nkoppints rá, és megöntözöd"
+		return "szomjas\nkoppints rá, és megöntözöd" + ("\n" + gt if gt != "" else "")
 	var st := stage(t, day)
 	var s := ""
 	match st.kind:
 		YOUNG:
-			s = "fiatal · %s bimbózik" % _when(int(st.next))
+			s = "%s bimbózik először" % _when(int(st.next))
 		REST:
 			s = "pihen · %s bimbózik" % _when(int(st.next))
 		BUD:
@@ -202,6 +258,8 @@ static func status_text(t: Dictionary, day: int, garden: Array = []) -> String:
 				s += "\nma nem érlelt magot"
 		WILT:
 			s = "elnyílt · %s újra bimbózik" % _when(int(st.next))
+	if gt != "":
+		s = gt + "\n" + s
 	return s
 
 

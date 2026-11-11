@@ -4,7 +4,7 @@ extends Control
 ## egy fogantyú (⚙), rákoppintva oldalról kicsúszik egy panel minden teszt-kapcsolóval:
 ##  - élő mérőszámok: fps, képkockaidő (átlag és 95%), GPU/CPU ms, háromszög, rajzolási hívás, ablak és 3D-felbontás,
 ##    önálló felbontás és fűsűrűség, fps-grafikon az utolsó ~2 másodpercről;
-##  - hozzáadás: fa, mag, csillag, új bolygó, bolygó feltöltése, nap +1, próba bolygó, mentés törlése;
+##  - hozzáadás: fa, mag, csillag, új bolygó, bolygó feltöltése, fiatal fák növése, nap +1, próba bolygó, mentés törlése;
 ##  - kapcsolók: fű, árnyék, ragyogás, lencse, élsimítás, puha stílus, levél-körvonal, kerek szirom, évszak-részecskék,
 ##    felület, csillagok, önálló felbontás, 4 részletes fa;
 ##  - beállítások: felbontás, fűsűrűség, ég, napszak, évszak; mérések (terheléses, beállítások, tartós, gyors).
@@ -98,6 +98,7 @@ func _build() -> void:
 	_btn(g, "+ 3 csillag", func() -> void: host._debug_stars())
 	_btn(g, "+ új bolygó", func() -> void: host._debug_new_planet())
 	_btn(g, "bolygó feltöltése", func() -> void: host._debug_fill())
+	_btn(g, "fiatal fák +5 nap növés", func() -> void: host._debug_grow(5))
 	_mirror(g, func() -> String: return "nap +1 (most %+d)" % GameState.day_offset, "day")
 	_mirror(g, func() -> String: return "próba bolygó" if (host.dbg_btn.try as Button).text == "próba" else "vissza a sajátra", "try")
 	_mirror(g, func() -> String: return "mentés törlése" if (host.dbg_btn.wipe as Button).text == "törlés" else "biztos? (még egyszer)", "wipe")

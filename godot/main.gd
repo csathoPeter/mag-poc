@@ -1137,6 +1137,18 @@ func _process(delta: float) -> void:
 		if shot_frames == 1 and shot_args.size() > 6 and shot_args.slice(6).has("drawer"):
 			hud.set_debug(true, false)
 			dbg_drawer.set_open(true)
+		# ageNN (bármelyik elem a 6. után): minden fa NN%-os korban (fejlődés; 100 = kifejlett), a kép ellenőrzéséhez
+		if shot_frames == 1 and garden_mode == "planet" and shot_args.size() > 6:
+			for a in shot_args.slice(6):
+				if (a as String).begins_with("age"):
+					var age := clampf(float((a as String).trim_prefix("age")) / 100.0, 0.0, 1.0)
+					for t in trees:
+						if t.has("care"):
+							t.care.cur.age = age
+							t.care.want.age = age
+							t.age_want = age
+							t.care.glint = Tending._glint_flower(t.high.pg, str((t.g as Dictionary).code), age)
+						apply_age(t, age, true)
 		if shot_frames == 1 and garden_mode == "planet" and shot_args.size() > 5:
 			if shot_args[5] == "plant":
 				plant_new()
@@ -1551,9 +1563,11 @@ func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
 	_cast_shadow(low, GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
 	var pg: PlantGen = high.pg
 	var w := maxf(pg.bb_max.x - pg.bb_min.x, pg.bb_max.z - pg.bb_min.z) * float(high.s) * .5
+	for rec in [far, low, high]:
+		rec.s0 = rec.s
 	var t := {"dir": item.dir, "rot": item.rot, "low": low, "high": high, "far": far, "lods": [high, low, far], "lod": 2, "shown": true, "high_on": false, "front": true,
 		"g": gg, "glow": Genes.glow(item.dna), "wave": -1.0, "h": 5.0 * float(item.size), "w": w, "sid": int(item.get("sid", -1)),
-		"shape": shape, "shape_day": day}
+		"shape": shape, "shape_day": day, "age": 1.0, "h0": 5.0 * float(item.size), "w0": w}
 	trees.append(t)
 	_place_tree(t)
 	var col := Genes.hsl(gg.petal_h, .85, .62)
@@ -1592,6 +1606,27 @@ func _place_tree(t: Dictionary) -> void:
 	for rec in t.lods:
 		(rec.node as Node3D).transform = Transform3D(b.scaled(Vector3.ONE * float(rec.s)), pos)
 		_set_tree_xf(rec)
+
+
+## A fa kora (fejlődés, care.gd maturity): a shader ennyit rajzol ki a vázból, és a fa mérete is ehhez igazodik. measure:
+## a látszó magasság / szélesség (a kamera, a felirat, a jelek helyéhez) újraszámolva a kinőtt vázból.
+func apply_age(t: Dictionary, age: float, measure := false) -> void:
+	var k := Care.size_of(age)
+	for rec in t.lods:
+		rec.s = float(rec.s0) * k
+		for m in rec.mats:
+			(m as ShaderMaterial).set_shader_parameter("age", age)
+	t.age = age
+	_place_tree(t)
+	if measure:
+		if age >= 1.0:
+			t.h = t.h0
+			t.w = t.w0
+		else:
+			var bb: AABB = (t.high.pg as PlantGen).grown_aabb(age)
+			var s := float(t.high.s)
+			t.h = maxf(bb.end.y * s, .6)
+			t.w = maxf(maxf(bb.size.x, bb.size.z) * s * .5, .3)
 
 
 func _tree_mid(t: Dictionary) -> Vector3:
@@ -3205,6 +3240,24 @@ func _debug_fill() -> void:
 
 
 ## Teszt („új bolygó”): új, üres bolygó születik az aktív mellett (ha az aktív a legutolsó), akkor is, ha nem telt meg.
+## Fejlesztői gomb: a fiatal fák (az összes bolygón) n nappal többet nőnek, mintha öntözve teltek volna a napok; a
+## jelenetben lassan átnőnek (a fejlődés megnézéséhez öntözgetés és napléptetés nélkül).
+func _debug_grow(n: int) -> void:
+	if game.data.is_empty() or not saved_view:
+		return
+	var today := GameState.today()
+	var k := 0
+	for p in game.planets():
+		for t in p.trees:
+			if int(t.hatch) <= today and Care.growth_days(t, today) < Care.GROW_DAYS:
+				Care.commit_growth(t, today)
+				t.grown = mini(Care.GROW_DAYS, int(t.grown) + n)
+				k += 1
+	game.save()
+	tending.refresh()
+	traits_l.text = "%d fiatal fa nőtt %d napnyit." % [k, n] if k > 0 else "Nincs fiatal fa (az elvetett magokból kikelők csemeteként indulnak)."
+
+
 func _debug_new_planet() -> void:
 	if game.data.is_empty() or not saved_view or bench_on or retreating or system.busy():
 		return
