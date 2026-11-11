@@ -3,7 +3,8 @@ extends Node3D
 ## A játékos csillagai (M6; 2026. 11. 11. óta a játékoséi, nem a bolygóké): az elengedett fák és a keresztezés el nem
 ## választott csírái. Valódi 3D-pontok egy gömbhéjban a bolygórendszer körül – nem csillagkép, nem gócpont.
 ##  - Hely: a játékoskódból és a csillag sorszámából (seq): R3 kis eltérésű sorozat → irány (egyenletesen a gömbön) és
-##    sugár (egyenletesen a héj térfogatában, R_IN–R_OUT). Bármennyi csillag egyenletesen szóródik; egy új érkezése vagy
+##    sugár (egyenletesen a héj térfogatában, R_IN–R_OUT), a bolygók fürtjének közepe körül (planet_system.gd: a
+##    bolygók is a térben vannak, csak közelebb). Bármennyi csillag egyenletesen szóródik; egy új érkezése vagy
 ##    egy visszahozása nem mozdítja el a többit.
 ##  - A bolygó-nézetben és leszállva a kamera a héjon belül van: a csillagok szétszórva látszanak az égen (ami a bolygó
 ##    vagy egy fa lombja mögé esik, nem), forgatáskor valódi parallaxissal (a közeliek jobban elmozdulnak).
@@ -28,9 +29,9 @@ signal arrived(star_id: int)
 
 ## Ennyi csillag látszik legfeljebb (a sorszám szerinti első ennyi; a többi a mentésben megvan).
 const MAX_STARS := 128
-## A csillagok gömbhéja a bolygórendszer körül (világegység; a bolygó sugara ~3–6, az átfogó nézet spirálja ~10–40).
-const R_IN := 46.0
-const R_OUT := 120.0
+## A csillagok gömbhéja a bolygók fürtje körül (világegység; a bolygó sugara ~3–6, a fürt sugara 16 bolygónál ~47).
+const R_IN := 62.0
+const R_OUT := 150.0
 ## Az R3 sorozat lépései (1/g, 1/g², 1/g³, g a „plasztikus szám” 3D-s rokona).
 const R3_A := Vector3(.8191725133961645, .6710436067037893, .5497004779019703)
 ## A kozmosz: látószög (szélesebb, hogy álló képen is beférjen a héj), és mennyivel a bolygók utolsó lépcsője alatt
@@ -77,6 +78,9 @@ var _code := ""
 var _spots := {}
 ## a kozmoszban a kép a kiválasztott csillag felé tolódik (világegységben, a kamera síkjában)
 var _pan := Vector3.ZERO
+## a csillagok héjának közepe a világban: a bolygók fürtjének közepe (a 0. bolygó helye; planet_system.space_origin),
+## így bolygóváltáskor sem ugrik el az ég
+var _origin := Vector3.ZERO
 ## a rajzréteg (a 3D fölött, a gombsor alatt) és a rajzlisták: csillagok, gyűrű, az elengedés fényei
 var _layer := CanvasLayer.new()
 var _canvas := Control.new()
@@ -143,7 +147,7 @@ func sync() -> void:
 			list.append(o)
 	list.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.seq) < int(b.seq))
 	for s in list:
-		_world[int(s.id)] = s.pos
+		_world[int(s.id)] = (s.pos as Vector3) + _origin
 	if selected >= 0 and _find(selected).is_empty():
 		selected = -1
 
@@ -241,7 +245,7 @@ func _cosmos_step(delta: float) -> void:
 	if sky_on and not sel.is_empty() and cosmos_k > .5:
 		var b := Basis(host.orbit_q)
 		var center: Vector3 = host.planet.global_position.lerp(host.system.overview_pose()[1], host.system.overview())
-		var off: Vector3 = (sel.pos as Vector3) - center
+		var off: Vector3 = (sel.pos as Vector3) + _origin - center
 		var vp: Vector2 = host.get_viewport().get_visible_rect().size
 		var tv := tan(deg_to_rad(COSMOS_FOV) * .5)
 		var th := tv * maxf(vp.x, 1.0) / maxf(vp.y, 1.0)
@@ -282,7 +286,7 @@ func pick(pos: Vector2) -> int:
 		var id := int(s.id)
 		if float(s.leave) >= 0.0 or id == hidden_id or float(s.fade) < .3:
 			continue
-		var w: Vector3 = s.pos
+		var w: Vector3 = (s.pos as Vector3) + _origin
 		if cam.is_position_behind(w) or _occluded(w):
 			continue
 		var d := cam.unproject_position(w).distance_to(pos)
@@ -305,7 +309,7 @@ func world_pos(id: int) -> Vector3:
 	if _world.has(id):
 		return _world[id]
 	var s := _find(id)
-	return s.pos if not s.is_empty() else host.cam.global_position + Vector3.UP * R_OUT
+	return (s.pos as Vector3) + _origin if not s.is_empty() else host.cam.global_position + Vector3.UP * R_OUT
 
 
 ## A bolygó vagy egy fa lombja takarja-e a csillagot (sugár–gömb próba a kamerától; a fa lombja egy gömb).
@@ -415,6 +419,7 @@ func _process(delta: float) -> void:
 		_cosmos_step(delta)
 	if not on:
 		return
+	_origin = host.system.space_origin()
 	_gather_occluders()
 	if not rel.is_empty():
 		_step_release(delta)
@@ -459,7 +464,7 @@ func _place(delta: float) -> void:
 		else:
 			fade = minf(1.0, fade + delta * 1.4)
 		s.fade = fade
-		var w: Vector3 = s.pos
+		var w: Vector3 = (s.pos as Vector3) + _origin
 		_world[id] = w
 		if fade <= .001 or cam.is_position_behind(w) or _occluded(w):
 			continue

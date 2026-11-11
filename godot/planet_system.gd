@@ -4,18 +4,20 @@ extends Node3D
 ##  - Kis bolygók: az aktív bolygó (a teljes, main.gd + planet.gd) mellett a többi csak olcsó változatban látszik:
 ##    egy alacsony felbontású gömb a bolygó színeivel (Planet.look_of: ugyanaz a bolygó-DNS), légkör-perem, és a fák
 ##    apró pöttyökként a shaderben (legfeljebb 16; a kikelésre váró meleg fénnyel lüktet). Gyűrűs bolygónál gyűrű.
-##    Egy kis bolygó ~360 háromszög (gyűrűvel ~520), legfeljebb 6 látszik (az aktívtól mindkét oldalon 3–3).
+##    Egy kis bolygó ~360 háromszög (gyűrűvel ~520); mind látszik, 16 bolygónál is csak ~6k háromszög.
 ##    Átlátszatlan anyagok (az áttűnés pontrácsos): az átlátszókat a lencse-utófeldolgozás lefedné.
-##  - Hol: a kamera keretében (a bolygó-nézet forgatását puhán, lemaradva követi), az aktív bolygó mögött, a kép alsó
-##    felében: az újabbak jobbra, a régebbiek balra, minél távolabbi a sorszám, annál hátrébb. Kicsinyítéskor
-##    (csípés, orbit_zoom 0 alá, lásd main._orbit_pose) tűnnek elő; közelről és leszállva nem látszanak.
-##  - Átfogó nézet (a kicsinyítés utolsó fokozata, orbit_zoom ZOOM_MIN alatt ZOOM_ALL-ig): az összes bolygó egyszerre,
-##    napraforgó-spirálban (Vogel-elrendezés, aranyszög: a legrégebbi középen, az újabbak kifelé), mindegyik alatt
-##    a neve és a fák száma. A kamera az egészet befoglalja (overview_pose), a kis bolygók a helyükről úsznak a
-##    spirálba; a távolabbi sorszámúak (a 3–3 szomszédon túl) csak itt tűnnek elő. Koppintás egy bolygóra: átrepülés;
-##    az aktívra: vissza közelre (main._tap).
+##  - Hol (2026. 11. 11.): a 3D-térben, mint a csillagok, csak közelebb. Minden bolygónak állandó helye van (a
+##    játékoskódból és a sorszámából: space_point – egy lassan növő, háromdimenziós fürt, az új bolygó a régiektől
+##    távol kerül, a meglévők sosem mozdulnak el). A hely a világhoz rögzített (az aktív bolygó a középpont: a többi
+##    a hozzá mért különbség), így forgatáskor valódi parallaxissal mozognak. Kicsinyítéskor (csípés, orbit_zoom 0
+##    alá, lásd main._orbit_pose) tűnnek elő; közelről és leszállva nem látszanak; ami a kamerához túl közel kerül,
+##    elhalványul.
+##  - Átfogó nézet (orbit_zoom ZOOM_MIN alatt ZOOM_ALL-ig): a kamera kihúzódik, hogy az egész fürt beférjen
+##    (overview_pose: a fürt közepére néz, a bolygó-nézet forgatásával körbejárható), mindegyik bolygó alatt a neve és
+##    a fák száma. Koppintás egy bolygóra: átrepülés; az aktívra: vissza közelre (main._tap). Tovább kifelé: a
+##    kozmosz (sky_stars.gd), a fürt körül a csillagokkal.
 ##  - Születés (birth): ha az utolsó bolygó megtelt (GameState.ensure_next_planet), a következő nyugodt pillanatban
-##    a kamera kicsinyít, a bolygó peremén fénypont gyúl, ívben kiúszik a helyére, ott szétnyílik (fénygyűrű), és
+##    a kamera az átfogó nézetbe húzódik (hogy az új bolygó helye biztosan a képben legyen), a bolygó peremén fénypont gyúl, ívben kiúszik a helyére, ott szétnyílik (fénygyűrű), és
 ##    fehéren izzó gömbből kibomlik a csupasz, halvány új bolygó, ami lassan a pályájára áll. Felirat. ~10 mp,
 ##    koppintás gyorsít. Utána born_seen = igaz (mentve).
 ##  - Váltás (hop): egy kis bolygóra koppintva a kamera felé fordul, lágyan odarepül, a légkörébe érve egy pillanatra
@@ -37,8 +39,6 @@ const MINI := preload("res://shaders/planet_mini.gdshader")
 const RING := preload("res://shaders/planet_mini_ring.gdshader")
 
 const MAX_DOTS := 16
-## Oldalanként ennyi szomszéd látszik (az újabbak jobbra, a régebbiek balra).
-const SIDE := 3
 ## Kicsinyítés: orbit_zoom legfeljebb ZOOM_MIN-ig mehet 0 alá; ott a kamera (1 + PULL)-szor messzebb van a felszíntől.
 const ZOOM_MIN := -1.0
 const PULL := 1.0
@@ -46,25 +46,17 @@ const PULL := 1.0
 const ZOOM_ALL := -2.0
 ## Az átfogó nézetben a kis bolygók a valódi méretük ennyiszeresén látszanak (az aktív a valódi méretén).
 const OV_SCALE := .8
-## A spirál: aranyszög, a két tengely nyújtása (álló képhez magasabb), a bolygók közti hézag (világegység;
-## a nevek is elférjenek alatta).
-const GOLDEN := 2.39996323
-const OV_SX := .9
-const OV_SY := 1.15
-const OV_GAP := 5.5
-## Ehhez a kicsinyítéshez vannak a helyek (SLOTS) méretezve; születéskor és érkezéskor ide áll a kamera.
+## A bolygók a térben: a k. bolygó a fürt közepétől kb. SP_UNIT·∛k-ra (így a fürt sűrűsége állandó), a jelöltek közül
+## a már meglévőktől legtávolabbi helyre (SP_TRIES próba). 16 bolygónál a fürt sugara ~47, a csillagoké 62-től kezdődik.
+const SP_UNIT := 19.0
+const SP_TRIES := 28
+## Ennél a kicsinyítésnél áll a kamera a születés után; érkezéskor ide (ZOOM_ARRIVE); a régi képek alapja (ZOOM_REF).
 const ZOOM_REF := -.9
-const ZOOM_BIRTH := -.85
+const ZOOM_BIRTH := -2.0
 const ZOOM_ARRIVE := -.3
 ## A kis bolygók a valódi méretük ennyiszeresén látszanak (a háttérben kisebbek, így nem zsúfolódnak); a váltáskor a
 ## cél az út során lassan a valódi méretére nő (a csere a pára mögött így nem ugrik).
 const MINI_SCALE := .62
-## Helyek: x, y = a kép közepétől mért irány (tan szög; x jobbra, y fel) a ZOOM_REF nézetben, z = hátrébb (az aktív
-## bolygó kamerától mért távolságának arányában). Álló telefonon a kép felső részét a feliratok és a gombsor fedik,
-## ezért a szomszédok az aktív bolygó alatt sorakoznak, lefelé egyre hátrébb (és így kisebbek): jobb oldalt az
-## újabbak (d = +1, +2, +3), bal oldalt a régebbiek (d = -1, -2, -3).
-const SLOTS_R := [Vector3(.083, -.17, .5), Vector3(.108, -.268, 1.0), Vector3(.05, -.33, 1.5)]
-const SLOTS_L := [Vector3(-.083, -.155, .55), Vector3(-.1, -.255, 1.05), Vector3(-.045, -.322, 1.55)]
 
 ## Születés idővonala (mp): kicsinyítés, a fénypont kigyúl (B_KINDLE), kiúszik (B_FLY0–B_FLY1), szétnyílik
 ## (B_BLOOM), a gömb kibomlik (B_OPEN-ig), felirat (B_TEXT), vége (B_LEN).
@@ -88,7 +80,7 @@ const H_LEN := 4.0
 const TRAIL := 10
 
 var host
-## Kis bolygók: {"i" (index), "node", "mat", "ring", "rmat", "r" (sugár), "slot", "born" (0–1 méret),
+## Kis bolygók: {"i" (index), "node", "mat", "ring", "rmat", "r" (sugár), "born" (0–1 méret),
 ## "fade" (0–1 előtűnés), "settle", "bloom", "ringed", "atmo" (szín), "name", "world"}
 var minis: Array = []
 var sys_q := Quaternion.IDENTITY
@@ -115,9 +107,12 @@ var _cap_until := -1.0
 var _fx: Array = []
 var _rings: Array = []
 var _t := 0.0
-## Átfogó nézet: index → hely a rendszer keretében (az aktív bolygó a középpont); befoglaló téglalap (x, y).
-var _ov_pos := {}
-var _ov_box := Rect2()
+## A bolygók helye a térben (sorszám → pont a fürt keretében; a játékoskódból, lustán bővítve) és melyik kódhoz.
+var _space: Array = []
+var _space_code := ""
+## Átfogó nézet: a fürt közepe (az aktív bolygóhoz mérve) és a befoglaló gömb sugara (a bolygók sugarával).
+var _ov_center := Vector3.ZERO
+var _ov_rad := 10.0
 var _names := Control.new()
 var _names_a := 0.0
 
@@ -178,8 +173,7 @@ func _make_ring(seg: int) -> ArrayMesh:
 
 # ---------------------------------------------------------------- Kis bolygók
 
-## A kis bolygók a mentésből: az aktív kivételével mind (a megszokott kicsinyítésben csak oldalanként SIDE szomszéd
-## látszik, a többi az átfogó nézetben tűnik elő). A meglévők állapota megmarad.
+## A kis bolygók a mentésből: az aktív kivételével mind, mindegyik a saját helyén a térben. A meglévők állapota megmarad.
 func sync() -> void:
 	var want := {}
 	var ps: Array = []
@@ -199,8 +193,7 @@ func sync() -> void:
 			m = _make_mini(int(i))
 		else:
 			old.erase(i)
-		m.slot = slot_for(int(want[i]))
-		m.near = absi(int(want[i])) <= SIDE
+		m.near = true
 		_paint(m, ps[i])
 		minis.append(m)
 	for k in old:
@@ -208,37 +201,70 @@ func sync() -> void:
 	_layout()
 
 
-## Az átfogó nézet spirálja: a k. bolygó iránya k·aranyszög, távolsága √(k + ½) (a legrégebbi középen). A lépték
-## akkora, hogy a legszűkebb pár se érjen össze (a sugaruk + hézag); minden hely az aktív bolygóhoz mérve.
+## A bolygók helye a térben: a fürt keretében (a 0. bolygó a közepe). A k. pont a fürt közepétől kb. SP_UNIT·∛k-ra,
+## SP_TRIES véletlen (a játékoskódból és k-ból) jelölt közül arra, amelyik a meglévőktől a legtávolabb esik. Csak a
+## korábbi pontoktól függ, így egy új bolygó a régieket sosem mozdítja el.
+func space_point(k: int) -> Vector3:
+	var code := str(host.game.data.get("player", "")) if host != null and not host.game.data.is_empty() else ""
+	if code != _space_code:
+		_space_code = code
+		_space.clear()
+	while _space.size() <= k:
+		var n := _space.size()
+		if n == 0:
+			_space.append(Vector3.ZERO)
+			continue
+		var r := RandomNumberGenerator.new()
+		r.seed = hash(code + "terben" + str(n))
+		var rk := SP_UNIT * pow(float(n), 1.0 / 3.0)
+		var best := Vector3.ZERO
+		var best_d := -1.0
+		for c in SP_TRIES:
+			var z := r.randf_range(-1.0, 1.0)
+			var a := r.randf() * TAU
+			var q := sqrt(1.0 - z * z)
+			var p := Vector3(q * cos(a), z * .8, q * sin(a)) * rk * r.randf_range(.88, 1.12)
+			var md := 1e9
+			for e in _space:
+				md = minf(md, p.distance_to(e))
+			if md > best_d:
+				best_d = md
+				best = p
+		_space.append(best)
+	return _space[k]
+
+
+## Az i. bolygó helye a világban (az aktív bolygó a középpont).
+func space_pos(i: int) -> Vector3:
+	var act: int = host.game.active_index() if not host.game.data.is_empty() else 0
+	return space_point(i) - space_point(act)
+
+
+## A fürt közepe (a 0. bolygó helye) a világban: a csillagok héja és a kozmosz háttere ehhez igazodik.
+func space_origin() -> Vector3:
+	if host == null or host.game.data.is_empty() or not host.saved_view:
+		return Vector3.ZERO
+	return -space_point(host.game.active_index())
+
+
+## Az átfogó nézet kerete: a fürt közepe és a befoglaló gömb (a bolygók sugarával, alattuk a névnek is hellyel).
 func _layout() -> void:
-	_ov_pos.clear()
-	_ov_box = Rect2()
-	if minis.is_empty():
+	if minis.is_empty() or host.game.data.is_empty():
+		_ov_center = Vector3.ZERO
+		_ov_rad = 10.0
 		return
-	var n: int = (host.game.data.planets as Array).size()
-	var act: int = host.game.active_index()
-	var unit: Array = []
-	var rad: Array = []
-	for k in n:
-		var a := float(k) * GOLDEN
-		unit.append(Vector2(cos(a) * OV_SX, sin(a) * OV_SY) * sqrt(float(k) + .5))
-		rad.append(float(host.planet.radius_target) * 1.15 if k == act else 4.0 * OV_SCALE)
+	var pts: Array = [[Vector3.ZERO, float(host.planet.radius_target) * 1.15]]
 	for m in minis:
-		rad[int(m.i)] = float(m.r) * OV_SCALE
-	var c := 1.0
-	for a in n:
-		for b in range(a + 1, n):
-			var du := (unit[a] as Vector2).distance_to(unit[b])
-			c = maxf(c, (float(rad[a]) + float(rad[b]) + OV_GAP) / maxf(du, .01))
-	var o: Vector2 = unit[act] * c
-	for k in n:
-		var q: Vector2 = unit[k] * c - o
-		var r: float = rad[k]
-		# a név a bolygó alatt: lefelé több hely
-		var box := Rect2(q.x - r, q.y - r - OV_GAP * .8, r * 2.0, r * 2.0 + OV_GAP * .8)
-		_ov_box = box if k == 0 else _ov_box.merge(box)
-		if k != act:
-			_ov_pos[k] = Vector3(q.x, q.y, 0.0)
+		pts.append([space_pos(int(m.i)), float(m.r) * OV_SCALE])
+	var c := Vector3.ZERO
+	for e in pts:
+		c += e[0]
+	c /= float(pts.size())
+	var rad := 0.0
+	for e in pts:
+		rad = maxf(rad, c.distance_to(e[0]) + float(e[1]) + 2.5)
+	_ov_center = c
+	_ov_rad = rad
 
 
 ## Az átfogó nézet (0–1, simítva) – a kamera (main._orbit_pose) ezzel keveri az overview_pose()-t.
@@ -248,16 +274,13 @@ func overview() -> float:
 
 ## Az átfogó nézet kamerája: [szem, nézett pont, fel] – szemből az egész spirál, álló és fekvő képen is befér.
 func overview_pose() -> Array:
-	var b := Basis(sys_q)
+	var b := Basis(host.orbit_q)
 	var vp: Vector2 = host.get_viewport().get_visible_rect().size
-	var tv := tan(deg_to_rad(float(host.cam.fov)) * .5)
+	var tv := tan(deg_to_rad(40.0) * .5)
 	var th := tv * maxf(vp.x, 1.0) / maxf(vp.y, 1.0)
-	var half := _ov_box.size * .5
-	# fent a bolygó neve, lent a táska: függőlegesen több szegély
-	var d := maxf(half.y * 1.3 / tv, half.x * 1.1 / th) + float(host.planet.radius_target)
-	var c := _ov_box.get_center()
-	var look := b * Vector3(c.x, c.y, 0.0)
-	return [look + b.z * d, look, b.y]
+	# a fürt befoglaló gömbje beférjen (álló képen a szélesség a szűkebb; fent a felirat, lent a táska: szegély)
+	var d := _ov_rad * 1.12 / sin(atan(minf(tv * .85, th)))
+	return [_ov_center + b.z * d, _ov_center, b.y]
 
 
 ## Koppintás az aktív bolygóra (az átfogó nézetben: vissza közelre).
@@ -270,16 +293,6 @@ func pick_active(pos: Vector2) -> bool:
 	var c := cam.unproject_position(w)
 	var rpx := c.distance_to(cam.unproject_position(w + cam.global_transform.basis.x * planet.radius))
 	return c.distance_to(pos) < maxf(rpx * 1.3, 34.0)
-
-
-## A hely a sorszám-különbségből (d > 0: újabb, jobbra; d < 0: régebbi, balra); a messzebbiek a 3. hely mögött.
-static func slot_for(d: int) -> Vector3:
-	var side: Array = SLOTS_R if d > 0 else SLOTS_L
-	var k := absi(d) - 1
-	var s: Vector3 = side[mini(k, SIDE - 1)]
-	if k >= SIDE:
-		s.z += .5 * (k - SIDE + 1)
-	return s
 
 
 func _make_mini(i: int) -> Dictionary:
@@ -301,7 +314,7 @@ func _make_mini(i: int) -> Dictionary:
 	rg.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	rg.visible = false
 	node.add_child(rg)
-	return {"i": i, "node": node, "mat": mat, "ring": rg, "rmat": rmat, "r": 4.0, "slot": Vector3.ZERO, "born": 1.0,
+	return {"i": i, "node": node, "mat": mat, "ring": rg, "rmat": rmat, "r": 4.0, "born": 1.0,
 		"fade": 0.0, "settle": 1.0, "bloom": 0.0, "ringed": false, "atmo": Planet.BARE_ATMO, "name": "", "world": Vector3.ZERO,
 		"near": true, "sub": "", "a": 0.0, "vr": 0.0}
 
@@ -384,22 +397,9 @@ func _mini_of(i: int) -> Dictionary:
 	return {}
 
 
-## Az aktív bolygótól ennyire van a d-edik szomszéd helye a kamera keretében (a kép közepétől, hátrafelé).
-func _local(slot: Vector3) -> Vector3:
-	var r: float = host.planet.radius_target
-	var fit: float = host._fit_dist(r)
-	var dref := r + (fit - r) * (1.0 + PULL * -ZOOM_REF)
-	var depth := slot.z * fit
-	return Vector3(slot.x * (dref + depth), slot.y * (dref + depth), -depth)
-
-
-## A kis bolygó helye a rendszer keretében: a megszokott helye és az átfogó nézet spirálja között.
-func _pos_local(m: Dictionary) -> Vector3:
-	var a := _local(m.slot) * float(m.settle)
-	var k := _smooth(ov)
-	if k <= 0.0 or not _ov_pos.has(int(m.i)):
-		return a
-	return a.lerp(_ov_pos[int(m.i)], k)
+## A kis bolygó helye a világban: a térbeli helye (születéskor közelebb indul, és onnan úszik ki: settle).
+func _pos_world(m: Dictionary) -> Vector3:
+	return space_pos(int(m.i)) * float(m.settle)
 
 
 ## A kamera távolsága a bolygó középpontjától a bolygó-nézetben, z közelségnél (z < 0: kicsinyítve; main._orbit_pose).
@@ -411,7 +411,7 @@ static func pull(z: float) -> float:
 ## közé (sky_stars.gd); születés és váltás közben a megszokottig.
 func min_zoom() -> float:
 	if busy():
-		return ZOOM_MIN
+		return ZOOM_ALL
 	return host.stars.stars_zoom()
 
 
@@ -511,10 +511,10 @@ func _process(delta: float) -> void:
 	if not busy():
 		want = (1.0 - smoothstep(0.0, .35, float(host.orbit_zoom))) if host.view == "orbit" or int(host.focus) < 0 else 0.0
 	vis = want if snap else lerpf(vis, want, 1.0 - exp(-delta * (3.0 if want > vis else 5.0)))
-	# átfogó nézet: a váltás alatt áll (a csere után after_swap nullázza), születéskor visszaúszik
+	# átfogó nézet: a váltás alatt áll (a csere után after_swap nullázza); születéskor is ide húzódik a kamera
 	if hop.is_empty():
 		var ov_want := 0.0
-		if birth.is_empty() and minis.size() > 0 and (host.view == "orbit" or int(host.focus) < 0):
+		if minis.size() > 0 and (host.view == "orbit" or int(host.focus) < 0):
 			ov_want = clampf((ZOOM_MIN - float(host.orbit_zoom)) / (ZOOM_MIN - ZOOM_ALL), 0.0, 1.0)
 		ov = ov_want if snap else lerpf(ov, ov_want, 1.0 - exp(-delta * 4.0))
 		if absf(ov - ov_want) < .001:
@@ -537,18 +537,18 @@ func _process(delta: float) -> void:
 
 
 func _place(delta: float) -> void:
-	var b := Basis(sys_q)
 	var night: float = clampf(float(host.night), 0.0, 1.0)
+	var eye: Vector3 = host.cam.global_position
 	for m in minis:
 		m.fade = minf(1.0, float(m.fade) + delta * 1.3) if not snap else 1.0
-		var w: Vector3 = b * _pos_local(m)
+		var w := _pos_world(m)
 		m.world = w
 		var node: Node3D = m.node
 		var born := float(m.born)
 		var a := vis * float(m.fade)
-		# a 3–3 szomszédon túliak csak az átfogó nézetben
-		if not bool(m.near):
-			a *= _smooth((ov - .15) / .6)
+		# ami a kamerához túl közel kerül (a kamera a fürtön belül jár), elhalványul
+		var rr := float(m.r) * OV_SCALE
+		a *= clampf((eye.distance_to(w) - rr * 1.6) / (rr * 2.5), 0.0, 1.0)
 		m.a = a
 		node.visible = a > .005 and born > .002
 		if not node.visible:
@@ -606,9 +606,10 @@ func start_birth(i: int) -> void:
 	m.bloom = 1.0
 	m.settle = B_SETTLE
 	m.fade = 1.0
+	_layout()
 	# a fény a bolygó peremén gyúl, az újszülött felőli oldalon, a kép síkjában (hogy látsszon), onnan ívben úszik ki
 	var b := Basis(sys_q)
-	var w: Vector3 = b * (_local(m.slot) * B_SETTLE)
+	var w: Vector3 = space_pos(i) * B_SETTLE
 	var f := -b.z
 	var wp := w - f * w.dot(f)
 	var side := b.x * signf(wp.dot(b.x) + .001)
@@ -694,11 +695,11 @@ func go(i: int, after := Callable()) -> bool:
 	sys_q = host.orbit_q
 	if m.is_empty():
 		var p: Dictionary = host.game.data.planets[i]
-		t = Basis(sys_q) * _local(slot_for(i - int(host.game.active_index())))
+		t = space_pos(i)
 		r = Planet.radius_for(maxi(host.game.hatched(p).size(), int(p.peak)))
 		col = Planet.BARE_ATMO
 	else:
-		t = Basis(sys_q) * _pos_local(m)
+		t = _pos_world(m)
 		m.world = t
 		r = float(m.r)
 		col = m.atmo
@@ -740,7 +741,7 @@ func after_swap() -> void:
 	hop.shift = hop.T
 	sys_q = host.orbit_q
 	_sys_set = true
-	# a pára mögött: az új bolygó mellett a megszokott kicsinyítés (a spirál az új középponthoz mérve újrarendeződik)
+	# a pára mögött: az új bolygó mellett a megszokott kicsinyítés (a fürt az új középponthoz mérve: ugyanaz a tér)
 	ov = 0.0
 	sync()
 
@@ -798,7 +799,7 @@ func _draw_fx() -> void:
 		_canvas.draw_arc(rg[0], rg[1], 0.0, TAU, 64, Color(col, minf(al * .8, 1.0)), 2.2, true)
 
 
-## Az átfogó nézet feliratai: minden bolygó alatt a neve és a fák száma (az aktívé fényesebb).
+## Az átfogó nézet feliratai: minden látszó bolygó alatt a neve és a fák száma (az aktívé fényesebb).
 func _draw_names() -> void:
 	var cam: Camera3D = host.cam
 	var font: Font = host.hud.thin_font
