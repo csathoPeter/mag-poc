@@ -278,6 +278,8 @@ func _xf() -> Transform3D:
 # ---------------------------------------------------------------- Műveletek
 
 func select(b: int) -> void:
+	if b >= 0 and b != sel:
+		Sound.fx("select")
 	sel = b
 	_set_hi(b)
 	_note = ""
@@ -290,6 +292,7 @@ func cut(b: int) -> void:
 	if not pg.can_shape(b) or not pg.branch_live(b):
 		return
 	_spawn_fall(tree, b)
+	Sound.fx("snip")
 	var list := shape_of(tree)
 	list.append({"op": PlantGen.OP_CUT, "branch": b, "day": GameState.today()})
 	_save()
@@ -341,6 +344,7 @@ func tie(b: int, at: Vector3, finger: Vector2) -> void:
 	list.append(e)
 	_save()
 	rebuild(tree)
+	Sound.fx("tie")
 	sel = b
 	_set_hi(b)
 	_set_note(("Újrakötötted: innen hajlik tovább az új irány felé." if not old.is_empty() else "Odakötötted.") +
@@ -365,6 +369,7 @@ func undo() -> void:
 		if int(e.get("day", -1)) != today:
 			continue
 		list.remove_at(i)
+		Sound.fx("undo")
 		if e.get("prev") is Dictionary:
 			list.append(e.prev)
 		_save()

@@ -223,6 +223,8 @@ var system := PlanetSystem.new()
 var shaping := Shaping.new()
 ## ?alakit: amint a fák kinőttek, leszállás az első fára és az alakító mód (teszteléshez)
 var want_shape := false
+## Hang (M9): DNS-ből generált növényhangok, bolygó-ambient, effektek (sound.gd, sound_synth.gd)
+var sound := Sound.new()
 ## Hosszú nyomás a kiválasztott fán (ms): elengedés (megerősítéssel).
 const LONG_PRESS := 650
 
@@ -240,6 +242,11 @@ func _ready() -> void:
 		# --shapetest: az alakítás önellenőrzése (üres lista = régi kimenet, levágás, kötözés, három szint, öröklés)
 		if a == "--shapetest":
 			print("SHAPETEST\n", Shaping.self_test())
+			get_tree().quit()
+			return
+		# --soundtest[=mappa]: minden hang legenerálása, mérőszámok; mappával WAV-ok is (minták, fák, két bolygó ambientje)
+		if a.begins_with("--soundtest"):
+			print("SOUNDTEST\n", SoundSynth.self_test(a.get_slice("=", 1) if a.contains("=") else ""))
 			get_tree().quit()
 			return
 		if a.begins_with("--crosstest"):
@@ -275,6 +282,8 @@ func _ready() -> void:
 	system.arrived.connect(_on_hop_arrived)
 	system.born.connect(_on_planet_born)
 	herb.host = self
+	sound.host = self
+	add_child(sound)
 	fx.helix_done.connect(_on_helix_done)
 	fx.sow_landed.connect(func() -> void: _refresh_marks(sow_id))
 	space_mat.shader = SPACE_SKY
@@ -288,6 +297,8 @@ func _ready() -> void:
 			shot_args = a.substr(7).split(",")
 		if a == "--bench":
 			bench_cli = true
+	# képernyőképnél és parancssori mérésnél nincs hang (nem számol, nem szól)
+	sound.enabled = shot_args.is_empty() and not bench_cli
 	# --shot=kép,state[,óra[,focusN|plant|zoomZ|macro]]: a mentésből induló kert (a többi bolygós lövéssel azonos helyeken)
 	if shot_args.size() > 1 and shot_args[1] == "state":
 		shot_args = shot_args.slice(0, 2) + ["", "0"] + shot_args.slice(2)
@@ -462,6 +473,7 @@ func _build_ui() -> void:
 		tod_i = (tod_i + 1) % TOD_PRESETS.size()
 		tod_btn.text = TOD_NAMES[tod_i])
 	tod_btn.text = TOD_NAMES[tod_i]
+	sound.make_toggle(row)
 	var dbg := HBoxContainer.new()
 	dbg.add_theme_constant_override("separation", 3)
 	col.add_child(dbg)
@@ -1472,10 +1484,12 @@ func _tap(pos: Vector2) -> void:
 	if best >= 0:
 		if view == "surface" and best == focus:
 			trees[best].wave = 0.0
-			# szomjas fa: öntözés; virágzó fa virágára: mag; különben közelítés a virágra
+			# szomjas fa: öntözés; virágzó fa virágára: mag; különben közelítés a virágra (és a fa megszólal)
 			if not tending.tap_focused(best, pos):
+				Sound.tree_of(trees[best], "tap")
 				_macro_at(pos)
 		else:
+			Sound.tree_of(trees[best], "tap")
 			_focus(best)
 	elif macro:
 		macro = false

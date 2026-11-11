@@ -206,6 +206,7 @@ func play_helix(cells: Array, vals: Array, cell_px: float, to_px: Vector2) -> vo
 	speed = 1.0
 	frozen = false
 	_rig.visible = true
+	Sound.fx("helix")
 	_update(0.0)
 
 
@@ -218,6 +219,8 @@ func play_sow(p: Vector3, n: Vector3, caption: String) -> void:
 	_landed = false
 	_caption.text = caption
 	mode = "sow"
+	# a mag a kamera fordulása után kezd ereszkedni
+	Sound.fx("fall", 1.0, 0.0, S_FALL - .1)
 	t = 0.0
 	speed = 1.0
 	frozen = false
@@ -259,6 +262,7 @@ func _update(delta: float) -> void:
 		if t >= H_LEN:
 			mode = ""
 			_rig.visible = false
+			Sound.fx("bag")
 			helix_done.emit()
 	elif mode == "sow":
 		t += delta * speed
@@ -266,6 +270,7 @@ func _update(delta: float) -> void:
 			_landed = true
 			speed = 1.0
 			burst(_p + _n * .08, _n)
+			Sound.fx("land")
 			sow_landed.emit()
 		_sow()
 		if t >= S_LEN:

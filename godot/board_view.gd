@@ -382,6 +382,7 @@ func _grid_input(event: InputEvent) -> void:
 	var v: int = grid[y][x]
 	grid[y][x] = 0 if v == DnaBoard.EMPTY else 1 if v == 0 else DnaBoard.EMPTY
 	_pop[Vector2i(x, y)] = _t
+	Sound.board(grid[y][x], x, y)
 	_after_change()
 
 
@@ -391,6 +392,7 @@ func _after_change() -> void:
 	if DnaBoard.empty_count(grid) == 0 and DnaBoard.bad_cells(grid).is_empty() and not DnaBoard.dna_from_grid(grid).is_empty():
 		finishing = true
 		_done_t = 0.0
+		Sound.fx("done", 1.0, 0.0, .12)
 		var dna := DnaBoard.dna_from_grid(grid)
 		_progress.text = "Kész! %s" % Genes.latin_name(dna)
 
@@ -438,6 +440,7 @@ func _on_hint() -> void:
 		return
 	grid[p.y][p.x] = DnaBoard.grid_from_dna(puzzle.target)[p.y][p.x]
 	_pop[p] = _t
+	Sound.board(grid[p.y][p.x], p.x, p.y)
 	_after_change()
 
 

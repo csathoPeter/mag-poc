@@ -493,6 +493,12 @@ func _step_birth(dt: float) -> void:
 	var col := Color(1, .84, .58)
 	# 1. a fénypont kigyúl a perem fölött, pislákol
 	var kindle := _smooth((tt - B_KINDLE) / .9)
+	if tt >= B_KINDLE and not birth.done.has("snd_kindle"):
+		birth.done.snd_kindle = true
+		Sound.fx("kindle")
+	if tt >= B_BLOOM - .2 and not birth.done.has("snd_bloom"):
+		birth.done.snd_bloom = true
+		Sound.fx("birth")
 	var u := _smooth((tt - B_FLY0) / (B_FLY1 - B_FLY0))
 	var b := Basis(sys_q)
 	var out := b.x * signf(s.dot(b.x) + .001)
@@ -566,6 +572,7 @@ func go(i: int, after := Callable()) -> bool:
 	hop = {"to": i, "t": freeze_at if freeze_at >= 0.0 else 0.0, "e0": e0, "l0": host.look, "u0": (host.up_v as Vector3).normalized(), "T": t,
 		"e1": e1, "dir": dir, "shift": Vector3.ZERO, "swapped": false, "after": after, "col": col.lerp(Color(1, .98, .95), .35)}
 	_cap_until = -1.0
+	Sound.fx("hop")
 	host.begin_hop()
 	_step_hop(0.0)
 	return true
@@ -605,6 +612,7 @@ func _step_hop(dt: float) -> void:
 	var tt := float(hop.t)
 	if tt >= H_SWAP and not bool(hop.swapped):
 		hop.swapped = true
+		Sound.fx("arrive")
 		swap.emit(int(hop.to))
 	var a := _smooth((tt - H_VEIL0) / (H_SWAP - H_VEIL0)) if tt < H_SWAP + .15 else 1.0 - _smooth((tt - H_SWAP - .15) / (H_VEIL1 - H_SWAP - .15))
 	var col: Color = hop.col

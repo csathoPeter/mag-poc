@@ -259,6 +259,8 @@ func water(t: Dictionary) -> void:
 	_drops.visible = true
 	var d: Vector3 = t.dir
 	host.fx.burst(host.planet.surface_point(d) + d * .05, d, 2.2, C_WATER)
+	Sound.fx("water")
+	Sound.tree_of(t, "water")
 	_set_note(t, "Megöntözted. Lassan felegyenesedik.")
 	_step_water(0.0)
 
@@ -283,6 +285,8 @@ func gather(t: Dictionary, local: Vector3) -> void:
 	_flags(t)
 	var xf: Transform3D = (t.high.node as Node3D).transform
 	_gather = {"from": xf * local, "up": (t.dir as Vector3), "t": freeze_at if freeze_at >= 0.0 else 0.0, "id": int(s.id)}
+	Sound.fx("gather")
+	Sound.tree_of(t, "gather")
 	_set_note(t, "Magot hozott: %s\na táskádba került." % str(s.name))
 	_step_gather()
 
@@ -457,6 +461,7 @@ func _step_gather() -> void:
 		_gather = {}
 		_fly_pts.clear()
 		_fly.queue_redraw()
+		Sound.fx("bag")
 		seed_arrived.emit(id)
 
 

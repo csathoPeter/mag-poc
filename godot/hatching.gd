@@ -103,6 +103,7 @@ func _step(i: int) -> void:
 	if t >= T_OPEN and _once("open"):
 		var d: Vector3 = tr.dir
 		host.fx.burst(planet.surface_point(d) + d * .05, d, 3.2)
+		Sound.fx("hatch")
 		host.marks.remove(cur)
 		# a fa most kerül a bolygó-DNS-be: a bolygó lassan átúszik (szín, méret)
 		var dna: Array = (tr.g as Dictionary).dna
@@ -123,6 +124,8 @@ func _step(i: int) -> void:
 			(m as ShaderMaterial).set_shader_parameter("grow", g)
 	if t >= T_TEXT and _once("text"):
 		host.tag.text = _caption(tr)
+		# az új fa először szólal meg a saját hangján
+		Sound.tree_of(tr, "hatch", .4)
 	if t >= DUR and freeze_at < 0.0:
 		for rec in tr.lods:
 			rec.erase("hold")

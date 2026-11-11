@@ -340,6 +340,7 @@ func release(t: Dictionary, star_id: int) -> void:
 		"col": col, "base": base, "n": n, "h": h, "g": base + n * h * 1.15}
 	hidden_id = star_id
 	speed = 1.0
+	Sound.fx("release")
 
 
 ## Visszahozás: a csillag felvillan és elhalványul (az adatot a hívó már kivette a mentésből).
@@ -348,6 +349,7 @@ func recall(id: int) -> void:
 	if s.is_empty():
 		return
 	s.leave = _t
+	Sound.fx("recall")
 	if selected == id:
 		selected = -1
 
@@ -553,6 +555,7 @@ func _step_release(delta: float) -> void:
 			s.fade = 0.0
 		_ring_id = int(rel.star)
 		_ring_t = 0.0
+		Sound.fx("star")
 		arrived.emit(int(rel.star))
 	if tt >= R_LEN and freeze_at < 0.0:
 		rel = {}

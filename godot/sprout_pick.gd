@@ -140,6 +140,10 @@ func open(c: Dictionary) -> void:
 	_layout()
 	_build_cards()
 	_build_plants()
+	# a három csíra egymás után megszólal a saját hangján
+	for k in (c.sprouts as Array).size():
+		var sp: Dictionary = c.sprouts[k]
+		Sound.tree(sp.dna, str(sp.get("code", "")), "one", .35 + k * .55)
 	_later.disabled = false
 	visible = true
 	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -179,6 +183,9 @@ func choose(k: int) -> void:
 		return
 	choice = k
 	pick_t = 0.0
+	# a másik két csíra fénnyé válik és felszáll
+	Sound.fx("rise", 1.0, 0.0, .3)
+	Sound.fx("rise", 1.12, -2.0, .55)
 	_later.disabled = true
 	for i in _cards.size():
 		var cd: Dictionary = _cards[i]
