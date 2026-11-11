@@ -19,7 +19,7 @@ extends Node3D
 ##
 ## A főjelenet (main.gd) tagjait használja, ezért a host típus nélküli: game, saved_view, garden_mode, view, focus,
 ## orbit_q, orbit_zoom, eye, look, up_v, cam, planet, night, queue, retreating, board, bag, crossing, fx, hatching,
-## herb, stars, bench_on, _fit_dist().
+## herb, stars, share, bench_on, _fit_dist().
 
 ## A váltás közepén (a pára mögött): a hívó lecseréli a teljes bolygót erre az indexre, majd after_swap()-et hív.
 signal swap(index: int)
@@ -439,7 +439,8 @@ func _place(delta: float) -> void:
 func _can_start() -> bool:
 	return host.garden_mode == "planet" and host.saved_view and (host.queue as Array).is_empty() and not host.retreating \
 		and not host.board.visible and not host.bag.visible and not host.crossing.is_open() and not host.fx.busy() and not host.bench_on \
-		and not host.herb.is_open() and not host.stars.busy() and not host.hatching.active() and (host.hatching.waiting as Array).is_empty()
+		and not host.herb.is_open() and not host.stars.busy() and not host.hatching.active() and (host.hatching.waiting as Array).is_empty() \
+		and not host.share.is_open()
 
 
 ## A még nem látott születés: ha az aktív bolygó mellett (index + 1) született, megmutatjuk; ha máshol (ritka), csak jelöljük.

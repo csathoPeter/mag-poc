@@ -238,6 +238,8 @@ var hud := Hud.new()
 var guide := Guide.new()
 ## Reggeli jelzés (guide.gd): a bolygó lassan e felé az irány felé fordul (null = nincs)
 var look_q: Variant = null
+## A nap, amelyikre a mentett kert most be van állítva (éjfélkor a nyitva hagyott appban ez alapján jön az új nap).
+var live_day := -1
 ## Hosszú nyomás a kiválasztott fán (ms): elengedés (megerősítéssel).
 const LONG_PRESS := 650
 
@@ -324,8 +326,9 @@ func _ready() -> void:
 	Seasons.forced = Seasons.parse(opts.evszak)
 	seasons.neutral = bench_cli or (shot_args.size() > 1 and shot_args[1] != "state")
 	add_child(seasons)
-	# képernyőképnél és parancssori mérésnél nincs hang (nem számol, nem szól)
-	sound.enabled = shot_args.is_empty() and not bench_cli
+	# képernyőképnél, parancssori mérésnél és a végigjátszásnál (--playtest) nincs hang (nem számol, nem szól)
+	var playtest := OS.get_cmdline_user_args().has("--playtest")
+	sound.enabled = shot_args.is_empty() and not bench_cli and not playtest
 	# --shot=kép,state[,óra[,focusN|plant|zoomZ|macro]]: a mentésből induló kert (a többi bolygós lövéssel azonos helyeken)
 	if shot_args.size() > 1 and shot_args[1] == "state":
 		shot_args = shot_args.slice(0, 2) + ["", "0"] + shot_args.slice(2)
@@ -358,6 +361,11 @@ func _ready() -> void:
 			start_garden()
 	elif bench_cli:
 		start_planet("bolygo01", 14)
+	elif playtest:
+		# --playtest: végigjátszás fej nélkül, külön mentéssel (playtest.gd; ő tölti be a játékot)
+		var pt := Playtest.new()
+		pt.host = self
+		add_child(pt)
 	else:
 		_load_game(opts)
 	if bench_cli or (OS.has_feature("web") and str(JavaScriptBridge.eval("location.search", true)).contains("meres")):
@@ -1302,6 +1310,7 @@ func show_saved_planet() -> void:
 		queue.append(item)
 	hatching.reset(reveal)
 	_refresh_marks()
+	live_day = GameState.today()
 	_sync_game_dbg()
 
 
@@ -1731,6 +1740,7 @@ func _planet_process(delta: float) -> void:
 	var snap := not shot_args.is_empty()
 	trans_t += delta
 	_long_press_check()
+	_watch_day()
 	# a bolygó növekedésekor a fák a felszínen maradnak
 	if absf(planet.radius - last_r) > .0001 or absf(planet.shape_k - last_shape) > .0001:
 		last_r = planet.radius
@@ -1988,6 +1998,13 @@ func _next_day() -> void:
 		return
 	GameState.day_offset += 1
 	game.save()
+	_day_turned()
+
+
+## Új nap kezdődött (a „nap +1” gomb, vagy éjfélkor a nyitva hagyott appban, lásd _watch_day): a kikelt fák
+## megjelennek, a fák átúsznak az új napba, a nap magja újra hív.
+func _day_turned() -> void:
+	live_day = GameState.today()
 	_sync_game_dbg()
 	# reggel (M12): puha fátyol, a kikelés után a gondozási jelzés, a nap magja hív
 	guide.new_day()
@@ -2006,6 +2023,17 @@ func _next_day() -> void:
 			_tag_text()
 			# a többi bolygó kis változatán is (kikelésre váró fák jele)
 			system.sync()
+
+
+## Éjfél a nyitva hagyott appban (M13): ha a játék napja megváltozott, és épp nyugalom van (nincs nyitott lap, nagy
+## pillanat, alakítás), ugyanaz történik, mint a „nap +1” gombra. Különben megvárja a nyugalmat.
+func _watch_day() -> void:
+	if live_day < 0 or GameState.today() == live_day or game.data.is_empty() or bench_on or not shot_args.is_empty():
+		return
+	if not saved_view or retreating or not queue.is_empty() or fx.busy() or hatching.active() or stars.busy() or system.busy() \
+			or board.visible or bag.visible or crossing.is_open() or herb.is_open() or share.is_open() or shaping.on:
+		return
+	_day_turned()
 
 
 ## Próba-bolygó (véletlen, nem kerül a mentésbe), és vissza a sajátra.
@@ -2242,6 +2270,10 @@ func _sow(seed_id: int, animate := true) -> void:
 	traits_l.text = "Elvetve: %s %s %s bolygón. Holnap kel ki.%s" % [Genes.latin_name(t.dna), az, where, " (Próbához: „nap +1”.)" if hud.debug else ""]
 	sow_id = int(t.id)
 	if not saved_view:
+		# a vendég-bolygóról (vagy a próba-bolygóról) haza: a mag a saját bolygón hull le; a barát linkje lekerül az
+		# URL-ből, mint a „Vissza a kertembe” gombnál
+		if not guest.is_empty():
+			Share.forget_link()
 		retreat(show_saved_planet)
 		return
 	if not animate or bench_on:

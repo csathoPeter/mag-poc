@@ -112,7 +112,7 @@ A herbárium és a tenyésztési célok csak halk háttérelemek, nem kényszer�
 
 ### Visszahozó elemek
 
-Kikelés másnap, a nap magja, múló virágzás (ilyenkor gyűjthető mag), lassan hajló kötözött ágak, valódi évszakok, barát magja kóddal (M10, lásd „Megosztás és barát magja”). **Napi legfeljebb egy értesítés** (pl. „Kikelt a tegnapi magod”) – nyitott pont, weben szerver kell (lásd „Felület: a világ része”, M12). Megnyitáskor új napon a reggeli pillanat (M12): puha fátyol, kikelés, a szomjas / virágzó fa felé forduló bolygó, hívó nap magja. Kihagyott nap után semmi nem vész el.
+Kikelés másnap, a nap magja, múló virágzás (ilyenkor gyűjthető mag), lassan hajló kötözött ágak, valódi évszakok, barát magja kóddal (M10, lásd „Megosztás és barát magja”). **Napi legfeljebb egy értesítés** (pl. „Kikelt a tegnapi magod”) – nyitott pont, weben szerver kell (lásd „Felület: a világ része”, M12). Megnyitáskor új napon a reggeli pillanat (M12): puha fátyol, kikelés, a szomjas / virágzó fa felé forduló bolygó, hívó nap magja; éjfélkor a nyitva hagyott appban is (M13), ha épp nincs nyitva lap. Kihagyott nap után semmi nem vész el.
 
 **Valódi évszakok (M11, `godot/seasons.gd`):** a valódi dátum (a teszt-eltolással: `GameState.today()`) szerint, északi féltekén. Csak hangulat: nem büntet, nem változtat a játékon, a DNS-ből adódó színek felismerhetők maradnak.
 - **Mikor:** tavasz márc. 5-től, nyár jún. 1-től, ősz szept. 10-től, tél dec. 5-től; a határok körül ±15 nap alatt napról napra úsznak át (napváltáskor a képen is lassan). A súlyok (tavasz, nyár, ősz, tél) egy globális shader-uniformban (`season`, `shaders/season.gdshaderinc`), így minden fa, levél, virág és a bolygó felszíne anyagonkénti könyvelés nélkül követi.
@@ -339,5 +339,6 @@ Miért Godot: valódi árnyék, ragyogás, tónusleképezés beépítve; natív 
 - [x] Herbárium (M6: a csillagkép egyben herbárium – lap, lapozás, visszahozás)
 - [x] Látvány (M11): levélforma a levélforma-génből (shaderben rajzolt körvonal, erezet), webes színek (sRGB/lineáris javítás a Compatibility rendererhez), valódi évszakok, pollen és szentjánosbogarak leszállva; a képkockánként frissített MultiMesh weben is mozog (a fej nélküli próba SwiftShader-hibája volt)
 - [ ] Mérés olcsó Androidon
+- [x] Átfogó hibakeresés (M13): végigjátszás fej nélkül (`--playtest`, a valódi bemeneteken át, invariánsokkal); javítva: éjfélkor a nyitva hagyott appban is jön az új nap, a kész pillanatban bezárt tábla megnyitva befejeződik, a „Kaptál egy magot” lap alatt nem indul kikelés / születés, a vendég-bolygóról elvetve a link lekerül, a mentett napi / jelző számok betöltve egészek
 - [ ] iOS-build Mac nélkül (GitHub Actions macOS + TestFlight, Apple Developer-tagság kell)
 - [ ] IAP próba (borravaló)

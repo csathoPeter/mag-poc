@@ -804,9 +804,14 @@ func _on_tree_btn() -> void:
 func go_home() -> void:
 	if host.retreating:
 		return
+	forget_link()
+	host.retreat(host.show_saved_planet)
+
+
+## A barát bolygójának linkje lekerül az URL-ből (hazatérve újratöltéskor már a saját kert nyíljon).
+static func forget_link() -> void:
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval("(function(){try{var u=new URL(location.href);u.searchParams.delete('bolygo');history.replaceState(null,'',u.toString());}catch(e){}})()", true)
-	host.retreat(host.show_saved_planet)
 
 
 ## Látszhat-e a fa tábla alatti gomb: a saját, mentett fán „Megosztom”, vendégként „Magot kérek” (a herbarium.gd hívja).

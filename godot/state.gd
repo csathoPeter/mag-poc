@@ -233,8 +233,10 @@ func migrate(d: Dictionary) -> Dictionary:
 		"active": int(d.get("active", 0)),
 		"planets": [],
 		"bag": [],
-		"daily": d.get("daily", {}) if d.get("daily") is Dictionary else {},
-		"flags": d.get("flags", {}) if d.get("flags") is Dictionary else {},
+		# (a JSON-ból minden szám lebegőpontos: az egész értékűek visszaalakítva, hogy a betöltött adat ugyanolyan legyen,
+		# mint a mentés előtti – a végigjátszás (playtest.gd) minden lépés után összeveti)
+		"daily": _ints(d.get("daily", {})) if d.get("daily") is Dictionary else {},
+		"flags": _ints(d.get("flags", {})) if d.get("flags") is Dictionary else {},
 		"cross": _fill_cross(d.get("cross", {})),
 	}
 	for p in d.get("planets", []):
@@ -896,6 +898,23 @@ static func _dna_list(v: Variant) -> Array:
 		for d in v:
 			out.append(_dna(d))
 	return out
+
+
+## A JSON-ból jött egész értékű lebegőpontos számok egésszé (a napok, a rácsok, a DNS a daily és a flags alatt).
+static func _ints(v: Variant) -> Variant:
+	if v is float and float(v) == floorf(float(v)) and absf(float(v)) < 1e15:
+		return int(v)
+	if v is Dictionary:
+		var out := {}
+		for k in v:
+			out[k] = _ints(v[k])
+		return out
+	if v is Array:
+		var out: Array = []
+		for x in v:
+			out.append(_ints(x))
+		return out
+	return v
 
 
 ## Mentéshez: a Vector3-ak [x, y, z] tömbbé alakítva (a JSON nem ismeri őket).

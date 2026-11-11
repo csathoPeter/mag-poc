@@ -117,6 +117,12 @@ func open(p: Dictionary, title: String, subtitle: String, saved: Array = [], par
 	_stop_fade()
 	_layout()
 	_update_texts()
+	# a mentésben már kész rács (a lap épp a kész pillanatban zárult be, a mag még nem jött ki): most fejeződik be
+	if saved.size() == DnaBoard.N and DnaBoard.empty_count(grid) == 0 and DnaBoard.bad_cells(grid).is_empty() \
+			and not DnaBoard.dna_from_grid(grid).is_empty():
+		finishing = true
+		_done_t = 0.0
+		_progress.text = "Kész! %s" % Genes.latin_name(DnaBoard.dna_from_grid(grid))
 	visible = true
 	modulate = Color(1, 1, 1, 0)
 	create_tween().tween_property(self, "modulate:a", 1.0, .35)

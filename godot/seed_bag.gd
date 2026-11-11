@@ -188,6 +188,8 @@ func _seed_card(w: float, sd: Dictionary, highlight: int, picking: bool, can_cro
 			actions.append(["Keresztezem", func() -> void: _pick(sid), BoardView.C_FREE])
 		actions.append(["Megosztom", func() -> void: share.emit(sid), BoardView.C_DIM])
 	_card(w, sd, title, body, actions, hl, accent)
+	# a kártyán a mag azonosítója (a végigjátszás, playtest.gd így találja meg a gombjait)
+	_list.get_child(_list.get_child_count() - 1).set_meta("seed_id", sid)
 
 
 func _partner(sid: int) -> void:
