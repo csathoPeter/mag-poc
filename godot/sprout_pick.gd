@@ -383,10 +383,10 @@ func _make_plant(g: Dictionary, k: int) -> Dictionary:
 
 ## Egy növény kis 3D-előnézethez (a csíraválasztó és a herbárium is ezt használja): egyszerűsített részletesség, a
 ## kertivel azonos vázzal, ~1,1 egység magasra méretezve. A hívó teszi a világába, és állítja a "grow" és a "tree_xf"
-## paramétereket (lásd pose_preview()).
-static func build_preview(g: Dictionary) -> Dictionary:
+## paramétereket (lásd pose_preview()). det: részletesség (a megosztási képhez, M10: a részletes szint).
+static func build_preview(g: Dictionary, det := .22) -> Dictionary:
 	var pg := PlantGen.new()
-	pg.build(g, .22)
+	pg.build(g, det)
 	var node := Node3D.new()
 	var mats: Array = []
 	var wm := ShaderMaterial.new()

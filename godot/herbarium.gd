@@ -16,7 +16,8 @@ extends Control
 const C_STAR := Color(1.0, .88, .6)
 const C_LAVENDER := Color(.82, .76, 1.0)
 const ORIGIN_TEXT := {"kezdo": "kezdő fa volt", "napi": "a nap magjából nőtt", "gyujtes": "gyűjtött magból nőtt",
-	"keresztezes": "keresztezett magból nőtt", "csillag": "csillagról visszahozott magból nőtt", "ultetes": "próba-ültetés volt"}
+	"keresztezes": "keresztezett magból nőtt", "csillag": "csillagról visszahozott magból nőtt", "ultetes": "próba-ültetés volt",
+	"barat": "barát magjából nőtt"}
 ## Az előnézet mérete (képpont) és a kinövés hossza lapozáskor (mp).
 const PREVIEW := Vector2(112, 132)
 const GROW_LEN := 1.1
@@ -40,6 +41,7 @@ var _view := TextureRect.new()
 var _prev: Button
 var _next: Button
 var _recall: Button
+var _share: Button
 var _vp := SubViewport.new()
 var _cam := Camera3D.new()
 var _world := Node3D.new()
@@ -112,12 +114,19 @@ func _ready() -> void:
 	col.add_child(nav)
 	_prev = BoardView.make_button(nav, "‹", func() -> void: page(-1))
 	_recall = BoardView.make_button(nav, "Visszahozom", _on_recall, C_STAR)
+	# megosztás (M10): a csillag fájának képe + mag-kódja
+	_share = BoardView.make_button(nav, "Megosztom", func() -> void:
+		if star_id >= 0:
+			host.share.share_star(star_id), BoardView.C_FREE)
 	_next = BoardView.make_button(nav, "›", func() -> void: page(1))
 	for b in [_prev, _next]:
 		(b as Button).size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		(b as Button).custom_minimum_size = Vector2(56, 46)
 		(b as Button).add_theme_font_size_override("font_size", 24)
 	_recall.custom_minimum_size = Vector2(0, 46)
+	_share.custom_minimum_size = Vector2(0, 46)
+	for b in [_recall, _share]:
+		(b as Button).add_theme_font_size_override("font_size", 15)
 	# --- az előnézet saját világa (mint a csíraválasztóban)
 	_vp.own_world_3d = true
 	_vp.transparent_bg = true
@@ -475,31 +484,39 @@ func _process(delta: float) -> void:
 	if show_chip:
 		chip.position = Vector2(vp.x - chip.size.x - 14.0, vp.y - chip.size.y - 22.0)
 		chip.queue_redraw()
-	# „Elengedem…” a lebegő tábla alatt (leszállva, amikor a tábla látszik), mellette balra az „Alakítás” (M8)
-	var show_rel := calm and _can_release() and float(host.tag_alpha) > .5
+	# „Elengedem…” a lebegő tábla alatt (leszállva, amikor a tábla látszik), mellette balra az „Alakítás” (M8), jobbra
+	# a „Megosztom” (M10; vendégként a barát bolygóján „Magot kérek”)
+	var show_rel: bool = calm and _can_release() and float(host.tag_alpha) > .5 and not host.share.busy()
 	var shape_btn: Button = host.shaping.btn
 	var show_shape: bool = host.garden_mode == "planet" and not is_open() and host.ui_col.visible and float(host.tag_alpha) > .5 \
-		and host.shaping.can_start()
+		and host.shaping.can_start() and not host.share.busy()
+	var share_btn: Button = host.share.tree_btn
+	var show_share: bool = host.share.tree_btn_wanted(show_rel)
 	release_btn.visible = show_rel
 	shape_btn.visible = show_shape
-	if show_rel or show_shape:
+	share_btn.visible = show_share
+	var row: Array = []
+	for pair in [[shape_btn, show_shape], [release_btn, show_rel], [share_btn, show_share]]:
+		if pair[1]:
+			row.append(pair[0])
+	if not row.is_empty():
 		var tag: Label3D = host.tag
 		var cam: Camera3D = host.cam
 		var lines := tag.text.count("\n") + 1
 		var half := tag.pixel_size * tag.font_size * 1.3 * lines * .5
 		var bottom := tag.global_position - cam.global_transform.basis.y * half
 		var sp := cam.unproject_position(bottom) if not cam.is_position_behind(bottom) else Vector2(vp.x * .5, vp.y - 120.0)
-		var w := (release_btn.size.x if show_rel else 0.0) + (shape_btn.size.x if show_shape else 0.0) + (8.0 if show_rel and show_shape else 0.0)
-		var x := floorf(clampf(sp.x - w * .5, 10.0, vp.x - w - 10.0))
+		var w := 8.0 * (row.size() - 1)
+		for b in row:
+			(b as Button).size = (b as Button).get_combined_minimum_size()
+			w += (b as Button).size.x
+		var x := floorf(clampf(sp.x - w * .5, 6.0, maxf(6.0, vp.x - w - 6.0)))
 		var y := floorf(clampf(sp.y + 10.0, vp.y * .35, vp.y - release_btn.size.y - 100.0))
 		var a := clampf((float(host.tag_alpha) - .5) * 2.0, 0.0, 1.0)
-		if show_shape:
-			shape_btn.position = Vector2(x, y)
-			shape_btn.modulate.a = a
-			x += shape_btn.size.x + 8.0
-		if show_rel:
-			release_btn.position = Vector2(x, y)
-			release_btn.modulate.a = a
+		for b in row:
+			(b as Button).position = Vector2(x, y)
+			(b as Button).modulate.a = a
+			x += (b as Button).size.x + 8.0
 	if not _flying.is_empty():
 		_flying.t = float(_flying.t) + delta
 		if float(_flying.t) >= FLY_LEN:

@@ -225,6 +225,11 @@ var shaping := Shaping.new()
 var want_shape := false
 ## Hang (M9): DNS-ből generált növényhangok, bolygó-ambient, effektek (sound.gd, sound_synth.gd)
 var sound := Sound.new()
+# megosztás (M10): kép + kód, barát magja és bolygója (share.gd, share_code.gd)
+var share := Share.new()
+## Vendégként egy barát bolygóján (?bolygo=…): a link tartalma (ShareCode.decode_planet), üres = a saját kert.
+## Vendégként semmi nem íródik a mentésbe (saved_view = hamis), csak a kért mag kerül a táskába.
+var guest: Dictionary = {}
 ## Hosszú nyomás a kiválasztott fán (ms): elengedés (megerősítéssel).
 const LONG_PRESS := 650
 
@@ -247,6 +252,12 @@ func _ready() -> void:
 		# --soundtest[=mappa]: minden hang legenerálása, mérőszámok; mappával WAV-ok is (minták, fák, két bolygó ambientje)
 		if a.begins_with("--soundtest"):
 			print("SOUNDTEST\n", SoundSynth.self_test(a.get_slice("=", 1) if a.contains("=") else ""))
+			get_tree().quit()
+			return
+		# --sharetest[=kódok]: a megosztás önellenőrzése (mag-kód körbejárás, elírások, bolygó-link, napi szöveg)
+		if a.begins_with("--sharetest"):
+			var n := int(a.get_slice("=", 1)) if a.contains("=") else 4000
+			print("SHARETEST\n", ShareCode.self_test(n))
 			get_tree().quit()
 			return
 		if a.begins_with("--crosstest"):
@@ -282,6 +293,7 @@ func _ready() -> void:
 	system.arrived.connect(_on_hop_arrived)
 	system.born.connect(_on_planet_born)
 	herb.host = self
+	share.host = self
 	sound.host = self
 	add_child(sound)
 	fx.helix_done.connect(_on_helix_done)
@@ -458,6 +470,8 @@ func _build_ui() -> void:
 	stats_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .6))
 	col.add_child(stats_l)
 	name_l.add_theme_font_size_override("font_size", 30)
+	# hosszabb felirat (pl. „… – egy barát bolygója”, M10) két sorba törik
+	name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	name_l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, .6))
 	col.add_child(name_l)
 	traits_l.add_theme_font_size_override("font_size", 13)
@@ -554,6 +568,10 @@ func _build_ui() -> void:
 	bag.solve.connect(open_daily_day)
 	bag.closed.connect(_overlay_closed)
 	crossing.attach_ui(layer)
+	layer.add_child(share)
+	bag.share.connect(share.share_seed)
+	bag.share_daily.connect(share.share_daily)
+	bag.enter_code.connect(share.ask_code)
 	bag.cross.connect(crossing.start)
 	bag.sprouts.connect(crossing.open_pick)
 
@@ -1028,6 +1046,8 @@ func _process(delta: float) -> void:
 				_shot_system(shot_args[5])
 			elif (shot_args[5] as String).begins_with("shape"):
 				_shot_shape(shot_args[5])
+			elif ["share", "gift", "guest", "code"].any(func(k: String) -> bool: return (shot_args[5] as String).begins_with(k)):
+				_shot_share(shot_args[5])
 			elif (shot_args[5] as String).begins_with("zoom"):
 				orbit_zoom = float((shot_args[5] as String).trim_prefix("zoom"))
 			elif (shot_args[5] as String).begins_with("macro"):
@@ -1073,6 +1093,8 @@ func _process(delta: float) -> void:
 				_shot_click(crossing.pick, "Ezt nevelem", 1)
 		if shot_args.size() > 5 and shot_args[5] == "shapeplay":
 			_shot_shape_play()
+		if shot_args.size() > 5 and shot_frames > 1:
+			_shot_share_late(shot_args[5])
 		if shot_frames == 3 and shot_args.size() > 5 and shot_args[5] == "boardplay":
 			_shot_play_board()
 		if shot_frames == 3 and shot_args.size() > 5 and (shot_args[5] as String).begins_with("helix"):
@@ -1143,6 +1165,7 @@ func start_planet(code: String, count: int) -> void:
 			dna.append(r.randi() % 14)
 		dnas.append(dna)
 	planet.min_plants = 0
+	guest = {}
 	_enter_planet(code, dnas, [])
 	saved_view = false
 	stars.sync()
@@ -1158,6 +1181,7 @@ func start_planet(code: String, count: int) -> void:
 ## A mentett, aktív bolygó: a kikelt fák a mentett helyükön, a bolygó a kódjából és a fák DNS-éből áll össze
 ## (az alapítók a mentésből, így újratöltés után is ugyanaz a bolygó).
 func show_saved_planet() -> void:
+	guest = {}
 	var p := game.active_planet()
 	var shown := game.hatched(p)
 	var dnas: Array = []
@@ -1193,6 +1217,33 @@ func show_saved_planet() -> void:
 		queue.append(item)
 	hatching.reset(reveal)
 	_refresh_marks()
+	_sync_game_dbg()
+
+
+## Barát bolygója (M10, ?bolygo=…): a linkből (ShareCode.decode_planet) a bolygó kódja, alapítói, a legtöbb fája és a
+## kikelt fák pontosan a barát mentése szerint (DNS, kód, irány, alakítás). Csak nézhető: saved_view = hamis, így
+## semmi nem íródik a mentésbe; a fára koppintva „Magot kérek” (share.gd), alul „Vissza a kertembe”.
+func show_guest_planet(g: Dictionary) -> void:
+	var dnas: Array = []
+	for t in g.trees:
+		dnas.append(t.dna)
+	var founders: Array = g.founders
+	if founders.is_empty() and not dnas.is_empty():
+		founders = [dnas[0]]
+	if founders.is_empty():
+		founders = [GameState._dna([hash(str(g.code)) % 14, 3, 0, 0, 2, 0])]
+	if not dnas.is_empty():
+		var d: Vector3 = g.trees[(g.trees as Array).size() - 1].dir
+		orbit_q = Basis.looking_at(-d, Vector3.UP if absf(d.y) < .98 else Vector3.RIGHT).get_rotation_quaternion()
+	planet.min_plants = int(g.peak)
+	_enter_planet(str(g.code), dnas, founders, dnas.is_empty() and int(g.peak) == 0)
+	saved_view = false
+	guest = g
+	stars.sync()
+	system.sync()
+	for t in g.trees:
+		queue.append({"dna": t.dna, "code": t.code, "dir": t.dir, "rot": t.rot, "size": t.size, "shape": (t.shaping as Array).duplicate(true), "sid": -1})
+	_planet_texts()
 	_sync_game_dbg()
 
 
@@ -1263,6 +1314,10 @@ func _fit_dist(r: float) -> float:
 
 
 func _planet_texts() -> void:
+	if not guest.is_empty():
+		name_l.text = "%s – egy barát bolygója" % planet.planet_name()
+		traits_l.text = "%s\nVendégségben vagy: csak nézheted, a kerted nem változik. Koppints egy fára, és kérj róla magot." % planet.describe()
+		return
 	name_l.text = planet.planet_name()
 	var more := saved_view and not game.data.is_empty() and (game.data.planets as Array).size() > 1
 	traits_l.text = planet.describe() + "\nHúzd: forgatás · csípd: közelítés%s · koppints egy fára" % (" · kicsinyítsd: a többi bolygód" if more else "")
@@ -1777,7 +1832,19 @@ func _load_game(opts: Dictionary) -> void:
 	var p := game.active_planet()
 	print("Mag: %s, játékos %s, bolygó %s, %d fa, ma %s (eltolás %+d)" % ["új játék" if fresh else "mentés betöltve", game.data.player, p.code,
 		(p.trees as Array).size(), GameState.day_label(GameState.today()), GameState.day_offset])
-	show_saved_planet()
+	# barát bolygója (M10): vendégként, a mentés nem változik; hibás linknél a saját kert, üzenettel
+	var g: Dictionary = ShareCode.decode_planet(opts.bolygo, GameState.today()) if opts.bolygo != "" else {}
+	if bool(g.get("ok", false)):
+		show_guest_planet(g)
+	else:
+		show_saved_planet()
+		if g.has("err"):
+			traits_l.text = str(g.err)
+	# barát magja kóddal (M10): a mag a táskába, „Kaptál egy magot”; a paraméter lekerül az URL-ből (újratöltve ne kérdezzen újra)
+	if opts.mag != "":
+		share.receive_code.call_deferred(opts.mag, true)
+		if OS.has_feature("web"):
+			JavaScriptBridge.eval("(function(){try{var u=new URL(location.href);u.searchParams.delete('mag');history.replaceState(null,'',u.toString());}catch(e){}})()", true)
 	if opts.open == "tabla":
 		open_daily.call_deferred()
 	elif opts.open == "taska":
@@ -1853,7 +1920,7 @@ func _sync_game_dbg() -> void:
 	dbg_btn.try.text = "saját" if not saved_view and not game.data.is_empty() else "próba"
 	dbg_btn.wipe.text = "törlés"
 	_sync_daily()
-	var where: String = (game.active_planet().code as String) if saved_view else "nem mentődik"
+	var where: String = (game.active_planet().code as String) if saved_view else ("vendég: %s" % str(guest.code) if not guest.is_empty() else "nem mentődik")
 	var n: int = (game.data.planets as Array).size() if not game.data.is_empty() else 0
 	game_l.text = "%s%s · %s" % [where, (" (%d/%d bolygó)" % [game.active_index() + 1, n]) if saved_view and n > 1 else "", GameState.day_label(GameState.today())]
 
@@ -1936,7 +2003,7 @@ func _sync_ui_visible() -> void:
 	var moment := fx.busy() or hatching.active() or stars.busy() or system.busy()
 	if moment:
 		ui_col.visible = false
-	elif ui_moment and not board.visible and not bag.visible and not crossing.is_open() and not herb.is_open():
+	elif ui_moment and not board.visible and not bag.visible and not crossing.is_open() and not herb.is_open() and not share.is_open():
 		ui_col.visible = true
 		ui_col.modulate.a = 0.0
 		create_tween().tween_property(ui_col, "modulate:a", 1.0, .6)
@@ -1946,7 +2013,8 @@ func _sync_ui_visible() -> void:
 func _overlay_closed() -> void:
 	board_day = -1
 	crossing.board_open = false
-	if not board.visible and not bag.visible and not crossing.is_open() and not herb.is_open() and not stars.busy() and not system.busy():
+	if not board.visible and not bag.visible and not crossing.is_open() and not herb.is_open() and not stars.busy() and not system.busy() \
+			and not share.is_open():
 		ui_col.visible = true
 	_sync_daily()
 
@@ -2063,6 +2131,68 @@ func _sow(seed_id: int, animate := true) -> void:
 	spin = Vector2.ZERO
 	trans_t = 0.0
 	fx.play_sow(planet.surface_point(d), d, "%s\nholnap itt kel ki" % Genes.latin_name(t.dna))
+
+
+## Teszt (--shot ...,state,óra,MÓD): megosztás (M10). share: a 0. fa leszállva, „Megosztom” → a lap a keretezett
+## képpel; shareseed: egy gyűjtött mag a táskából; shareherb: a herbárium lapjáról; sharedaily: a mai tábla
+## megoldva, Wordle-szerű szöveg; shareplanet: a bolygó kívülről (link ?bolygo=…); gift / giftNN: a saját 1. fa
+## kódja barát magjaként (?mag=…), „Kaptál egy magot” a pillanat NN%-ánál; guest: a saját bolygó linkje vendégként
+## megnyitva; guestfocus: ott leszállva a 0. fára („Magot kérek”); guestask: magot kér (a pillanat vége);
+## codeentry: a kód beírása (natív mező); codebad: elírt kód → üzenet a táskában.
+func _shot_share(mode: String) -> void:
+	var p := game.active_planet()
+	if mode == "share":
+		_focus(0)
+	elif mode == "shareseed":
+		var sd: Array = game.debug_seeds(1)
+		open_bag(int(sd[0].id) if not sd.is_empty() else -1)
+		bag.modulate.a = 1.0
+	elif mode == "shareherb":
+		_shot_stars("herb")
+	elif mode == "sharedaily":
+		open_daily_day(GameState.today())
+		_on_board_done(board.puzzle.target, false)
+		bag.modulate.a = 1.0
+	elif mode.begins_with("gift"):
+		var spec := mode.trim_prefix("gift")
+		share.gift_freeze = (float(spec) if spec != "" else 100.0) / 100.0 * Share.G_LEN
+		var t: Dictionary = p.trees[mini(1, (p.trees as Array).size() - 1)]
+		share.receive_code(ShareCode.for_tree(t), true)
+	elif mode.begins_with("guest"):
+		var link := ShareCode.encode_planet(p, game.hatched(p), GameState.today())
+		print("SHARE bolygó-link %d jel: %s" % [link.length(), ShareCode.planet_url(link)])
+		var g := ShareCode.decode_planet(link, GameState.today())
+		show_guest_planet(g)
+	elif mode == "codeentry":
+		share.ask_code()
+		share._e_line.text = "k5j8 y9uq 4"
+		share._entry_ok()
+	elif mode == "codebad":
+		share.receive_code("K5J8-Y9UQ-438", false)
+		bag.modulate.a = 1.0
+
+
+func _shot_share_late(mode: String) -> void:
+	if shot_frames == 4:
+		match mode:
+			"share":
+				share.share_focused()
+			"shareseed":
+				var bs: Array = game.data.bag
+				share.share_seed(int(bs[bs.size() - 1].id))
+			"shareherb":
+				share.share_star(herb.star_id)
+			"sharedaily":
+				share.share_daily(GameState.today())
+			"shareplanet":
+				share.share_planet()
+			"guestfocus", "guestask":
+				_focus(0)
+	if shot_frames == 10 and mode == "guestask":
+		share.gift_freeze = Share.G_LEN
+		share.ask_seed()
+	if shot_frames == 30 and mode.begins_with("share") and share._payload.has("url"):
+		print("SHARE ", str(share._payload.title), " | ", str(share._payload.text).replace("\n", " / "), " | ", str(share._payload.url))
 
 
 ## Teszt (--shot ...,state,óra,MÓD): gondozás. thirsty: 3 nappal később (öntözés nélkül) a 0. fa lekonyulva;

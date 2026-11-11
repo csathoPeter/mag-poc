@@ -14,10 +14,14 @@ signal closed
 signal cross(a_id: int, b_id: int)
 ## A választásra váró csírák megnyitása.
 signal sprouts
+## Megosztás (M10): egy mag (kép + mag-kód), a kész napi tábla (szöveg + rács), és a barát kódjának beírása.
+signal share(seed_id: int)
+signal share_daily(day: int)
+signal enter_code
 
-const ORIGIN_NAMES := {"napi": "A nap magja", "gyujtes": "Gyűjtött mag", "keresztezes": "Keresztezett mag", "csillag": "Csillagról hozott mag"}
+const ORIGIN_NAMES := {"napi": "A nap magja", "gyujtes": "Gyűjtött mag", "keresztezes": "Keresztezett mag", "csillag": "Csillagról hozott mag", "barat": "Barát magja"}
 ## A táska szakaszai ebben a sorrendben (ha egynél több fajta mag van, fejléccel elválasztva).
-const SECTIONS := [["napi", "A nap magjai"], ["gyujtes", "Gyűjtött magok – a virágzó fáidról"], ["keresztezes", "Keresztezett magok"], ["csillag", "Csillagról hozott magok"]]
+const SECTIONS := [["napi", "A nap magjai"], ["gyujtes", "Gyűjtött magok – a virágzó fáidról"], ["keresztezes", "Keresztezett magok"], ["csillag", "Csillagról hozott magok"], ["barat", "Barátoktól kapott magok"]]
 ## A gyűjtött mag színe a táskában (kerti zöld), hogy jól elváljon a nap magjától (menta) és a megfejtetlentől (arany).
 const C_GATHERED := Color(.80, .95, .52)
 ## A keresztezett mag színe (levendula, mint a mutáció jele a táblán).
@@ -62,7 +66,10 @@ func _ready() -> void:
 	_list.mouse_filter = Control.MOUSE_FILTER_PASS
 	_scroll.add_child(_list)
 	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
 	col.add_child(row)
+	# barát magja kóddal (M10): weben a böngésző kérdezi meg (prompt), natívan saját mező
+	BoardView.make_button(row, "Kód beírása", func() -> void: enter_code.emit(), Share.C_FRIEND)
 	BoardView.make_button(row, "Bezár", func() -> void:
 		visible = false
 		pick_a = -1
@@ -96,6 +103,13 @@ func open(game: GameState, highlight := -1, msg := "", fade := true) -> void:
 			_card(w, {"sprouts": pend.sprouts}, "Három csíra vár", "%s × %s\nVálassz közülük: egy mag lesz, kettő csillag." % [names[0], names[1]],
 				[["Választok", func() -> void: sprouts.emit(), BoardView.C_FREE]], highlight == -2, BoardView.C_FREE)
 			count += 1
+		if not picking and game.daily_done(today):
+			# a mai tábla kész: Wordle-szerűen megosztható (dátum, fajnév, spoiler nélküli rács, a választásod)
+			var dd := game.daily_dna(today)
+			if not dd.is_empty():
+				_card(w, {"dna": dd, "origin": "napi"}, "A mai tábla kész", "%s · %s\nOszd meg a rácsodat (a megoldás nem látszik)." % [GameState.day_label(today), Genes.latin_name(dd)],
+					[["Megosztom", func() -> void: share_daily.emit(today), BoardView.C_FREE]], false, BoardView.C_FREE)
+				count += 1
 		if not picking:
 			for day in game.daily_open_days():
 				var when := "ma" if day == today else "tegnap" if day == today - 1 else "%d napja" % (today - day)
@@ -141,7 +155,8 @@ func _seed_card(w: float, sd: Dictionary, highlight: int, picking: bool, can_cro
 	var dna: Array = sd.dna
 	var sid := int(sd.id)
 	var origin := str(sd.origin)
-	var accent: Color = C_GATHERED if origin == "gyujtes" else C_CROSSED if origin == "keresztezes" else Herbarium.C_STAR if origin == "csillag" else BoardView.C_AT
+	var accent: Color = C_GATHERED if origin == "gyujtes" else C_CROSSED if origin == "keresztezes" else Herbarium.C_STAR if origin == "csillag" \
+		else Share.C_FRIEND if origin == "barat" else BoardView.C_AT
 	var title := GameState.seed_name(sd)
 	var body := ""
 	if origin == "gyujtes":
@@ -152,6 +167,11 @@ func _seed_card(w: float, sd: Dictionary, highlight: int, picking: bool, can_cro
 		var so := str(sd.get("star_origin", ""))
 		var was := "el nem választott csíra volt" if so == "csira" else ("teszt-csillag volt" if so == "teszt" or so == "" else "elengedett fa volt")
 		body = "%s\nCsillagról hozott mag (%s) · %s" % [Genes.traits_text(dna), was, GameState.day_label(int(sd.day))]
+	elif origin == "barat":
+		var from := str(sd.get("from", ""))
+		var sday := int(sd.get("share_day", -1))
+		var src := ("%s napi magja" % GameState.day_label(sday)) if sday >= 0 else (from if from != "" else "Barát magja")
+		body = "%s\n%s · kód %s · %s" % [Genes.traits_text(dna), src, str(sd.get("share", "")), GameState.day_label(int(sd.day))]
 	else:
 		body = "%s\n%s · %s" % [Genes.traits_text(dna), ORIGIN_NAMES.get(origin, "Mag"), GameState.day_label(int(sd.day))]
 	var actions: Array = []
@@ -166,6 +186,7 @@ func _seed_card(w: float, sd: Dictionary, highlight: int, picking: bool, can_cro
 		actions.append(["Elvetem", func() -> void: sow.emit(sid), accent])
 		if can_cross and (origin == "gyujtes" or origin == "keresztezes"):
 			actions.append(["Keresztezem", func() -> void: _pick(sid), BoardView.C_FREE])
+		actions.append(["Megosztom", func() -> void: share.emit(sid), BoardView.C_DIM])
 	_card(w, sd, title, body, actions, hl, accent)
 
 

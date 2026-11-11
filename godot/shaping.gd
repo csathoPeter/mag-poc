@@ -137,7 +137,8 @@ func _on_cut_btn() -> void:
 
 ## Bekapcsolható-e most (leszállva egy fánál, nyugalomban, semmi más nincs nyitva).
 func can_start() -> bool:
-	return not on and _calm() and host.view == "surface" and host.focus >= 0 and not host.macro
+	# vendégként (M10, a barát bolygóján) nem alakítunk: az nem a te fád
+	return not on and _calm() and host.view == "surface" and host.focus >= 0 and not host.macro and host.guest.is_empty()
 
 
 func _calm() -> bool:

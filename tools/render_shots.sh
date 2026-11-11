@@ -27,6 +27,9 @@
 #   Alakítás (M8, planet vagy state, a 0. fán): shape | shapehi | shapecut / shapecutNN | shapeundo | shapetieD (D napja
 #     kötözve) | shapedayN (N napváltás) | shapedrag | shapeplay (valódi érintések) | shapesave (--state-tel mentve);
 #     hetedik elemként lodK (a fa a K. részletességi szinten), pl. planet,bolygo01,5,12,shapetie3,lod2
+#   Megosztás (M10, state): share | shareseed | shareherb | sharedaily | shareplanet (a lap a keretezett képpel; a kép a
+#     kimenet mellé is: *_kep.jpg) | gift / giftNN („Kaptál egy magot”) | guest / guestfocus / guestask (a saját bolygó
+#     linkje vendégként, „Magot kérek”) | codeentry | codebad; URL-paraméterek: MAG_ARGS="--mag=KOD" vagy "--bolygo=…"
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 G="$HOME/godot-bin/godot"
@@ -34,7 +37,7 @@ export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
 out=$1; shift; i=0; files=()
 for s in "$@"; do i=$((i+1)); f=/tmp/shot_$i.png
   (cd "$ROOT/godot" && timeout 280 xvfb-run -a -s "-screen 0 390x780x24" "$G" --path . --rendering-method mobile \
-     --rendering-driver vulkan --resolution 390x780 -- ${MAG_ARGS:-} --shot="$f,$s" 2>&1 | grep -E "STATS|STATE|SHAPE|TOUCH|CLICK|^  [^ ]|SCRIPT ERROR|SHADER ERROR|Parse Error" || true)
+     --rendering-driver vulkan --resolution 390x780 -- ${MAG_ARGS:-} --shot="$f,$s" 2>&1 | grep -E "STATS|STATE|SHAPE|SHARE|TOUCH|CLICK|^  [^ ]|SCRIPT ERROR|SHADER ERROR|Parse Error" || true)
   files+=("$f"); done
 python3 - "$out" "${files[@]}" <<'P'
 import sys

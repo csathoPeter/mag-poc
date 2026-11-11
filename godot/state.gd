@@ -23,7 +23,9 @@ extends RefCounted
 
 ## 4 (M6): bolygón "next_star", "peak"; csillagon "seq"; csillagról hozott magon "star_origin", "star_day".
 ## 5 (M7): bolygón "born_seen" (a születését látta-e már a játékos; a régi mentésben igaz).
-const VERSION := 5
+## 6 (M10): magon "share" (barát magjánál a kapott mag-kód), "share_day" (ha a barát a nap magját küldte: annak napja),
+##    "from" (honnan kaptad, pl. a barát bolygójának neve); flags.got: a már megkapott mag-kódok (kétszer nem jár).
+const VERSION := 6
 const SAVE_PATH := "user://mag_mentes.json"
 const BACKUP_SUFFIX := ".bak"
 ## Ennyi fa fér egy bolygóra (teljesítménykeret); utána új bolygó születik.
@@ -73,8 +75,10 @@ static func day_label(day: int) -> String:
 ##   "kereszt" = két teszt-mag a kert fáiról és a keresztezett tábla nyitva (`?kereszt`; `?kereszt=kesz`: a tábla
 ##   rögtön kész, a három csíra látszik); "csillag" = a csillagkép-nézet (herbárium) nyitva, csillag nélkül teszt-csillagokkal
 ##   (`?csillag`).
+##   mag: barát mag-kódja (`?mag=KOD`, M10: a mag a táskába kerül, „Kaptál egy magot”); bolygo: barát bolygójának linkje
+##   (`?bolygo=…`, M10: vendégként nézhető, a mentés nem változik).
 static func launch_options() -> Dictionary:
-	var o := {"state": "", "player": "", "wipe": false, "day": null, "open": ""}
+	var o := {"state": "", "player": "", "wipe": false, "day": null, "open": "", "mag": "", "bolygo": ""}
 	var pairs: Array = []
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--"):
@@ -104,6 +108,10 @@ static func launch_options() -> Dictionary:
 			"alakit", "alakitas":
 				# leszállás az első fára, alakító mód bekapcsolva (M8, teszteléshez)
 				o.open = "alakit"
+			"mag":
+				o.mag = v.uri_decode()
+			"bolygo":
+				o.bolygo = v
 			"nap":
 				# a „+” az URL-ben szóközként is megérkezhet
 				o.day = v.replace("%2B", "").replace("+", "").strip_edges().to_int()
@@ -542,7 +550,7 @@ func find_tree(id: int) -> Dictionary:
 
 # ---------------------------------------------------------------- Magos táska
 
-## Új mag a táskába. origin: "napi" (a nap magja), "gyujtes" (virágzó fáról), "keresztezes", "csillag".
+## Új mag a táskába. origin: "napi" (a nap magja), "gyujtes" (virágzó fáról), "keresztezes", "csillag", "barat" (M10).
 func new_seed(dna: Array, origin: String, extra := {}) -> Dictionary:
 	var s := _fill_seed({"id": _take_id(), "dna": dna, "origin": origin, "day": today()})
 	s.merge(extra, true)
@@ -568,6 +576,10 @@ func _fill_seed(s: Dictionary) -> Dictionary:
 		# csillagról hozott magnál (M6): a csillag eredete (pl. „csira”, „napi”) és az elengedés napja; máskor üres / -1
 		"star_origin": str(s.get("star_origin", "")),
 		"star_day": int(s.get("star_day", -1)),
+		# barát magja (M10): a kapott mag-kód (szép alakban), a nap magjánál annak napja, és honnan jött (pl. bolygónév)
+		"share": str(s.get("share", "")),
+		"share_day": int(s.get("share_day", -1)),
+		"from": str(s.get("from", "")),
 	}
 
 
@@ -602,6 +614,24 @@ func sow_seed(seed: Dictionary) -> Dictionary:
 	remove_seed(int(seed.id))
 	ensure_next_planet()
 	return t
+
+
+# ---------------------------------------------------------------- Barát magja (M10; a kód: share_code.gd)
+
+## Megkaptad-e már ezt a mag-kódot (a táskában van, vagy már elvetetted). Ugyanaz a kód kétszer nem jár.
+func has_gift(code: String) -> bool:
+	return (data.flags.get("got", []) as Array).has(code)
+
+
+## Barát magja a táskába (eredet „barat”): DNS, rejtett szín, növénykód (a kódból kapottnál „MAG-…”, a barát
+## bolygójáról kértnél a fa saját kódja), a mag-kód. Üres, ha ezt a kódot már megkaptad.
+func receive_seed(code: String, dna: Array, hidden: int, tree_code: String, share_day := -1, from := "") -> Dictionary:
+	if code == "" or has_gift(code):
+		return {}
+	var got: Array = data.flags.get("got", [])
+	got.append(code)
+	data.flags.got = got
+	return new_seed(dna.duplicate(), "barat", {"code": tree_code, "hidden": hidden, "share": code, "share_day": share_day, "from": from})
 
 
 # ---------------------------------------------------------------- Gondozás (a szabályok: care.gd)
@@ -792,6 +822,12 @@ func set_daily_progress(day: int, grid: Array) -> void:
 		for v in r:
 			flat.append(int(v))
 	data.daily[str(day)] = {"grid": flat}
+
+
+## A kész nap választott DNS-e (a megosztáshoz, M10), vagy üres tömb.
+func daily_dna(day: int) -> Array:
+	var d := _daily(day)
+	return _dna(d.dna) if bool(d.get("done", false)) and d.get("dna") is Array else []
 
 
 ## Kész a nap feladványa: a mag a táskába kerül (eredet: „napi”, a feladvány napjával), és a nap késznek számít.
