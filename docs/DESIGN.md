@@ -194,7 +194,7 @@ Ihletők: az Avatar filmekből az élő, magától világító, érintésre felr
 - **Puha fényfokok, színes árnyék:** körbefutó fény széles átmenettel; ahol kevés a fény, ott a légkörből jövő lilás-kékes szín tölt (sötétítés helyett) – így a bolygó-DNS az árnyékot is színezi.
 - **Peremfény a légkör színében** a körvonal helyett.
 - **Kevesebb apró minta:** a kéreg-, ér- és sziromcsíkok csak ott, ahol a képen elég nagyok (fwidth), nincs koromfekete kéreg.
-- Második lépés (az iPhone-mérés után): kerek, rajzolt szirom- és fűszálvégek (a levél M11-es SDF-körvonalának mintájára).
+- **Kerek formák (2. lépés, 2026. 11. 11.):** a részletes szinten a szirom körvonalát a shader rajzolja (lekerekített vég és tő, `plant_gen.petal_half`, a mesh befoglaló burok, ugyanannyi háromszög – a levél M11-es SDF-körvonalának mintájára); a fűszál vége tompább; a páfrányos bolygón a szál levélkékre tagolt (a fű `#define FROND` változata – külön shader, mert a `discard` a sima fűnél is lassítaná a rajzolást).
 
 ### Érzések → eszközök
 
