@@ -206,6 +206,7 @@ Ihletők: az Avatar filmekből az élő, magától világító, érintésre felr
 - **Peremfény a légkör színében** a körvonal helyett.
 - **Kevesebb apró minta:** a kéreg-, ér- és sziromcsíkok csak ott, ahol a képen elég nagyok (fwidth), nincs koromfekete kéreg.
 - **Kerek formák (2. lépés, 2026. 11. 11.):** a részletes szinten a szirom körvonalát a shader rajzolja (lekerekített vég és tő, `plant_gen.petal_half`, a mesh befoglaló burok, ugyanannyi háromszög – a levél M11-es SDF-körvonalának mintájára); a fűszál vége tompább; a páfrányos bolygón a szál levélkékre tagolt (a fű `#define FROND` változata – külön shader, mert a `discard` a sima fűnél is lassítaná a rajzolást).
+- **Kézműves levél (próba, 2026. 11. 12., Péter kérése: „az art nagyon gépies”):** a gépies hatást a tökéletes ismétlődés adja (egy levél-mesh sokszorosítva, tükörszimmetria, szabályos karéjok és fogak, sima színátmenet). Ezért minden levél kicsit más (aszimmetria, hajló csúcs, szabálytalan karéj, hullámzó szél, kanyargó ér – a levél saját számából, determinisztikusan), és látszik az anyaga: **vágott papír** (egyszínű sávok, világos vágott perem, hajtás, éjjel lampion) vagy **akvarell** (foltos festés, sötétebb festékperem). Csak a shaderben, háromszög nem jön hozzá. A két anyag közül Péter választ a telefonon; utána jöhet az ágakra, szirmokra, és távolra a festett levélcsomók.
 
 ### Érzések → eszközök
 

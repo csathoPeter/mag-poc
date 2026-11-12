@@ -127,6 +127,8 @@ func _build() -> void:
 		_sync())
 	_labels.append([tod, func() -> String: return "napszak: %s" % (host.tod_btn as Button).text])
 	_mirror(g, func() -> String: return "évszak váltása", "season")
+	var cr := _btn(g, "", func() -> void: host.dbg_craft())
+	_labels.append([cr, func() -> String: return "levél: %s" % host.CRAFT_NAMES[host.craft_i]])
 
 	_section("Mérés (a végén táblázat + Másolás)")
 	g = _grid()

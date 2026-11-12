@@ -146,6 +146,11 @@ var res_trial_bad := 0.0
 ## Puha stílus be/ki (a fejlesztői „puha”/„régi” gomb, ?stilus=regi, a mérés „soft” kulcsa); _soft_globals() alkalmazza.
 var soft_on := true
 var _soft_last: Array = []
+## Kézműves levél (shaders/craft.gdshaderinc): 0 gépies (a korábbi kép), 1 vágott papír, 2 akvarell. ?level=gep|papir|akvarell,
+## a fejlesztői fiók „levél: …” gombja körbe vált; craft_user a játékos választása (a mérés ehhez tér vissza).
+const CRAFT_NAMES := ["gépies", "papír", "akvarell"]
+var craft_i := 1
+var craft_user := 1
 
 # Automatikus mérés: végigpróbálja a beállításokat kint és leszállva, a végén táblázat + küldés GitHubra
 const BENCH_SETTLE := 1.2
@@ -179,6 +184,8 @@ const BENCH_STEPS := [
 	["kint", "ég sima", {"sky": 1}],
 	["kint", "AA ki", {"aa": false}],
 	["kint", "régi stílus", {"soft": false}],
+	["kint", "levél: gépies", {"craft": 0}],
+	["kint", "levél: akvarell", {"craft": 2}],
 	["kint", "tilt ki", {"tilt": false}],
 	["kint", "levél-körvonal ki", {"leafcut": false}],
 	["kint", "felület, csillagok ki", {"hud": false}],
@@ -194,6 +201,8 @@ const BENCH_STEPS := [
 	["lent", "tilt ki", {"tilt": false}],
 	["lent", "AA ki", {"aa": false}],
 	["lent", "régi stílus", {"soft": false}],
+	["lent", "levél: gépies", {"craft": 0}],
+	["lent", "levél: akvarell", {"craft": 2}],
 	["lent", "levél-körvonal ki", {"leafcut": false}],
 	["lent", "kerek szirom ki", {"petal": false}],
 	["lent", "felület, csillagok ki", {"hud": false}],
@@ -367,6 +376,9 @@ func _ready() -> void:
 	# évszak (M11): ?evszak=… rögzíti; a próba-képek (--shot=…,planet / leaves, --bench) alapból nyár, összehasonlíthatók
 	Seasons.forced = Seasons.parse(opts.evszak)
 	soft_on = opts.stilus != "regi"
+	craft_user = {"gep": 0, "gepies": 0, "regi": 0, "papir": 1, "akvarell": 2, "festett": 2}.get(opts.level, 1)
+	craft_i = craft_user
+	RenderingServer.global_shader_parameter_set("craft", float(craft_i))
 	seasons.neutral = bench_cli or (shot_args.size() > 1 and shot_args[1] != "state")
 	add_child(seasons)
 	# képernyőképnél, parancssori mérésnél és a végigjátszásnál (--playtest) nincs hang (nem számol, nem szól)
@@ -2120,6 +2132,14 @@ func dbg_set(k: String, on: bool) -> void:
 	_sync_dbg()
 
 
+## A levél anyaga körbe (gépies → papír → akvarell); a fejlesztői fiók „levél: …” gombja.
+func dbg_craft() -> void:
+	craft_user = (craft_user + 1) % CRAFT_NAMES.size()
+	craft_i = craft_user
+	_soft_globals()
+	traits_l.text = "Levél: " + CRAFT_NAMES[craft_i]
+
+
 ## Mérés a fiókból: mode = "", "&beall", "&tartos", "&gyors".
 func dbg_bench(mode: String) -> void:
 	bench_mode = mode
@@ -2211,13 +2231,14 @@ func _soft_globals() -> void:
 	var tint := Vector3(c.r, c.g, c.b) * k
 	var rim := atmo.lerp(Color(.55, .7, 1.0), maxf(night, 0.0) * .7)
 	var rim_v := Vector3(rim.r, rim.g, rim.b) * lerpf(.55, .3, maxf(night, 0.0))
-	var key := [tint, rim_v, soft_on]
+	var key := [tint, rim_v, soft_on, craft_i]
 	if key == _soft_last:
 		return
 	_soft_last = key
 	RenderingServer.global_shader_parameter_set("shade_tint", tint)
 	RenderingServer.global_shader_parameter_set("rim_col", rim_v)
 	RenderingServer.global_shader_parameter_set("soft_k", 1.0 if soft_on else 0.0)
+	RenderingServer.global_shader_parameter_set("craft", float(craft_i))
 	env.adjustment_contrast = .97 if soft_on else 1.06
 	sun.shadow_opacity = .6 if soft_on else .78
 
@@ -3419,6 +3440,7 @@ func _bench_cfg(cfg: Dictionary) -> void:
 	grass_q = planet.grass_mult
 	sun.shadow_enabled = cfg.get("shadow", true)
 	soft_on = cfg.get("soft", true)
+	craft_i = cfg.get("craft", craft_user)
 	env.glow_enabled = cfg.get("glow", true)
 	sky_i = cfg.get("sky", 0)
 	space_mat.set_shader_parameter("mode", sky_i)
