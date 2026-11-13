@@ -11,11 +11,14 @@ uniform vec3 atmo : source_color = vec3(0.8, 0.7, 0.9);
 uniform float night = 0.0;
 // a domborzat megjelenése (M7): 0 = csupasz, sima gömb; az első fánál 1-re nő
 uniform float shape = 1.0;
+// a felszíntakaró (planet.gd COVER sorrendje): 0 fű, 1 moha, 2 páfrány, 3 kavics – a festett mintához
+uniform int cover_kind = 0;
 varying float h_v;
 varying float band_v;
 varying float patch_v;
 varying float slope_v;
 varying vec3 pos_v;
+varying vec3 rad_v;
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -40,6 +43,7 @@ void vertex() {
 	band_v = COLOR.b;
 	slope_v = dot(normalize(NORMAL), normalize(VERTEX));
 	pos_v = VERTEX;
+	rad_v = normalize((MODELVIEW_MATRIX * vec4(unit, 0.0)).xyz);
 }
 
 void fragment() {
@@ -61,19 +65,25 @@ void fragment() {
 	vec3 dn = normalize(pos_v);
 	float brush = pf_noise(pf_warp(dn, 26.0, 3.5) + 17.0) * 0.7 + pf_noise(pf_warp(dn, 61.0, 4.0) + 3.0) * 0.3;
 	float bfade = clamp(1.0 - length(fwidth(dn * 26.0)) * 1.2, 0.0, 1.0);
-	vec3 painted = paint_tone(grass_l, paint_band(band_v)) * (1.0 + (brush - 0.5) * 0.2 * bfade);
+	vec3 painted = paint_relief(paint_tone(grass_l, paint_band(band_v)) * (1.0 + (brush - 0.5) * 0.2 * bfade), h_v, atmo_l);
+	painted = paint_cover(painted, dn, cover_kind, h_v);
 	meadow = mix(meadow, painted, paint_k * soft_k);
 	// évszak (M11): tavasszal üdébb, ősszel melegebb (okkeres) a felszíntakaró; télen deres, fehéres
 	float ml = season_luma(meadow);
 	meadow = mix(meadow, meadow * vec3(1.02, 1.18, 0.92), season.x * 0.6);
 	meadow = mix(meadow, vec3(ml) * vec3(1.45, 1.0, 0.42), season.z * 0.42);
 	// festett fűnél a kőzet színe a fűhöz simul (egy festményen egy paletta), így a sziklák nem ütnek el foltként
-	vec3 rock_c = mix(rock_l * (0.8 + 0.3 * h_v), mix(rock_l, grass_l * 0.8, 0.35), paint_k * soft_k);
+	// és rétegzett: a magassággal futó, kicsit hullámzó sávok (mint a festett sziklafal rétegei)
+	float strata = 0.86 + 0.24 * smoothstep(-0.45, 0.45, sin(h_v * 38.0 + pf_noise(dn * 6.0) * 4.0));
+	vec3 rock_c = mix(rock_l * (0.8 + 0.3 * h_v), mix(rock_l, grass_l * 0.8, 0.35) * strata, paint_k * soft_k);
 	vec3 c = mix(rock_c, meadow, g);
 	float frost = season.w * (0.45 + 0.35 * fine) * mix(0.55, 1.0, smoothstep(0.6, 0.9, slope_v));
 	c = mix(c, vec3(0.8, 0.84, 0.9), frost * 0.55);
 	// a fű alatti talaj egyszínű (a világos foltok kopasznak hatottak a szálak között); a kőzeten marad a foltosság
 	c *= mix(0.9 + 0.18 * patch_v, 1.0, g);
+	// festett formák: a fény a domborzat normálja és a gömb normálja között (lekerekített dombok, a rács háromszögei nem
+	// látszanak; a fűszál fénye a gömb normáljából jön, így a kettő közelebb kerül)
+	NORMAL = normalize(mix(NORMAL, rad_v, 0.4 * paint_k * soft_k));
 	float fr = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
 	// a légkör rózsaszínes pereme csak a kőzeten: leszállva lapos szögből a fű alatti talajt is beszínezte, a rések kivilágítottak
 	vec3 alb = mix(c, atmo_l, fr * 0.45 * (1.0 - g));

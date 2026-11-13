@@ -72,6 +72,11 @@ var target := {}
 var cur := {}
 var night := 0.0
 var amp := .06
+## a felszíntakaró sorszáma a COVER-ben (0 fű, 1 moha, 2 páfrány, 3 kavics): a festett minta (planet.gdshader cover_kind)
+var cover_i := 0
+## Lekerekített csúcsok (art direction 3. kör): a zaj felső része (ROUND_T fölött) puhán összenyomva, a csúcson vízszintes
+## érintővel – a tüskés, sziklás (ridged) domborzat éle így nem gyűrött, háromszöges, hanem faragott, kerek.
+const ROUND_T := .2
 ## A bolygó legalább ennyi növényhez méreteződik (M6: az eddigi legtöbb kikelt fa), így egy fa elengedésekor nem
 ## zsugorodik össze, és a fák közti távolság sem fogy el. A próba-bolygón 0.
 var min_plants := 0
@@ -176,7 +181,8 @@ func setup(planet_code: String, plant_dnas: Array, founding: Array = [], is_bare
 	founders = base.duplicate()
 	var founder: Array = base[0]
 	terrain = TERRAIN[Genes.TERMET[founder[3]][0]]
-	cover = COVER[COVER_OF_LEAF[founder[2]]]
+	cover_i = COVER_OF_LEAF[founder[2]]
+	cover = COVER[cover_i]
 	moon_count = MOONS[founder[1]]
 	ringed = RINGED[founder[1]]
 	noise.seed = hash(code + "domb")
@@ -320,6 +326,7 @@ func _apply() -> void:
 	surf_mat.set_shader_parameter("rock", cur.rock)
 	surf_mat.set_shader_parameter("grass", cur.grass)
 	surf_mat.set_shader_parameter("atmo", cur.atmo)
+	surf_mat.set_shader_parameter("cover_kind", cover_i)
 	surf_mat.set_shader_parameter("night", night)
 	atmo_mat.set_shader_parameter("atmo", cur.atmo)
 	atmo_mat.set_shader_parameter("strength", lerpf(1.0, .8, night))
@@ -336,6 +343,9 @@ func _apply() -> void:
 		gm.set_shader_parameter("base_lin", _lin(Color(gc.r * .45, gc.g * .5, gc.b * .45)))
 		gm.set_shader_parameter("tip_lin", _lin(gc.lerp(Color(1, .98, .9), .22)))
 		gm.set_shader_parameter("field_lin", _lin(gc))
+		gm.set_shader_parameter("atmo_lin", _lin(cur.atmo))
+		gm.set_shader_parameter("amp_n", amp)
+		gm.set_shader_parameter("cover_kind", cover_i)
 		gm.set_shader_parameter("sss_lin", _lin(gc.lerp(Color(1, .9, .7), .6)))
 		gm.set_shader_parameter("glow_lin", _lin(Genes.hsl(cur.atmo_h + .45, .8, .62)))
 		gm.set_shader_parameter("night", night)
@@ -392,7 +402,10 @@ func _process(delta: float) -> void:
 
 ## Magasság egységnyi bolygón (a sugár arányában). A domborzat magassága az alapításkor dől el.
 func _height_fixed(dir: Vector3) -> float:
-	return noise.get_noise_3dv(dir) * amp
+	var x := minf(noise.get_noise_3dv(dir), 1.0)
+	if x > ROUND_T:
+		x -= (x - ROUND_T) * (x - ROUND_T) / (2.0 * (1.0 - ROUND_T))
+	return x * amp
 
 
 func surface_point(dir: Vector3) -> Vector3:

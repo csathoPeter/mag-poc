@@ -24,6 +24,11 @@ uniform vec3 sss_lin = vec3(1.0, 0.71, 0.32);
 uniform vec3 glow_lin = vec3(0.21, 1.0, 0.6);
 // a fű alapszíne lineárisan (a talaj grass uniformja; a festett mező ebből számol)
 uniform vec3 field_lin = vec3(0.2, 0.4, 0.15);
+// a második színhez (paint_relief): a légkör színe lineárisan, a domborzat amplitúdója (a magasság normálásához)
+uniform vec3 atmo_lin = vec3(0.6, 0.5, 0.8);
+uniform float amp_n = 0.06;
+// a felszíntakaró (0 fű, 1 moha, 2 páfrány, 3 kavics): festett fűnél a szálak hossza ettől függ
+uniform int cover_kind = 0;
 uniform float night = 0.0;
 uniform float wind = 1.35;
 // A szél a bolygó körül kering e tengely körül.
@@ -66,6 +71,7 @@ varying float gust_v;
 varying vec3 side_v;
 varying vec3 up_v;
 varying float band_v;
+varying float hv_v;
 
 mat3 rot_y(float a) {
 	float c = cos(a);
@@ -196,6 +202,7 @@ void vertex() {
 	vec3 dir = normalize(n + u * ta + v * tb);
 	up_v = normalize(mat3(VIEW_MATRIX) * dir);
 	band_v = 0.5;
+	hv_v = 0.5;
 	vec3 root = vec3(0.0);
 	float dcam = 0.0;
 	float cover = 1.0;
@@ -206,6 +213,7 @@ void vertex() {
 		root = planet_pos + dir * planet_r * (1.0 + hb.x - 0.003);
 		band_v = hb.y;
 		cover = hb.z;
+		hv_v = clamp(hb.x / amp_n * 0.5 + 0.5, 0.0, 1.0);
 		dcam = distance(root, cam_pos);
 		// a kamerához közeli szálakat a részletes csomópont rajzolja, a többit az egyszerű (szálanként, pontos határral)
 		mine = hi_layer == (dcam < hi_dist);
@@ -225,7 +233,10 @@ void vertex() {
 		float hgt = blade_h * mix(0.85, 1.2, clump) * mix(0.75, 1.2, rnd(key, 4u)) * grow;
 		// festett fűnél rövidebb szálak: szőnyeg, nem bunda; a kőzeten nincs szál, és távolabb puhán eltűnnek
 		float pkv = paint_k * soft_k;
-		hgt *= mix(1.0, 0.62 * smoothstep(0.25, 0.75, cover) * paint_vis, pkv);
+		// a takaró szerint: a fű rövidebb (szőnyeg), a moha és a páfrány marad, a kavicson csak a mélyedésekben nő
+		// fűcsomó (a kavics maga a talaj festett mintája)
+		float kind_h = cover_kind == 0 ? 0.62 : (cover_kind == 3 ? 3.5 * (1.0 - smoothstep(0.3, 0.45, hv_v)) : (cover_kind == 1 ? 1.0 : 0.95));
+		hgt *= mix(1.0, kind_h * smoothstep(0.25, 0.75, cover) * paint_vis, pkv);
 		vec3 ref = abs(dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
 		vec3 e1 = normalize(cross(ref, dir));
 		vec3 e2 = cross(dir, e1);
@@ -319,7 +330,7 @@ void fragment() {
 	float far = exp(-length(VERTEX) * 0.035);
 	c = mix(mix(base_l, tip_l, 0.55) * 0.75, c, far);
 	// festett fű: a tő a talaj színe, a csúcs felé világosodik (ecsetvonás), a széllökés halkan világosít
-	vec3 root_c = paint_tone(field_lin, paint_band(band_v));
+	vec3 root_c = paint_relief(paint_tone(field_lin, paint_band(band_v)), hv_v, atmo_lin);
 	vec3 pc = root_c * mix(1.0, 1.22, h * h) * (0.96 + 0.08 * rnd_v) * (1.0 + 0.25 * gust_v * h * h);
 	c = mix(c, pc, pk);
 	// évszak (mint a talajnál, planet.gdshader): tavasszal üdébb, ősszel okkeres, télen a csúcsa deres
