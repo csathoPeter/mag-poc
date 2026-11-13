@@ -12,29 +12,32 @@ const DIR := "res://props/quaternius/"
 const SHADER := preload("res://shaders/prop.gdshader")
 
 ## takarónként (planet.gd COVER sorrendje: 0 fű, 1 moha, 2 páfrány, 3 kavics):
-## [modell, darab (egy ~7 sugarú bolygón), méret-szorzó min, max, hely („völgy”, „fű”, „bárhol”), csoportosan (0–1)]
+## [modell, darab (egy ~7 sugarú bolygón), méret-szorzó min, max, hely („völgy”, „fű”, „bárhol”), csoportosan (0–1),
+##  magasság-szorzó (a virág és a lóhere lelapítva: talajközeli, Péter kérése – a teljes magasságú virágok kilógtak)]
+## (a Plant_7 nincs benne: egy sötét ibolya, a talajon lyuknak hatott)
 const SETS := {
 	3: [
-		["Rock_Medium_1", 5, .1, .22, "bárhol", .3], ["Rock_Medium_2", 5, .1, .2, "bárhol", .3],
-		["Rock_Medium_3", 4, .09, .18, "bárhol", .3],
-		["Pebble_Round_1", 26, .45, 1.0, "völgy", .8], ["Pebble_Round_2", 26, .45, 1.0, "völgy", .8],
-		["Pebble_Round_3", 26, .45, 1.0, "völgy", .8], ["Pebble_Round_4", 22, .45, 1.0, "völgy", .8],
-		["Pebble_Round_5", 22, .45, 1.0, "völgy", .8],
+		["Rock_Medium_1", 5, .1, .22, "bárhol", .3, 1.0], ["Rock_Medium_2", 5, .1, .2, "bárhol", .3, 1.0],
+		["Rock_Medium_3", 4, .09, .18, "bárhol", .3, 1.0],
+		["Pebble_Round_1", 26, .45, 1.0, "völgy", .8, 1.0], ["Pebble_Round_2", 26, .45, 1.0, "völgy", .8, 1.0],
+		["Pebble_Round_3", 26, .45, 1.0, "völgy", .8, 1.0], ["Pebble_Round_4", 22, .45, 1.0, "völgy", .8, 1.0],
+		["Pebble_Round_5", 22, .45, 1.0, "völgy", .8, 1.0],
 	],
 	1: [
-		["Mushroom_Common", 36, .35, .65, "fű", .9], ["Clover_1", 30, .22, .36, "fű", .6],
-		["Clover_2", 22, .22, .36, "fű", .6], ["Flower_3_Group", 10, .2, .3, "fű", .5],
-		["Rock_Medium_2", 3, .08, .15, "bárhol", .2],
+		["Mushroom_Common", 30, .22, .38, "fű", .9, 1.0], ["Clover_1", 30, .16, .24, "fű", .6, .4],
+		["Clover_2", 34, .16, .24, "fű", .6, .4],
+		["Flower_3_Group", 8, .12, .17, "fű", .5, .35], ["Rock_Medium_2", 3, .08, .15, "bárhol", .2, 1.0],
 	],
 	2: [
-		["Fern_1", 22, .07, .11, "fű", .6], ["Plant_1", 20, .35, .55, "fű", .5], ["Plant_7", 26, .45, .75, "fű", .5],
-		["Flower_4_Group", 8, .18, .26, "fű", .5], ["Rock_Medium_1", 3, .08, .15, "bárhol", .2],
+		["Fern_1", 22, .07, .11, "fű", .6, 1.0], ["Plant_1", 34, .25, .4, "fű", .5, .8],
+		["Flower_4_Group", 6, .11, .15, "fű", .5, .35], ["Rock_Medium_1", 3, .08, .15, "bárhol", .2, 1.0],
 	],
 }
 ## a méret-szorzók közös szorzója (a fűszál ~0,25–0,4, egy fa 2–4 egység; a díszek ehhez igazodnak)
 const SIZE := 2.6
 ## mennyire húz a bolygó színe felé (anyagonként: a modell textúrájának neve szerint)
-const TINT := {"Rocks_Diffuse": .7, "PathRocks_Diffuse": .7, "Mushrooms": .15, "Leaves": .45, "Flowers": 0.0}
+## (a virág, a levél és a gomba is a táj színe felé: a saját rikító színük elütött – Péter)
+const TINT := {"Rocks_Diffuse": .7, "PathRocks_Diffuse": .7, "Mushrooms": .5, "Leaves": .65, "Flowers": .55}
 
 static var _meshes := {}
 static var _cut_shader: Shader
@@ -177,9 +180,9 @@ func _candidates(p: Planet) -> Array:
 				if cov < (.5 if place == "völgy" else .6):
 					continue
 			var up := (nrm + dir).normalized()
-			var basis := Basis(Quaternion(Vector3.UP, up)) * Basis(Vector3.UP, yaw)
 			var k := sc / p.radius
-			list.append([dir, Transform3D(basis.scaled(Vector3.ONE * k), dir * (1.0 + h) - up * (k * .05)), bright])
+			var basis := Basis(Quaternion(Vector3.UP, up)) * Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(k, k * float(e[6]), k))
+			list.append([dir, Transform3D(basis, dir * (1.0 + h) - up * (k * .05)), bright])
 		out.append({"name": name, "want": want, "list": list})
 	return out
 
