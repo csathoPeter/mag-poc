@@ -1,0 +1,632 @@
+{
+ "kavics_kint_kopar_pro": {
+  "mp": 17.0,
+  "tokenek": {
+   "promptTokenCount": 923,
+   "candidatesTokenCount": 1344,
+   "totalTokenCount": 2499,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 407
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 232,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kavics_kint_jelleg_pro": {
+  "mp": 17.6,
+  "tokenek": {
+   "promptTokenCount": 996,
+   "candidatesTokenCount": 1330,
+   "totalTokenCount": 2580,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 480
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 254,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kavics_kint_jelleg_pro_2": {
+  "mp": 18.0,
+  "tokenek": {
+   "promptTokenCount": 996,
+   "candidatesTokenCount": 1389,
+   "totalTokenCount": 2607,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 480
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 222,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kavics_legi_jelleg_pro_2": {
+  "mp": 18.1,
+  "tokenek": {
+   "promptTokenCount": 996,
+   "candidatesTokenCount": 1354,
+   "totalTokenCount": 2653,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 480
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 303,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kavics_legi_jelleg_pro": {
+  "mp": 18.5,
+  "tokenek": {
+   "promptTokenCount": 996,
+   "candidatesTokenCount": 1320,
+   "totalTokenCount": 2551,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 480
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 235,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kavics_legi_kopar_pro": {
+  "mp": 18.9,
+  "tokenek": {
+   "promptTokenCount": 923,
+   "candidatesTokenCount": 1301,
+   "totalTokenCount": 2527,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 407
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 303,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kavics_lent_jelleg_pro_2": {
+  "mp": 16.0,
+  "tokenek": {
+   "promptTokenCount": 996,
+   "candidatesTokenCount": 1356,
+   "totalTokenCount": 2600,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 480
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 248,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kavics_lent_jelleg_pro": {
+  "mp": 17.1,
+  "tokenek": {
+   "promptTokenCount": 996,
+   "candidatesTokenCount": 1341,
+   "totalTokenCount": 2633,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 480
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 296,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "moha_kint_jelleg_pro": {
+  "mp": 16.2,
+  "tokenek": {
+   "promptTokenCount": 993,
+   "candidatesTokenCount": 1324,
+   "totalTokenCount": 2587,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 477
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 270,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "moha_kint_jelleg_pro_2": {
+  "mp": 15.9,
+  "tokenek": {
+   "promptTokenCount": 993,
+   "candidatesTokenCount": 1346,
+   "totalTokenCount": 2576,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 477
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 237,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "moha_kint_kopar_pro": {
+  "mp": 15.6,
+  "tokenek": {
+   "promptTokenCount": 920,
+   "candidatesTokenCount": 1343,
+   "totalTokenCount": 2584,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 404
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 321,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "pafrany_kint_jelleg_pro_2": {
+  "mp": 15.1,
+  "tokenek": {
+   "promptTokenCount": 993,
+   "candidatesTokenCount": 1293,
+   "totalTokenCount": 2492,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 477
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 206,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "moha_lent_kopar_pro": {
+  "mp": 16.3,
+  "tokenek": {
+   "promptTokenCount": 920,
+   "candidatesTokenCount": 1285,
+   "totalTokenCount": 2429,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 404
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 224,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "moha_lent_jelleg_pro_2": {
+  "mp": 16.7,
+  "tokenek": {
+   "promptTokenCount": 993,
+   "candidatesTokenCount": 1310,
+   "totalTokenCount": 2579,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 477
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 276,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "pafrany_kint_jelleg_pro": {
+  "mp": 18.1,
+  "tokenek": {
+   "promptTokenCount": 993,
+   "candidatesTokenCount": 1343,
+   "totalTokenCount": 2584,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 477
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 248,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "moha_lent_jelleg_pro": {
+  "mp": 21.2,
+  "tokenek": {
+   "promptTokenCount": 993,
+   "candidatesTokenCount": 1307,
+   "totalTokenCount": 2643,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 477
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 343,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "pafrany_kint_kopar_pro": {
+  "mp": 14.7,
+  "tokenek": {
+   "promptTokenCount": 920,
+   "candidatesTokenCount": 1327,
+   "totalTokenCount": 2479,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 404
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 232,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "pafrany_lent_jelleg_pro": {
+  "mp": 15.7,
+  "tokenek": {
+   "promptTokenCount": 993,
+   "candidatesTokenCount": 1317,
+   "totalTokenCount": 2541,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 477
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 231,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "pafrany_lent_jelleg_pro_2": {
+  "mp": 16.3,
+  "tokenek": {
+   "promptTokenCount": 993,
+   "candidatesTokenCount": 1315,
+   "totalTokenCount": 2588,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 477
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 280,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kavics_lent_kopar_pro": {
+  "mp": 50.1,
+  "tokenek": {
+   "promptTokenCount": 923,
+   "candidatesTokenCount": 1296,
+   "totalTokenCount": 2492,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 407
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 273,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "pafrany_lent_kopar_pro": {
+  "mp": 15.7,
+  "tokenek": {
+   "promptTokenCount": 920,
+   "candidatesTokenCount": 1338,
+   "totalTokenCount": 2612,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 404
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 354,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ }
+}

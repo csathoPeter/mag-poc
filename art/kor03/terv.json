@@ -1,0 +1,24 @@
+{
+ "cim": "Mag – art direction, 3. kör: kopár bolygók (kavics, moha, páfrány)",
+ "bevezeto": "A festett fű után a kavicsos, mohás és páfrányos bolygók csupasznak, gyűrött műanyagnak hatnak (főleg a tüskés csúcsú domborzaton). Bal szélen a játék mostani képe, mellette Pro-val: A – saját festett jelleg minden felszíntakarónak, második színnel és puhább formákkal (két változat); B – szándékosan kopár, de megformált táj. A színek (a bolygó és a fák alapszíne) maradnak.",
+ "stilus": "Overall art direction for the game: soft, stylized, painterly but clean – Studio Ghibli background painting feel (the principle, not the exact look). Calm and dreamy. Plants keep their own distinct colours (each plant is unique, grown from its DNA). Not cute, not chibi, no faces, no text.",
+ "jelenetek": [
+  {"nev": "kavics_kint", "cim": "1. Kavicsos, tüskés csúcsú bolygó kívülről", "shot": "planet,bolygo08,20,12,zoom0,clean", "prompt": "GROUND COVER of this planet: GRAVEL (not grass)."},
+  {"nev": "kavics_legi", "cim": "2. Ugyanez alacsony légi nézetből", "shot": "planet,bolygo08,20,12,zoom1,clean", "prompt": "GROUND COVER of this planet: GRAVEL (not grass)."},
+  {"nev": "kavics_lent", "cim": "3. Ugyanez leszállva egy fánál", "shot": "planet,bolygo08,20,12,focus3,clean", "prompt": "GROUND COVER of this planet: GRAVEL (not grass)."},
+  {"nev": "moha_kint", "cim": "4. Mohás, tüskés csúcsú bolygó kívülről", "shot": "planet,bolygo30,20,12,zoom0,clean", "prompt": "GROUND COVER of this planet: MOSS."},
+  {"nev": "moha_lent", "cim": "5. Ugyanez leszállva", "shot": "planet,bolygo30,20,12,focus3,clean", "prompt": "GROUND COVER of this planet: MOSS."},
+  {"nev": "pafrany_kint", "cim": "6. Páfrányos, tüskés csúcsú bolygó kívülről", "shot": "planet,bolygo07,20,12,zoom0,clean", "prompt": "GROUND COVER of this planet: FERNS."},
+  {"nev": "pafrany_lent", "cim": "7. Ugyanez leszállva", "shot": "planet,bolygo07,20,12,focus3,clean", "prompt": "GROUND COVER of this planet: FERNS."}
+ ],
+ "iranyok": [
+  {"nev": "jelleg", "cim": "A – Saját festett jelleg", "leiras": "a felszíntakaró saját festett formája (kavics: homok + kövek + fűcsomók a mélyedésekben; moha: bársonyos párnák; páfrány: festett levelek), második szín (világos-meleg csúcsok, a légkör felé hajló völgyek, apró virágszín-foltok a fák színeiből), lekerekített formák",
+   "valtozatok": 2, "modellek": ["pro"],
+   "referenciak": [{"kep": "../kor01/fa_ghibli_pro.jpg", "mire": "only the painting technique (soft gouache brushwork, painted light, lilac coloured shadows) – not its colours or content"}],
+   "prompt": "Direction: give this planet's ground cover its own painted identity instead of looking bare. GRAVEL: a sandy painted base with scattered rounded pebbles and a few larger soft stones, small tufts of grass growing in the hollows. MOSS: a velvety, cushiony surface of rounded moss pillows with soft highlights. FERNS: soft painted fern fronds in clumps. Add a SECOND COLOUR: lighter, warmer ridges and peaks, valleys leaning towards the atmosphere colour, and tiny specks of flower colour taken from the trees' own colours scattered in the cover. FORMS: round off the terrain – soft, sculpted hills and rounded peaks, no faceted low-poly triangles, no crumpled-plastic look. COLOUR LOCK: the base hue of the ground and every plant's colours stay as in Image 1 (they come from DNA) – only value, a second related tone and lighting may change. Keep exactly the same plants and composition, no new trees."},
+  {"nev": "kopar", "cim": "B – Szándékosan kopár táj", "leiras": "megmarad a kopárság, de megformálva: faragott, lekerekített sziklaformák, dűnés sávok, rétegzett színek, mint egy festett sivatag vagy holdtáj",
+   "modellek": ["pro"],
+   "referenciak": [{"kep": "../kor01/fa_ghibli_pro.jpg", "mire": "only the painting technique (soft gouache brushwork, painted light, lilac coloured shadows) – not its colours or content"}],
+   "prompt": "Direction: keep the planet sparse and barren, but make it look INTENTIONAL and beautiful, like a painted desert or moonscape: sculpted, rounded rock formations, soft dune-like bands and strata of related tones, gentle wind-swept patterns, a few small pebbles; the barrenness is calm, not empty. No faceted low-poly triangles, no crumpled-plastic look. COLOUR LOCK: the base hue of the ground and every plant's colours stay as in Image 1 – only value, related tones and lighting may change. Keep exactly the same plants and composition, no new trees."}
+ ]
+}
