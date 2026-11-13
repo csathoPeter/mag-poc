@@ -159,6 +159,10 @@ art/                    Art direction körök: korNN/terv.json + a játék képe
   `planet,bolygo08,20,12,zoom1` (kavics, tüskés), `bolygo30` (moha), `bolygo07` (páfrány). Telefonon nézd: a kavics nem pöttyös-e, a
   moha párnás-e, és tartja-e a 60 fps-t leszállva egy kopár bolygón. **Díszek** (Quaternius, CC0): kavicsos bolygón kövek, kavicsok,
   moháson gombák, lóhere, kis virágok, páfrányoson páfrány, kis növények, virágok – elég nagyok-e, nem lógnak-e bele a fákba.
+- **Festett ég (2026. 11. 13., `art/kor02` „B” sor):** gouache-szerű felhők a pasztell égen (`space_sky.gdshader`, a köd-textúrából, az ég ~20%-a):
+  a nap felőli peremük meleg-fehér, az árnyékos oldaluk lilás; alkonyatkor rózsás / lila, éjjel halvány sötétkék, a kozmoszban nincsenek.
+  A lencse az eget csak kicsit mossa el (`lens.gdshader sky_blur` 0,35), hogy a felhő ne legyen maszat. Ki-be: `?fu=regi` / a fiókban
+  „festett stílus (fű, ég)”. Telefonon nézd: nem túl sok / kevés-e a felhő, nem vibrál-e forgatáskor, nappal elválik-e az égtől.
 - **Kozmosz (2026. 11. 11.):** telefonon nézd meg, hogy csípéssel kényelmesen el lehet-e jutni a kozmoszig és vissza, tartja-e a 60 fps-t (~1400 porszem + 74 átlátszó négyszög, ~3k háromszög), és eltalálhatók-e ujjal a csillagok; régi mentésnél a csillagok egyszer új helyre kerülnek (v7 felhozás).
 - Ha a workflow nem fut vagy elhasal, mondd el Péternek, és ne próbáld megkerülni a Pages beállításait (innen a Pages API nem érhető el).
 

@@ -21,6 +21,8 @@ uniform float focus = 8.0;
 uniform float aperture = 0.55;
 // a fókusz körüli teljesen éles mélységtartomány (a téma, pl. a fa lombja ne mosódjon el)
 uniform float zone = 0.0;
+// az ég elmosásának szorzója (0–1; a festett felhők miatt kisebb)
+uniform float sky_blur = 0.35;
 // régi (repülős) kert: a régi sáv a mélység szerinti távoli elmosással
 uniform float legacy = 0.0;
 
@@ -51,6 +53,9 @@ float coc(vec2 uv, float z) {
 	float c_tilt = smoothstep(band, band + 0.32, abs(uv.y - band_y)) * tilt;
 	float c_dof = aperture * max(abs(z - focus) - zone, 0.0) / max(z, 0.01);
 	float c = mix(c_tilt, c_dof, dof_mix);
+	// a festett ég (space_sky.gdshader felhői, 2026. 11. 13.) csak kicsit mosódik el: a felhő éles ecsetfolt, elmosva
+	// maszatnak hatott. Az ég a hátsó vágósíkon van (a kamera far ≥ 400), a bolygó és a fák 80 egységen belül.
+	c *= mix(1.0, sky_blur, smoothstep(80.0, 300.0, z));
 	if (legacy > 0.5) {
 		float far_c = smoothstep(focus + 4.0, focus + 34.0, z);
 		float t = smoothstep(0.22, 0.52, abs(uv.y - 0.58));
