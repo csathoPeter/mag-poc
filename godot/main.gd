@@ -259,6 +259,8 @@ var ui_moment := false
 var stars := SkyStars.new()
 ## A kozmosz háttere (csillagpor, ködök, galaxisok; a kicsinyítés utolsó fokozatában, cosmos.gd).
 var cosmos := Cosmos.new()
+## festett gomolyfelhők a bolygó körül (clouds.gd)
+var clouds := Clouds.new()
 var herb := Herbarium.new()
 # Bolygók (M7; a látvány és a váltás: planet_system.gd)
 var system := PlanetSystem.new()
@@ -336,6 +338,8 @@ func _ready() -> void:
 	stars.host = self
 	add_child(stars)
 	add_child(cosmos)
+	clouds.host = self
+	add_child(clouds)
 	cosmos.visible = false
 	stars.gone.connect(_on_release_gone)
 	stars.arrived.connect(_on_star_arrived)

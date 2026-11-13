@@ -61,6 +61,8 @@ godot/                  A játék (Godot 4.7.1, GDScript)
                         kozmoszba száll); visszahozás
   cosmos.gd             A kozmosz háttere (Cosmos): csillagpor (egyszer feltöltött MultiMesh), ködök, galaxisok 3D-ben (shaders/
                         cosmos_dust, galaxy; render_priority 5–6, a lencse után), a játékoskódból, csak a kozmoszban látszik
+  clouds.gd             Festett gomolyfelhők (Clouds, 2026. 11. 13.): kamera felé forduló négyszögek a felhő-atlaszból (shaders/cloud.gdshader),
+                        kívülről a bolygó körüli héjon, leszállva a fa látóhatára fölött; napszak szerint színezve, a lencse után rajzolva
   props.gd              Díszek a kopár bolygókon (Props, 2026. 11. 13.): a Quaternius Stylized Nature MegaKit (CC0) kövei,
                         kavicsai, gombái, lóheréje, páfránya, kis virágai a felszíntakaró szerint (kavics / moha / páfrány; a füvesen
                         nincs), determinisztikusan a bolygókódból, a fák helyét elkerülve, MultiMesh modellenként, a bolygó színe
@@ -118,6 +120,7 @@ tools/setup_godot.sh    Godot + szoftveres Vulkan telepítése (felhős gépen).
 tools/render_shots.sh   Fej nélküli képernyőképek ellenőrzéshez
 tools/gen_ground_tex.py A kopár bolygók talaj-textúrái (kavics, moha): csempézhető adat-textúra (RG normál, B árnyalás, A fedés), numpy,
                         rögzített maggal → godot/textures/talaj_*.png (importálás: mipmap, tömörítés és alfa-szegély-javítás nélkül)
+tools/prep_clouds.py    A festett felhők atlasza: art/felho/nyers_*.jpg (Nano Banana Pro, zöld háttér) kivágva → godot/textures/felhok.png
 tools/prep_props.py     A díszek előkészítése a Quaternius-csomag zipjéből (store.godotengine.org): a kiválasztott glTF-ek, textúrák
                         lekicsinyítve → godot/props/quaternius/ (a textúrák importja: mipmap, tömörítés nélkül)
 tools/art_direction.py  Art direction a Nano Banana-val (Google Gemini képmodellek): a játék képernyőképe + stílusleírás (+ stílusminták)
@@ -159,10 +162,13 @@ art/                    Art direction körök: korNN/terv.json + a játék képe
   `planet,bolygo08,20,12,zoom1` (kavics, tüskés), `bolygo30` (moha), `bolygo07` (páfrány). Telefonon nézd: a kavics nem pöttyös-e, a
   moha párnás-e, és tartja-e a 60 fps-t leszállva egy kopár bolygón. **Díszek** (Quaternius, CC0): kavicsos bolygón kövek, kavicsok,
   moháson gombák, lóhere, kis virágok, páfrányoson páfrány, kis növények, virágok – elég nagyok-e, nem lógnak-e bele a fákba.
-- **Festett ég (2026. 11. 13., `art/kor02` „B” sor):** gouache-szerű felhők a pasztell égen (`space_sky.gdshader`, a köd-textúrából, az ég ~20%-a):
-  a nap felőli peremük meleg-fehér, az árnyékos oldaluk lilás; alkonyatkor rózsás / lila, éjjel halvány sötétkék, a kozmoszban nincsenek.
-  A lencse az eget csak kicsit mossa el (`lens.gdshader sky_blur` 0,35), hogy a felhő ne legyen maszat. Ki-be: `?fu=regi` / a fiókban
-  „festett stílus (fű, ég)”. Telefonon nézd: nem túl sok / kevés-e a felhő, nem vibrál-e forgatáskor, nappal elválik-e az égtől.
+- **Festett felhők (2026. 11. 13.):** a Nano Banana Pro festette 8 gomolyfelhő (`art/felho/nyers_*.jpg`, zöld kulcs-háttér →
+  `tools/prep_clouds.py` → `godot/textures/felhok.png` atlasz), kamera felé forduló négyszögeken (`clouds.gd`, `shaders/cloud.gdshader`):
+  kívülről 120 kisebb felhő a bolygó körüli távoli héjon (a bolygó mögött, lassan sodródva), leszállva 26 egy sávban a fa látóhatára
+  fölött; nappal festett színükben, alkonyatkor rózsásabbak, éjjel sötétkékek, a kozmosz / átfogó nézet felé eltűnnek. A lencse után
+  rajzolódnak (render_priority 4: a lencse az átlátszó rész előtti képet rajzolja vissza, alá kerülnének). Az első, zajból vágott
+  felhő Péter szerint márványos volt (kivéve); a Sky3D csomag realista, sík világra és sugárkövetéssel készült (nem illik). Ki-be:
+  `?fu=regi` / „festett stílus (fű, ég)”. Telefonon nézd: elég sok / nem túl sok felhő, nem ugrik-e leszálláskor.
 - **Kozmosz (2026. 11. 11.):** telefonon nézd meg, hogy csípéssel kényelmesen el lehet-e jutni a kozmoszig és vissza, tartja-e a 60 fps-t (~1400 porszem + 74 átlátszó négyszög, ~3k háromszög), és eltalálhatók-e ujjal a csillagok; régi mentésnél a csillagok egyszer új helyre kerülnek (v7 felhozás).
 - Ha a workflow nem fut vagy elhasal, mondd el Péternek, és ne próbáld megkerülni a Pages beállításait (innen a Pages API nem érhető el).
 
