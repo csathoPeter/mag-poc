@@ -1,0 +1,534 @@
+{
+ "kint_puhacel_nb2": {
+  "mp": 7.6,
+  "tokenek": {
+   "promptTokenCount": 591,
+   "candidatesTokenCount": 1571,
+   "totalTokenCount": 2162,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 333
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kint_ghibli_nb2": {
+  "mp": 9.0,
+  "tokenek": {
+   "promptTokenCount": 587,
+   "candidatesTokenCount": 1642,
+   "totalTokenCount": 2229,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 329
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ],
+  "szoveg": "Here is the refactored art direction for your game's real-time frame, featuring a soft, painterly 3D look with clean, broad forms and a gentle atmospheric light."
+ },
+ "kint_pasztell_nb2": {
+  "mp": 9.8,
+  "tokenek": {
+   "promptTokenCount": 584,
+   "candidatesTokenCount": 1814,
+   "totalTokenCount": 2398,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 326
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kint_ghibli_pro": {
+  "mp": 16.2,
+  "tokenek": {
+   "promptTokenCount": 587,
+   "candidatesTokenCount": 1352,
+   "totalTokenCount": 2223,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 329
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 284,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kint_puhacel_pro": {
+  "mp": 16.5,
+  "tokenek": {
+   "promptTokenCount": 591,
+   "candidatesTokenCount": 1338,
+   "totalTokenCount": 2192,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 333
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 263,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kint_pasztell_pro": {
+  "mp": 17.2,
+  "tokenek": {
+   "promptTokenCount": 584,
+   "candidatesTokenCount": 1318,
+   "totalTokenCount": 2139,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 326
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 237,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "fa_ghibli_nb2": {
+  "mp": 9.0,
+  "tokenek": {
+   "promptTokenCount": 587,
+   "candidatesTokenCount": 1561,
+   "totalTokenCount": 2148,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 329
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "fa_ghibli_pro": {
+  "mp": 14.0,
+  "tokenek": {
+   "promptTokenCount": 587,
+   "candidatesTokenCount": 1309,
+   "totalTokenCount": 2171,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 329
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 275,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "fa_pasztell_pro": {
+  "mp": 13.7,
+  "tokenek": {
+   "promptTokenCount": 584,
+   "candidatesTokenCount": 1304,
+   "totalTokenCount": 2115,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 326
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 227,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "fa_pasztell_nb2": {
+  "mp": 9.4,
+  "tokenek": {
+   "promptTokenCount": 584,
+   "candidatesTokenCount": 1668,
+   "totalTokenCount": 2252,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 326
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "fa_puhacel_nb2": {
+  "mp": 8.4,
+  "tokenek": {
+   "promptTokenCount": 591,
+   "candidatesTokenCount": 1582,
+   "totalTokenCount": 2173,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 333
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "fa_puhacel_pro": {
+  "mp": 14.0,
+  "tokenek": {
+   "promptTokenCount": 591,
+   "candidatesTokenCount": 1338,
+   "totalTokenCount": 2168,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 333
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 239,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "ejjel_ghibli_nb2": {
+  "mp": 9.2,
+  "tokenek": {
+   "promptTokenCount": 607,
+   "candidatesTokenCount": 1582,
+   "totalTokenCount": 2189,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 349
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "ejjel_pasztell_nb2": {
+  "mp": 8.8,
+  "tokenek": {
+   "promptTokenCount": 604,
+   "candidatesTokenCount": 1556,
+   "totalTokenCount": 2160,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 346
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "ejjel_pasztell_pro": {
+  "mp": 14.5,
+  "tokenek": {
+   "promptTokenCount": 604,
+   "candidatesTokenCount": 1316,
+   "totalTokenCount": 2161,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 346
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 241,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "ejjel_puhacel_nb2": {
+  "mp": 8.3,
+  "tokenek": {
+   "promptTokenCount": 611,
+   "candidatesTokenCount": 1589,
+   "totalTokenCount": 2200,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 353
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "ejjel_puhacel_pro": {
+  "mp": 15.7,
+  "tokenek": {
+   "promptTokenCount": 611,
+   "candidatesTokenCount": 1321,
+   "totalTokenCount": 2133,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 353
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 201,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "ejjel_ghibli_pro": {
+  "mp": 14.6,
+  "tokenek": {
+   "promptTokenCount": 607,
+   "candidatesTokenCount": 1287,
+   "totalTokenCount": 2119,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 349
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 258
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 225,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ }
+}

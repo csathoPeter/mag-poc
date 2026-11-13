@@ -1,0 +1,18 @@
+{
+ "cim": "Mag – art direction, 1. kör",
+ "bevezeto": "Három jelenet a játékból (bal szélen, zöld kerettel), mellettük ugyanez a kép három stílusirányban, Nano Banana Pro-val. Minden irányból egy Nano Banana 2-es változat is van, összehasonlításnak. Az irányok a DESIGN.md »Stílus« részéből jönnek: puha, stilizált, körvonal nélkül.",
+ "stilus": "Overall art direction for the game: soft, stylized, painterly but clean – not realistic, not hard cartoon. Calm and dreamy. The tree canopy reads as one soft volume (leaves lit by the crown's overall shape, not individually). Grass reads as a soft carpet, never hairy or spiky, never dark at the roots. Soft, wide light falloff with coloured shadows: where light is low, a lilac-blue atmospheric tint fills in instead of darkening. Gentle rim light. Plants keep their own distinct colours (each plant is unique, grown from its DNA). Not cute, not chibi, no stars or sparkles painted onto leaves, no faces.",
+ "jelenetek": [
+  {"nev": "kint", "cim": "1. A bolygó kívülről (nappal)", "shot": "planet,bolygo01,14,12,zoom0,clean"},
+  {"nev": "fa", "cim": "2. Leszállva egy fánál (nappal)", "shot": "planet,bolygo01,14,12,focus2,clean"},
+  {"nev": "ejjel", "cim": "3. Éjszakai kert, leszállva", "shot": "planet,bolygo01,14,23,focus0,clean", "prompt": "It is night: keep it dark and quiet, the flowers glow softly, fireflies float."}
+ ],
+ "iranyok": [
+  {"nev": "ghibli", "cim": "A – Ghibli-háttér", "leiras": "festett gouache-hatás, meleg napfény, puha felhős lombtömbök, színes árnyékok",
+   "prompt": "Direction: Studio Ghibli background painting feel (the principle, not the exact look) – gouache-like flat colour areas with soft painted edges, warm sunlight, cloud-like clumped foliage masses, rich but gentle colour, lilac-blue shadows.", "modellek": ["pro", "nb2"]},
+  {"nev": "pasztell", "cim": "B – Világító pasztell", "leiras": "Sky: Children of the Light jellegű derengés: halvány, ködös, sok szórt fény, kevés textúra",
+   "prompt": "Direction: luminous pastel, like the light of Sky: Children of the Light (the principle) – airy, hazy, glowing scattered light, very smooth gradients, almost no texture, high-key soft values, distant parts dissolve into the atmosphere.", "modellek": ["pro", "nb2"]},
+  {"nev": "puhacel", "cim": "C – Puha cel-shading", "leiras": "Breath of the Wild fái felé: egyszerű formák, 2–3 széles fénysáv, tiszta színfoltok, olvasható sziluettek",
+   "prompt": "Direction: soft cel-shading like the trees of Zelda: Breath of the Wild (the principle) – simple readable silhouettes, 2–3 broad light bands with soft transitions, clean colour areas, crisp but outline-free shapes, subtle brush texture only inside large areas.", "modellek": ["pro", "nb2"]}
+ ]
+}
