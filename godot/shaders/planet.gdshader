@@ -4,6 +4,7 @@ shader_type spatial;
 #include "res://shaders/color_space.gdshaderinc"
 #include "res://shaders/season.gdshaderinc"
 #include "res://shaders/soft_light.gdshaderinc"
+#include "res://shaders/paint_field.gdshaderinc"
 uniform vec3 rock : source_color = vec3(0.6, 0.55, 0.6);
 uniform vec3 grass : source_color = vec3(0.5, 0.7, 0.5);
 uniform vec3 atmo : source_color = vec3(0.8, 0.7, 0.9);
@@ -11,6 +12,7 @@ uniform float night = 0.0;
 // a domborzat megjelenése (M7): 0 = csupasz, sima gömb; az első fánál 1-re nő
 uniform float shape = 1.0;
 varying float h_v;
+varying float band_v;
 varying float patch_v;
 varying float slope_v;
 varying vec3 pos_v;
@@ -35,6 +37,7 @@ void vertex() {
 	NORMAL = normalize(mix(unit, NORMAL, shape));
 	h_v = COLOR.r;
 	patch_v = COLOR.g;
+	band_v = COLOR.b;
 	slope_v = dot(normalize(NORMAL), normalize(VERTEX));
 	pos_v = VERTEX;
 }
@@ -50,6 +53,13 @@ void fragment() {
 	vec3 atmo_l = col_in(atmo);
 	// a talaj a fű tövének színéhez igazodik (puha stílusban kisebb kontraszttal, hogy a hézag ne üssön el)
 	vec3 meadow = grass_l * mix(mix(0.42, 0.85, fine), mix(0.5, 0.78, fine), soft_k) * 0.8;
+	// festett fű (paint_field.gdshaderinc): a talaj maga a fűmező – széles tónus-sávok, a szálas apró minta helyett
+	// halk, a sávokkal futó ecsetnyomok (a távolban elsimulnak); a fűszál töve ugyanezt a színt kapja
+	vec3 dn = normalize(pos_v);
+	float brush = pf_noise(pf_warp(dn, 26.0, 3.5) + 17.0) * 0.7 + pf_noise(pf_warp(dn, 61.0, 4.0) + 3.0) * 0.3;
+	float bfade = clamp(1.0 - length(fwidth(dn * 26.0)) * 1.2, 0.0, 1.0);
+	vec3 painted = paint_tone(grass_l, paint_band(band_v)) * (1.0 + (brush - 0.5) * 0.2 * bfade);
+	meadow = mix(meadow, painted, paint_k * soft_k);
 	// évszak (M11): tavasszal üdébb, ősszel melegebb (okkeres) a felszíntakaró; télen deres, fehéres
 	float ml = season_luma(meadow);
 	meadow = mix(meadow, meadow * vec3(1.02, 1.18, 0.92), season.x * 0.6);
@@ -61,7 +71,9 @@ void fragment() {
 	c *= mix(0.9 + 0.18 * patch_v, 1.0, g);
 	float fr = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
 	// a légkör rózsaszínes pereme csak a kőzeten: leszállva lapos szögből a fű alatti talajt is beszínezte, a rések kivilágítottak
-	ALBEDO = col_out(mix(c, atmo_l, fr * 0.45 * (1.0 - g)));
+	vec3 alb = mix(c, atmo_l, fr * 0.45 * (1.0 - g));
+	ALBEDO = col_out(alb);
+	soft_fix = soft_fix_of(alb, ALBEDO);
 	ROUGHNESS = 0.92;
 	SPECULAR = 0.12;
 	// télen apró dér-csillanások (a felszínhez rögzítve, lassan pislákolva; a távolban, ahol vibrálna, elhalványulnak)
@@ -69,3 +81,13 @@ void fragment() {
 	float glint = step(0.93, hash(cell)) * (0.5 + 0.5 * sin(TIME * 1.3 + hash(cell + 3.1) * 40.0)) * fade * season.w;
 	EMISSION = col_out(atmo_l * fr * mix(0.22, 0.16, night) + grass_l * night * 0.05 * g + vec3(0.85, 0.92, 1.0) * glint * mix(0.35, 0.7, night));
 }
+
+// Festett fűnél a talaj is puha fényt kap (széles átmenet, a kevés fényű részen lilás árnyék-szín, soft_light.gdshaderinc),
+// mint a fűszál: így a szálak és a talaj egy felület. paint_k = 0-nál a korábbi Lambert-fény.
+void light() {
+	float ndl = dot(NORMAL, LIGHT);
+	float pk = paint_k * soft_k;
+	float d = mix(max(ndl, 0.0), soft_diffuse(ndl), pk) * ATTENUATION;
+	DIFFUSE_LIGHT += (LIGHT_COLOR * (d / PI) + shade_tint * ((1.0 - d) * pk)) * soft_fix;
+}
+

@@ -47,3 +47,7 @@ soft_k={
 "type": "float",
 "value": 1.0
 }
+paint_k={
+"type": "float",
+"value": 1.0
+}

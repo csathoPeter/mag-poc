@@ -84,6 +84,9 @@ var shape_k := 1.0
 
 var noise := FastNoiseLite.new()
 var patch := FastNoiseLite.new()
+## a festett fű sávjai (_paint_raw); a tengely ugyanaz, mint a fű szeléé (planet_grass.gdshader wind_axis)
+var paint_noise := FastNoiseLite.new()
+const PAINT_AXIS := Vector3(0.2822, 0.9407, 0.1881)
 var body := Node3D.new()
 var surface := MeshInstance3D.new()
 var atmo := MeshInstance3D.new()
@@ -157,6 +160,9 @@ func _ready() -> void:
 	noise.fractal_octaves = 4
 	patch.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	patch.frequency = 3.5
+	paint_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	paint_noise.frequency = 1.0
+	paint_noise.fractal_type = FastNoiseLite.FRACTAL_NONE
 
 
 ## Új bolygó: a domborzat, a felszíntakaró és a holdak az alapítóból, a többi a növényekből.
@@ -177,6 +183,7 @@ func setup(planet_code: String, plant_dnas: Array, founding: Array = [], is_bare
 	noise.frequency = terrain.freq
 	noise.fractal_type = FastNoiseLite.FRACTAL_RIDGED if terrain.ridged else FastNoiseLite.FRACTAL_FBM
 	patch.seed = hash(code + "folt")
+	paint_noise.seed = hash(code + "festett")
 	# puha stílus: a részletes szál vége tompább (a felső sor magasabban és szélesebben, a hegy rövid)
 	blade_hi = _clump_mesh([0.0, .4, .78], [.05, .047, .036], float(cover.w), hash(code + "szal"))
 	blade_lo = _clump_mesh([0.0], [.05], float(cover.w), hash(code + "szal"))
@@ -328,6 +335,7 @@ func _apply() -> void:
 		# a fű színei lineárisan (sima vec3 uniform; a shader így képpontonként nem alakít át)
 		gm.set_shader_parameter("base_lin", _lin(Color(gc.r * .45, gc.g * .5, gc.b * .45)))
 		gm.set_shader_parameter("tip_lin", _lin(gc.lerp(Color(1, .98, .9), .22)))
+		gm.set_shader_parameter("field_lin", _lin(gc))
 		gm.set_shader_parameter("sss_lin", _lin(gc.lerp(Color(1, .9, .7), .6)))
 		gm.set_shader_parameter("glow_lin", _lin(Genes.hsl(cur.atmo_h + .45, .8, .62)))
 		gm.set_shader_parameter("night", night)
@@ -440,11 +448,21 @@ static func spot_for(planet_code: String, index: int, taken: Array, rad: float) 
 	return best
 
 
+## Festett fű (paint_field.gdshaderinc): a tónus-sávok nyers értéke (0–1) egy irányban. Két lépték (kívülről a nagy sávok,
+## leszállva a domb kisebb sávjai), a szél tengelye mentén összenyomva, így a sávok körbefutnak a bolygón.
+func _paint_raw(dir: Vector3) -> float:
+	var al := dir.dot(PAINT_AXIS)
+	var big := paint_noise.get_noise_3dv(dir * 1.3 + PAINT_AXIS * (al * 1.3 * 2.5))
+	var mid := paint_noise.get_noise_3dv(dir * 3.6 + PAINT_AXIS * (al * 3.6 * 3.0) + Vector3(31.7, 5.3, -12.1))
+	return clampf((big * .6 + mid * .4) * .5 + .5, 0.0, 1.0)
+
+
 func _build_surface() -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	# a magasságok képként is (laponként (RES+1)², egymás alatt): a fű shadere ebből ülteti a szálakat pont a felszínre
-	var img := Image.create_empty(RES + 1, 6 * (RES + 1), false, Image.FORMAT_RF)
+	# G csatorna: a festett fű sávjainak nyers értéke (_paint_raw); a talaj csúcspont-színként (B) kapja ugyanezt
+	var img := Image.create_empty(RES + 1, 6 * (RES + 1), false, Image.FORMAT_RGF)
 	h_min = 9.0
 	h_max = -9.0
 	var idx := 0
@@ -458,10 +476,11 @@ func _build_surface() -> void:
 				var b := tan((float(j) / RES * 2.0 - 1.0) * PI / 4.0)
 				var dir := (n + u * a + v * b).normalized()
 				var h := _height_fixed(dir)
-				img.set_pixel(i, f * (RES + 1) + j, Color(h, 0, 0))
+				var pb := _paint_raw(dir)
+				img.set_pixel(i, f * (RES + 1) + j, Color(h, pb, 0))
 				h_min = minf(h_min, h)
 				h_max = maxf(h_max, h)
-				st.set_color(Color(clampf(h / amp * .5 + .5, 0.0, 1.0), patch.get_noise_3dv(dir) * .5 + .5, 0, 1))
+				st.set_color(Color(clampf(h / amp * .5 + .5, 0.0, 1.0), patch.get_noise_3dv(dir) * .5 + .5, pb, 1))
 				st.set_normal(_normal(dir))
 				st.add_vertex(dir * (1.0 + h))
 		for j in RES:

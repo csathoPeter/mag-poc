@@ -97,7 +97,8 @@ godot/                  A játék (Godot 4.7.1, GDScript)
   shaders/              soft_light.gdshaderinc: a puha stílus közös fénye (lásd „Ellenőrzés”); Fa, levél, virág (szél a fa keretében, éjszakai fény, érintéshullám, lekonyulás, virágzási szakasz), fű (régi kert), bolygó-fű (szálanként, GodotGrass-ötletek), bolygó, légkör, űr-ég, gyűrű, fénypontok, lencse (makett-sáv / DSLR-mélységélesség);
                         glow_dot (fénylő pont additív halóval, MultiMesh), glow_bar (spirál-kötések), veil (fátyol a spirál alatt);
                         planet_mini / planet_mini_ring (a kis bolygók: átlátszatlan, pontrácsos áttűnés, fapöttyök a shaderben);
-                        branch_glow (a kiemelt ág fényburka, M8); a fa/levél/virág `#define FALL` változata a lehulló ághoz
+                        branch_glow (a kiemelt ág fényburka, M8); paint_field.gdshaderinc (festett fű, 2026. 11. 13.: a talaj és a
+                        fűszál közös festett mezője – tónus-sávok a rácsból, paint_k); a fa/levél/virág `#define FALL` változata a lehulló ághoz
                         (pontrácsos eltűnés, szóródó levelek – a shaping.gd futás közben állítja elő, a fő útvonalat nem érinti)
                         color_space.gdshaderinc (M11: col_in/col_out – a Compatibility (web) sRGB-nek veszi az ALBEDO-t/EMISSION-t/ég
                         COLOR-t, a source_color uniformot nem linearizálja; ao_direct, backlight_k), season.gdshaderinc (globális `season`,
@@ -110,6 +111,12 @@ prototype-threejs/      Korábbi Three.js-prototípus egy fájlban. A DNS-tábla
                         (seed_fx.gd) és a keresztezés (breeding.gd) már át van víve.
 tools/setup_godot.sh    Godot + szoftveres Vulkan telepítése (felhős gépen). `--web` a webes export sablont is letölti (1,3 GB-os csomagból).
 tools/render_shots.sh   Fej nélküli képernyőképek ellenőrzéshez
+tools/art_direction.py  Art direction a Nano Banana-val (Google Gemini képmodellek): a játék képernyőképe + stílusleírás (+ stílusminták)
+                        → változatok egy telefonon nézhető HTML-oldalon (artifactként közzétéve). `run art/korNN/terv.json`
+                        (képernyőkép, generálás, oldal), `gen be.png ki.jpg --prompt …`. Kulcs: a felhős környezet proxyja adja
+                        (x-goog-api-key), helyben GEMINI_API_KEY. Modellek: pro (Nano Banana Pro, alap), nb2, lite, nb1.
+art/                    Art direction körök: korNN/terv.json + a játék képei (jatek_*.png) + a változatok; az oldal.html nincs a repóban
+                        (újraépíthető: `--csak-oldal`). kor01: 3 irány, kor02: Ghibli + sima fű (a „B” sor a cél), fu01: festett fű
 .github/workflows/      Push a main ágra → webes export → gh-pages
 ```
 
@@ -132,6 +139,12 @@ tools/render_shots.sh   Fej nélküli képernyőképek ellenőrzéshez
 - **Megosztás (M10):** leszállva a fa táblája alatt „Megosztom” (az „Alakítás” és az „Elengedem…” mellett), a herbárium lapján „Megosztom”, a táskában minden magon „Megosztom” → lap a keretezett képpel, a kóddal (pl. `K5J8-Y9UQ-483`) és a linkkel; „Küldés…” = iOS megosztás-lap (képpel), ahol nincs ilyen, „Link másolása” (vágólap, „A link a vágólapon.”). A mai tábla kész → a táska tetején „A mai tábla kész” → „Megosztom”: Wordle-szerű szöveg (dátum, fajnév, spoiler nélküli emoji-rács, a választásod) + `?tabla` link. Kívülről a saját bolygón a jobb felső „…” lapon „Bolygóm megosztása” (`?bolygo=…`, 30 fánál ~390 jeles link). **Barát magja:** `?mag=KOD` (pl. `https://csathopeter.github.io/mag-poc/?mag=K5J8-Y9UQ-483`) → „Kaptál egy magot” (a mag fényként lehull, a lapon kinő), a mag a táskában („Barátoktól kapott magok”), elvethető; a táskában „Kód beírása” (a böngésző kérdezi meg). Ugyanaz a kód másodszor: „Ez a mag már nálad van”. **Barát bolygója:** `?bolygo=…` → „<Bolygónév> – egy barát bolygója”, csak nézhető (a mentés nem változik), fára koppintva „Magot kérek”, alul középen „Vissza a kertembe”. **Teszt egy telefonon:** „Bolygóm megosztása” → „Link másolása” → a linket új lapon megnyitva a saját bolygód vendégként jön be (a saját fáidról is kérhetsz magot).
 - **Fejlődés (2026. 11. 11.):** az elvetett magból kikelő fa csemeteként kel ki, és kb. 3 hét (21 növő nap) alatt fejlődik ki: napról napra új ágak hajtanak ki, a meglévők nőnek, vastagodnak, a friss hajtásokon levelek, később virágok; reggel (vagy „nap +1” után) a fák pár mp alatt átnőnek az új korukba. Szomjasan nem nő, öntözve folytatja. A táblán: „csemete · még N napig nő” („fiatal fa”, „már majdnem kifejlett”). A kezdő fák és a régi mentés fái kifejlettek. **Teszt:** `?debug` → a fiókban „+ fa (ültetés)” (csemete), „fiatal fák +5 nap növés”, vagy „nap +1” (3 naponta öntözni kell).
 - **Évszakok (M11):** a valódi dátum szerint (most ősz): ősszel a lomb meleg árnyalat felé húz, néhány levél lehullott, leszállva hulló levelek; télen ritkább, deres lomb, hó az ágakon, deres-csillogó talaj, szállingózó hó; tavasszal üdébb lomb, nagyobb virágok, szálló szirmok; nyáron a telt, semleges kép. Leszállva nappal pollen, éjjel szentjánosbogár-fények a fa körül. A kis állapotsor kiírja (pl. „· ősz”). **Teszt:** `?evszak=tavasz` / `nyar` / `osz` / `tel` (`auto` = dátum), vagy fejlesztői módban a „…” sorban „évszak” (körbe: dátum → tavasz → nyár → ősz → tél). A „nap +N” is lépteti (a határok körül napról napra úszik át). Közelről (virágra koppintva) a levélforma és az erezet: karéjos, csipkés, tölgyes, ujjas, tollas, szív alakú levelek.
+- **Festett fű (2026. 11. 13., art direction: `art/kor02` „B” sor, `art/fu01/osszevetes.jpg`):** a szőrös, szálas fű helyett
+  festett fűmező: széles, a szél tengelye körül futó tónus-sávok (a sötétebb hűvösebb, lilás), halk ecsetnyomok, puha
+  fény lilás árnyékkal a talajon is; a szálak rövidebbek, a tövük pontosan a talaj színe, így csak ecsetvonásként és a
+  látóhatáron látszanak. Háromszögszám változatlan. Összehasonlítás: `?fu=regi` (natívan `--fu=regi`), fejlesztői
+  fiókban „festett fű” kapcsoló. Telefonon nézd: nem vibrál-e a fű mozgás közben, nem túl erősek-e a sávok, és tartja-e
+  a 60 fps-t leszállva.
 - **Kozmosz (2026. 11. 11.):** telefonon nézd meg, hogy csípéssel kényelmesen el lehet-e jutni a kozmoszig és vissza, tartja-e a 60 fps-t (~1400 porszem + 74 átlátszó négyszög, ~3k háromszög), és eltalálhatók-e ujjal a csillagok; régi mentésnél a csillagok egyszer új helyre kerülnek (v7 felhozás).
 - Ha a workflow nem fut vagy elhasal, mondd el Péternek, és ne próbáld megkerülni a Pages beállításait (innen a Pages API nem érhető el).
 

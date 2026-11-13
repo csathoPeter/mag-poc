@@ -145,6 +145,8 @@ var res_trial := 0.0
 var res_trial_bad := 0.0
 ## Puha stílus be/ki (a fejlesztői „puha”/„régi” gomb, ?stilus=regi, a mérés „soft” kulcsa); _soft_globals() alkalmazza.
 var soft_on := true
+## Festett fű be/ki (paint_field.gdshaderinc; a fejlesztői „festett fű” kapcsoló, ?fu=regi); _soft_globals() alkalmazza.
+var paint_on := true
 var _soft_last: Array = []
 
 # Automatikus mérés: végigpróbálja a beállításokat kint és leszállva, a végén táblázat + küldés GitHubra
@@ -367,6 +369,7 @@ func _ready() -> void:
 	# évszak (M11): ?evszak=… rögzíti; a próba-képek (--shot=…,planet / leaves, --bench) alapból nyár, összehasonlíthatók
 	Seasons.forced = Seasons.parse(opts.evszak)
 	soft_on = opts.stilus != "regi"
+	paint_on = opts.fu != "regi"
 	seasons.neutral = bench_cli or (shot_args.size() > 1 and shot_args[1] != "state")
 	add_child(seasons)
 	# képernyőképnél, parancssori mérésnél és a végigjátszásnál (--playtest) nincs hang (nem számol, nem szól)
@@ -2083,6 +2086,7 @@ func dbg_get(k: String) -> bool:
 		"tilt": return tilt_ok
 		"aa": return get_viewport().msaa_3d != Viewport.MSAA_DISABLED
 		"soft": return soft_on
+		"paint": return paint_on
 		"leafcut": return dbg_leafcut
 		"petal": return dbg_petal
 		"fx": return seasons.visible
@@ -2103,6 +2107,7 @@ func dbg_set(k: String, on: bool) -> void:
 			tilt_quad.visible = on and garden_mode == "planet" and view == "surface"
 		"aa": get_viewport().msaa_3d = Viewport.MSAA_2X if on else Viewport.MSAA_DISABLED
 		"soft": soft_on = on
+		"paint": paint_on = on
 		"leafcut": _bench_cuts(on, dbg_petal)
 		"petal": _bench_cuts(dbg_leafcut, on)
 		"fx": seasons.visible = on
@@ -2211,13 +2216,14 @@ func _soft_globals() -> void:
 	var tint := Vector3(c.r, c.g, c.b) * k
 	var rim := atmo.lerp(Color(.55, .7, 1.0), maxf(night, 0.0) * .7)
 	var rim_v := Vector3(rim.r, rim.g, rim.b) * lerpf(.55, .3, maxf(night, 0.0))
-	var key := [tint, rim_v, soft_on]
+	var key := [tint, rim_v, soft_on, paint_on]
 	if key == _soft_last:
 		return
 	_soft_last = key
 	RenderingServer.global_shader_parameter_set("shade_tint", tint)
 	RenderingServer.global_shader_parameter_set("rim_col", rim_v)
 	RenderingServer.global_shader_parameter_set("soft_k", 1.0 if soft_on else 0.0)
+	RenderingServer.global_shader_parameter_set("paint_k", 1.0 if paint_on else 0.0)
 	env.adjustment_contrast = .97 if soft_on else 1.06
 	sun.shadow_opacity = .6 if soft_on else .78
 

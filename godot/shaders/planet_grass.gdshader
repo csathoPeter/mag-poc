@@ -14,11 +14,16 @@ render_mode cull_disabled, shadows_disabled, skip_vertex_transform;
 #include "res://shaders/color_space.gdshaderinc"
 #include "res://shaders/season.gdshaderinc"
 #include "res://shaders/soft_light.gdshaderinc"
+// Festett fű (2026. 11. 13.): a szál töve a festett talaj színe (ugyanaz a mező, paint_field.gdshaderinc), a csúcsa kicsit
+// világosabb; a fény a talajéval azonos (a felszín normálja), így a mező egy festett felület, a szálak ecsetvonások.
+#include "res://shaders/paint_field.gdshaderinc"
 
 uniform vec3 base_lin = vec3(0.013, 0.04, 0.01);
 uniform vec3 tip_lin = vec3(0.32, 0.52, 0.17);
 uniform vec3 sss_lin = vec3(1.0, 0.71, 0.32);
 uniform vec3 glow_lin = vec3(0.21, 1.0, 0.6);
+// a fű alapszíne lineárisan (a talaj grass uniformja; a festett mező ebből számol)
+uniform vec3 field_lin = vec3(0.2, 0.4, 0.15);
 uniform float night = 0.0;
 uniform float wind = 1.35;
 // A szél a bolygó körül kering e tengely körül.
@@ -57,6 +62,7 @@ varying float clump_v;
 varying float gust_v;
 varying vec3 side_v;
 varying vec3 up_v;
+varying float band_v;
 
 mat3 rot_y(float a) {
 	float c = cos(a);
@@ -114,8 +120,9 @@ int face_of(vec3 c) {
 	return c.z < 0.0 ? 4 : 5;
 }
 
-// magasság a lap (a, b) pontjában, a felszín háromszögein belül lineárisan (mint a háló)
-float height_at(int f, float a, float b) {
+// magasság (x) és a festett mező nyers sáv-értéke (y) a lap (a, b) pontjában, a felszín háromszögein belül lineárisan
+// (mint a háló: a talaj ugyanígy interpolálja a csúcspont-színét)
+vec2 height_at(int f, float a, float b) {
 	float gx = (a * 0.5 + 0.5) * float(res);
 	float gy = (b * 0.5 + 0.5) * float(res);
 	int i0 = clamp(int(floor(gx)), 0, res - 1);
@@ -123,10 +130,10 @@ float height_at(int f, float a, float b) {
 	float fx = clamp(gx - float(i0), 0.0, 1.0);
 	float fy = clamp(gy - float(j0), 0.0, 1.0);
 	int row = f * (res + 1) + j0;
-	float h00 = texelFetch(height_tex, ivec2(i0, row), 0).r;
-	float h10 = texelFetch(height_tex, ivec2(i0 + 1, row), 0).r;
-	float h01 = texelFetch(height_tex, ivec2(i0, row + 1), 0).r;
-	float h11 = texelFetch(height_tex, ivec2(i0 + 1, row + 1), 0).r;
+	vec2 h00 = texelFetch(height_tex, ivec2(i0, row), 0).rg;
+	vec2 h10 = texelFetch(height_tex, ivec2(i0 + 1, row), 0).rg;
+	vec2 h01 = texelFetch(height_tex, ivec2(i0, row + 1), 0).rg;
+	vec2 h11 = texelFetch(height_tex, ivec2(i0 + 1, row + 1), 0).rg;
 	if (fx + fy < 1.0) {
 		return h00 + fx * (h10 - h00) + fy * (h01 - h00);
 	}
@@ -185,11 +192,14 @@ void vertex() {
 	side_v = vec3(0.0, 1.0, 0.0);
 	vec3 dir = normalize(n + u * ta + v * tb);
 	up_v = normalize(mat3(VIEW_MATRIX) * dir);
+	band_v = 0.5;
 	vec3 root = vec3(0.0);
 	float dcam = 0.0;
 	bool mine = false;
 	if (rank < wb) {
-		root = planet_pos + dir * planet_r * (1.0 + height_at(f, a, b) - 0.003);
+		vec2 hb = height_at(f, a, b);
+		root = planet_pos + dir * planet_r * (1.0 + hb.x - 0.003);
+		band_v = hb.y;
 		dcam = distance(root, cam_pos);
 		// a kamerához közeli szálakat a részletes csomópont rajzolja, a többit az egyszerű (szálanként, pontos határral)
 		mine = hi_layer == (dcam < hi_dist);
@@ -205,6 +215,8 @@ void vertex() {
 		float rnd2 = rnd(key, 6u);
 		float clump = smoothstep(0.2, 0.8, vnoise(dir * 9.0 + vec3(float(seed % 97))));
 		float hgt = blade_h * mix(0.85, 1.2, clump) * mix(0.75, 1.2, rnd(key, 4u)) * grow;
+		// festett fűnél rövidebb szálak: szőnyeg, nem bunda
+		hgt *= mix(1.0, 0.62, paint_k * soft_k);
 		vec3 ref = abs(dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
 		vec3 e1 = normalize(cross(ref, dir));
 		vec3 e2 = cross(dir, e1);
@@ -281,7 +293,8 @@ void fragment() {
 	NORMAL = normalize(NORMAL + side_v * (UV.x * 2.0 - 1.0) * 0.45);
 	NORMAL = mix(NORMAL, soft_face(NORMAL, VIEW), soft_k);
 	// puha stílus: a mező egy szőnyegként kap fényt (a felszín normálja felé), nem szálanként; ettől nem szőrös, zajos
-	NORMAL = normalize(mix(NORMAL, up_v, 0.6 * soft_k));
+	float pk = paint_k * soft_k;
+	NORMAL = normalize(mix(NORMAL, up_v, mix(0.6, 1.0, paint_k) * soft_k));
 	float h = hf_v;
 	// a tő sötétebb a csúcsnál, de puha stílusban nem fekete
 	vec3 base_l = base_lin * mix(1.0, 1.15, soft_k);
@@ -296,6 +309,10 @@ void fragment() {
 	// távolban egyszínűbb, hogy ne vibráljon
 	float far = exp(-length(VERTEX) * 0.035);
 	c = mix(mix(base_l, tip_l, 0.55) * 0.75, c, far);
+	// festett fű: a tő a talaj színe, a csúcs felé világosodik (ecsetvonás), a széllökés halkan világosít
+	vec3 root_c = paint_tone(field_lin, paint_band(band_v));
+	vec3 pc = root_c * mix(1.0, 1.22, h * h) * (0.96 + 0.08 * rnd_v) * (1.0 + 0.25 * gust_v * h * h);
+	c = mix(c, pc, pk);
 	// évszak (mint a talajnál, planet.gdshader): tavasszal üdébb, ősszel okkeres, télen a csúcsa deres
 	float ml = season_luma(c);
 	c = mix(c, c * vec3(1.02, 1.18, 0.92), season.x * 0.6);
@@ -311,7 +328,7 @@ void fragment() {
 void light() {
 	// puha szórt fény (sosem teljesen sötét) + hátulról átsütő fény
 	float diff = mix(pow(4.0, dot(NORMAL, LIGHT)) / 4.0, soft_diffuse(dot(NORMAL, LIGHT)), soft_k);
-	float sss = max(-dot(VIEW, LIGHT), 0.0) * 0.55 * hf_v;
+	float sss = max(-dot(VIEW, LIGHT), 0.0) * 0.55 * hf_v * (1.0 - 0.6 * paint_k * soft_k);
 	DIFFUSE_LIGHT += ((diff + sss * sss_lin) * ATTENUATION * LIGHT_COLOR / PI + shade_tint * ((1.0 - diff * ATTENUATION) * soft_k))
 		* soft_fix;
 	vec3 hv = normalize(LIGHT + VIEW);

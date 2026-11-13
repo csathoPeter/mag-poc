@@ -106,7 +106,7 @@ func _build() -> void:
 	_section("Kapcsolók")
 	g = _grid()
 	for t in [["fű", "grass"], ["árnyék", "shadow"], ["ragyogás", "glow"], ["lencse", "tilt"], ["élsimítás", "aa"],
-			["puha stílus", "soft"], ["levélforma", "leafcut"], ["kerek szirom", "petal"], ["részecskék", "fx"],
+			["puha stílus", "soft"], ["festett fű", "paint"], ["levélforma", "leafcut"], ["kerek szirom", "petal"], ["részecskék", "fx"],
 			["felület", "hud"], ["csillagok", "stars"], ["auto felbontás", "auto"], ["4 részletes fa", "hi"]]:
 		_toggle(g, t[0], t[1])
 
