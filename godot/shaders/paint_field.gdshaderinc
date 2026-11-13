@@ -95,9 +95,12 @@ vec3 paint_cover(vec3 c, vec4 t, vec3 d, int kind, float hv, out float k) {
 		k = patch;
 		return mix(sand, mix(grit, stone_c, t.a), patch);
 	}
-	vec3 crev = c * vec3(0.55, 0.57, 0.7);
-	vec3 pc = mix(crev, c * mix(0.8, 1.15, shade), t.a) * mix(0.85, 1.0, shade);
-	float s = kind == 1 ? 1.0 : 0.45;
+	// moha: halk rés a párnák közt, a párna teteje kicsit világosabb; foltokban erősebb (a völgyekben), máshol szinte
+	// sima – így nem macskakő / terítőminta, és a csempe ismétlődése sem tűnik fel
+	vec3 crev = c * vec3(0.74, 0.75, 0.84);
+	vec3 pc = mix(crev, c * mix(0.92, 1.1, shade), t.a);
+	float patch = mix(0.3, 1.0, smoothstep(0.3, 0.7, pf_noise(d * 5.0 + 8.3))) * (1.0 - 0.5 * smoothstep(0.55, 0.9, hv));
+	float s = (kind == 1 ? 1.0 : 0.45) * patch;
 	k = s;
 	return mix(c, pc, s);
 }

@@ -111,29 +111,34 @@ def gravel():
 
 
 def moss():
-	"""Moha: kerek, puha párnák (rácsba rázva, szinte összeérnek), köztük keskeny, sötétebb rés; finom bolyh a tetején."""
-	rng = np.random.default_rng(20261114)
+	"""Moha: puha, szabálytalan párnák (eltérő méret, hullámos szél, nem rácsban), köztük keskeny, halk rés; finom bolyh.
+	Az első, rácsba rázott, egyforma körökből álló változat a telefonon macskakőnek / terítőmintának látszott (Péter)."""
+	rng = np.random.default_rng(20261115)
 	yy, xx = np.mgrid[0:N, 0:N].astype(float)
 	height = np.zeros((N, N))
 	cover = np.zeros((N, N))
-	g = 7
-	cell = N / g
-	for j in range(g):
-		for i in range(g):
-			for _ in range(2 if rng.random() < 0.35 else 1):
-				cx = (i + 0.2 + 0.6 * rng.random()) * cell
-				cy = (j + 0.2 + 0.6 * rng.random()) * cell
-				r = cell * (0.48 + 0.3 * rng.random())
-				dx, dy = wrap_dist(xx, yy, cx, cy)
-				t = np.sqrt(dx * dx + dy * dy) / r
-				dome = np.clip(1 - t * t, 0, 1) ** 0.6 * r * 0.5
-				height = np.maximum(height, dome)
-				cover = np.maximum(cover, np.clip((1 - t) * 6, 0, 1))
+	# a szél hullámossága: a távolságot csempézhető zajjal torzítjuk
+	warp = (tile_noise(rng, 10, 3) - 0.5) * 2.0
+	placed = 0
+	while placed < 70:
+		cx, cy = rng.random(2) * N
+		r = 22 + 70 * rng.random() ** 1.6
+		asp = 1.0 + 0.5 * rng.random()
+		an = rng.random() * np.pi
+		dx, dy = wrap_dist(xx, yy, cx, cy)
+		u = (dx * np.cos(an) + dy * np.sin(an)) / (r * asp)
+		v = (-dx * np.sin(an) + dy * np.cos(an)) / r
+		t = np.sqrt(u * u + v * v) * (1.0 + 0.28 * warp)
+		dome = np.clip(1 - t * t, 0, 1) ** 0.5 * r * (0.25 + 0.2 * rng.random())
+		height = np.maximum(height, dome)
+		cover = np.maximum(cover, np.clip((1 - t) * 3, 0, 1))
+		placed += 1
+	height = blur(height, 2)
 	fuzz = tile_noise(rng, 96, 2)
-	height += (fuzz - 0.5) * 2.0
+	height += (fuzz - 0.5) * 2.5
 	hn = (height - height.min()) / (height.max() - height.min())
-	shade = 0.36 + 0.24 * hn + (fuzz - 0.5) * 0.1
-	save("talaj_moha.png", normals(height, 0.3), shade, cover)
+	shade = 0.42 + 0.16 * hn + (fuzz - 0.5) * 0.12
+	save("talaj_moha.png", normals(height, 0.22), shade, blur(cover, 2))
 
 
 if __name__ == "__main__":
