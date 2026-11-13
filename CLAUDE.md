@@ -142,7 +142,7 @@ art/                    Art direction körök: korNN/terv.json + a játék képe
 - **Festett fű (2026. 11. 13., art direction: `art/kor02` „B” sor, `art/fu01/osszevetes.jpg`):** a szőrös, szálas fű helyett
   festett fűmező: széles, a szél tengelye körül futó tónus-sávok (a sötétebb hűvösebb, lilás), halk ecsetnyomok, puha
   fény lilás árnyékkal a talajon is; a szálak rövidebbek, a tövük pontosan a talaj színe, így csak ecsetvonásként és a
-  látóhatáron látszanak. Háromszögszám változatlan. Összehasonlítás: `?fu=regi` (natívan `--fu=regi`), fejlesztői
+  látóhatáron látszanak; a kőzeten nincs szál, kívülről (a kamera magasan) egy sincs, a bolygó sima, festett gömb. Háromszögszám változatlan. Összehasonlítás: `?fu=regi` (natívan `--fu=regi`), fejlesztői
   fiókban „festett fű” kapcsoló. Telefonon nézd: nem vibrál-e a fű mozgás közben, nem túl erősek-e a sávok, és tartja-e
   a 60 fps-t leszállva.
 - **Kozmosz (2026. 11. 11.):** telefonon nézd meg, hogy csípéssel kényelmesen el lehet-e jutni a kozmoszig és vissza, tartja-e a 60 fps-t (~1400 porszem + 74 átlátszó négyszög, ~3k háromszög), és eltalálhatók-e ujjal a csillagok; régi mentésnél a csillagok egyszer új helyre kerülnek (v7 felhozás).

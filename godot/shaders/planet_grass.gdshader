@@ -55,6 +55,9 @@ uniform float focus_r = 4.5;
 uniform float focus_k = 0.0;
 uniform float focus_far = 9.9;
 uniform float hi_dist = 6.5;
+// festett fűnél a szálak a kamera magasságától függnek (a bolygó sugarában): alacsonyan (leszállva, légi nézet) mind
+// látszik, paint_alt.x fölött halványulnak, paint_alt.y fölött (kívülről) egy sem
+uniform vec2 paint_alt = vec2(1.1, 2.0);
 
 varying float hf_v;
 varying float rnd_v;
@@ -120,9 +123,9 @@ int face_of(vec3 c) {
 	return c.z < 0.0 ? 4 : 5;
 }
 
-// magasság (x) és a festett mező nyers sáv-értéke (y) a lap (a, b) pontjában, a felszín háromszögein belül lineárisan
-// (mint a háló: a talaj ugyanígy interpolálja a csúcspont-színét)
-vec2 height_at(int f, float a, float b) {
+// magasság (x), a festett mező nyers sáv-értéke (y) és a fűtakaró (z: 0 a kőzeten) a lap (a, b) pontjában, a felszín
+// háromszögein belül lineárisan (mint a háló: a talaj ugyanígy interpolálja a csúcspont-színét)
+vec3 height_at(int f, float a, float b) {
 	float gx = (a * 0.5 + 0.5) * float(res);
 	float gy = (b * 0.5 + 0.5) * float(res);
 	int i0 = clamp(int(floor(gx)), 0, res - 1);
@@ -130,10 +133,10 @@ vec2 height_at(int f, float a, float b) {
 	float fx = clamp(gx - float(i0), 0.0, 1.0);
 	float fy = clamp(gy - float(j0), 0.0, 1.0);
 	int row = f * (res + 1) + j0;
-	vec2 h00 = texelFetch(height_tex, ivec2(i0, row), 0).rg;
-	vec2 h10 = texelFetch(height_tex, ivec2(i0 + 1, row), 0).rg;
-	vec2 h01 = texelFetch(height_tex, ivec2(i0, row + 1), 0).rg;
-	vec2 h11 = texelFetch(height_tex, ivec2(i0 + 1, row + 1), 0).rg;
+	vec3 h00 = texelFetch(height_tex, ivec2(i0, row), 0).rgb;
+	vec3 h10 = texelFetch(height_tex, ivec2(i0 + 1, row), 0).rgb;
+	vec3 h01 = texelFetch(height_tex, ivec2(i0, row + 1), 0).rgb;
+	vec3 h11 = texelFetch(height_tex, ivec2(i0 + 1, row + 1), 0).rgb;
 	if (fx + fy < 1.0) {
 		return h00 + fx * (h10 - h00) + fy * (h01 - h00);
 	}
@@ -195,14 +198,19 @@ void vertex() {
 	band_v = 0.5;
 	vec3 root = vec3(0.0);
 	float dcam = 0.0;
+	float cover = 1.0;
+	float paint_vis = 1.0 - smoothstep(paint_alt.x, paint_alt.y, (distance(cam_pos, planet_pos) - planet_r) / planet_r);
 	bool mine = false;
 	if (rank < wb) {
-		vec2 hb = height_at(f, a, b);
+		vec3 hb = height_at(f, a, b);
 		root = planet_pos + dir * planet_r * (1.0 + hb.x - 0.003);
 		band_v = hb.y;
+		cover = hb.z;
 		dcam = distance(root, cam_pos);
 		// a kamerához közeli szálakat a részletes csomópont rajzolja, a többit az egyszerű (szálanként, pontos határral)
 		mine = hi_layer == (dcam < hi_dist);
+		// festett fűnél kívülről nincs szál: a bolygó sima, festett gömb, és a háromszögek kiesnek
+		mine = mine && (paint_k * soft_k < 0.5 || paint_vis > 0.0);
 	}
 	if (!mine) {
 		// ez a csomó itt nem látszik: a képen kívülre tesszük, a háromszögei kiesnek
@@ -215,8 +223,9 @@ void vertex() {
 		float rnd2 = rnd(key, 6u);
 		float clump = smoothstep(0.2, 0.8, vnoise(dir * 9.0 + vec3(float(seed % 97))));
 		float hgt = blade_h * mix(0.85, 1.2, clump) * mix(0.75, 1.2, rnd(key, 4u)) * grow;
-		// festett fűnél rövidebb szálak: szőnyeg, nem bunda
-		hgt *= mix(1.0, 0.62, paint_k * soft_k);
+		// festett fűnél rövidebb szálak: szőnyeg, nem bunda; a kőzeten nincs szál, és távolabb puhán eltűnnek
+		float pkv = paint_k * soft_k;
+		hgt *= mix(1.0, 0.62 * smoothstep(0.25, 0.75, cover) * paint_vis, pkv);
 		vec3 ref = abs(dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
 		vec3 e1 = normalize(cross(ref, dir));
 		vec3 e2 = cross(dir, e1);

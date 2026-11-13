@@ -44,6 +44,9 @@ void vertex() {
 
 void fragment() {
 	float g = smoothstep(0.82, 0.95, slope_v) * (1.0 - smoothstep(0.78, 0.97, h_v));
+	// festett fű: a rövid szálak nem takarják a kőzetet, ezért a fű borítja a talaj nagyobb részét (csak a meredek
+	// sziklák és a legmagasabb csúcsok kőzetek); a planet.gd _paint_cover ugyanezt süti a fű textúrájába
+	g = mix(g, smoothstep(0.42, 0.66, slope_v) * (1.0 - smoothstep(0.93, 1.0, h_v)), paint_k * soft_k);
 	// szálas minta: apró foltok, a távolban (ahol vibrálna) elsimul
 	float fine = vnoise(pos_v * 90.0) * 0.6 + vnoise(pos_v * 210.0) * 0.4;
 	float fade = clamp(1.0 - length(fwidth(pos_v * 210.0)) * 0.8, 0.0, 1.0);
@@ -64,7 +67,9 @@ void fragment() {
 	float ml = season_luma(meadow);
 	meadow = mix(meadow, meadow * vec3(1.02, 1.18, 0.92), season.x * 0.6);
 	meadow = mix(meadow, vec3(ml) * vec3(1.45, 1.0, 0.42), season.z * 0.42);
-	vec3 c = mix(rock_l * (0.8 + 0.3 * h_v), meadow, g);
+	// festett fűnél a kőzet színe a fűhöz simul (egy festményen egy paletta), így a sziklák nem ütnek el foltként
+	vec3 rock_c = mix(rock_l * (0.8 + 0.3 * h_v), mix(rock_l, grass_l * 0.8, 0.35), paint_k * soft_k);
+	vec3 c = mix(rock_c, meadow, g);
 	float frost = season.w * (0.45 + 0.35 * fine) * mix(0.55, 1.0, smoothstep(0.6, 0.9, slope_v));
 	c = mix(c, vec3(0.8, 0.84, 0.9), frost * 0.55);
 	// a fű alatti talaj egyszínű (a világos foltok kopasznak hatottak a szálak között); a kőzeten marad a foltosság

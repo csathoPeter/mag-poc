@@ -457,12 +457,21 @@ func _paint_raw(dir: Vector3) -> float:
 	return clampf((big * .6 + mid * .4) * .5 + .5, 0.0, 1.0)
 
 
+## Festett fű: hol fű a talaj (1) és hol kőzet (0). A planet.gdshader paint ágával azonos képlet (a lejtő és a magasság);
+## a korábbi fűnél szűkebb a kőzet (csak a meredek sziklák és a legmagasabb csúcsok), mert a rövid szálak nem takarják el.
+func _paint_cover(dir: Vector3, h: float) -> float:
+	var slope := _normal(dir).normalized().dot(dir)
+	var hv := clampf(h / amp * .5 + .5, 0.0, 1.0)
+	return smoothstep(.42, .66, slope) * (1.0 - smoothstep(.93, 1.0, hv))
+
+
 func _build_surface() -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	# a magasságok képként is (laponként (RES+1)², egymás alatt): a fű shadere ebből ülteti a szálakat pont a felszínre
-	# G csatorna: a festett fű sávjainak nyers értéke (_paint_raw); a talaj csúcspont-színként (B) kapja ugyanezt
-	var img := Image.create_empty(RES + 1, 6 * (RES + 1), false, Image.FORMAT_RGF)
+	# G csatorna: a festett fű sávjainak nyers értéke (_paint_raw); a talaj csúcspont-színként (B) kapja ugyanezt.
+	# B csatorna: festett fűnél a fűtakaró (_paint_cover): a kőzeten nem nő szál (a talaj ugyanígy számolja képpontonként)
+	var img := Image.create_empty(RES + 1, 6 * (RES + 1), false, Image.FORMAT_RGBF)
 	h_min = 9.0
 	h_max = -9.0
 	var idx := 0
@@ -477,7 +486,7 @@ func _build_surface() -> void:
 				var dir := (n + u * a + v * b).normalized()
 				var h := _height_fixed(dir)
 				var pb := _paint_raw(dir)
-				img.set_pixel(i, f * (RES + 1) + j, Color(h, pb, 0))
+				img.set_pixel(i, f * (RES + 1) + j, Color(h, pb, _paint_cover(dir, h)))
 				h_min = minf(h_min, h)
 				h_max = maxf(h_max, h)
 				st.set_color(Color(clampf(h / amp * .5 + .5, 0.0, 1.0), patch.get_noise_3dv(dir) * .5 + .5, pb, 1))
