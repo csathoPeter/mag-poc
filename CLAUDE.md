@@ -169,6 +169,11 @@ art/                    Art direction körök: korNN/terv.json + a játék képe
   rajzolódnak (render_priority 4: a lencse az átlátszó rész előtti képet rajzolja vissza, alá kerülnének). Az első, zajból vágott
   felhő Péter szerint márványos volt (kivéve); a Sky3D csomag realista, sík világra és sugárkövetéssel készült (nem illik). Ki-be:
   `?fu=regi` / „festett stílus (fű, ég)”. Telefonon nézd: elég sok / nem túl sok felhő, nem ugrik-e leszálláskor.
+- **Felhős lomb (2026. 11. 13., `art/kor02` „B” sor):** a korona 2–6 csomóra bomlik (`plant_gen.clumps()`: a levelet hordozó ágak pontjai
+  determinisztikusan csoportosítva, minden részletességi szinten ugyanaz), a levél normálja a csomók puha uniójának felszínét követi, és
+  festett módban a csomók festői fő fényt kapnak felülről, kicsit oldalról (a valódi nap a kamerához igazodik, attól minden csomó egyformán
+  világos volt): a tetejük meleg-világos, az aljuk lilás. Ki-be: `?fu=regi` / „festett stílus (fű, ég)”. Telefonon nézd: olvashatók-e a
+  lombtömbök, nem túl sötét-e a lomb alja, nem villódzik-e forgatáskor.
 - **Kozmosz (2026. 11. 11.):** telefonon nézd meg, hogy csípéssel kényelmesen el lehet-e jutni a kozmoszig és vissza, tartja-e a 60 fps-t (~1400 porszem + 74 átlátszó négyszög, ~3k háromszög), és eltalálhatók-e ujjal a csillagok; régi mentésnél a csillagok egyszer új helyre kerülnek (v7 felhozás).
 - Ha a workflow nem fut vagy elhasal, mondd el Péternek, és ne próbáld megkerülni a Pages beállításait (innen a Pages API nem érhető el).
 

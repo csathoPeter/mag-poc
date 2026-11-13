@@ -15,6 +15,13 @@ uniform int leaf_kind = 3;
 uniform vec3 crown_c = vec3(0.0, 3.0, 0.0);
 uniform vec3 crown_e = vec3(2.0);
 uniform float crown_on = 0.0;
+// Felhős lomb (2026. 11. 13., plant_gen.clumps()): a korona 2–6 puha csomója (xyz közép, w sugár, a fa keretében); a levél
+// normálja a csomók puha uniójának felszínét követi, így minden csomónak napos teteje és lilás alja van (festett lombtömbök)
+uniform vec4 clumps[6];
+uniform int clump_n = 0;
+// a festett stílus kapcsolója (paint_field.gdshaderinc; ?fu=regi): a csomók festői fő fénye
+global uniform float paint_k;
+varying float clump_k;
 varying vec3 crown_w;
 varying float crown_k;
 varying float tint_v;
@@ -60,11 +67,37 @@ void vertex() {
 	// a levéllemez mennyire néz felfelé (a dérhez), kétoldalú levélnél mindegy, melyik oldala
 	up_v = abs(dot(normalize(NORMAL), tree_up()));
 	// puha lomb: a korona felszínének normálja a levél helyén (az ellipszoid gradiense); a belső levelek kevésbé követik
-	vec3 q = ((tree_inv * vec4(MODEL_MATRIX[3].xyz, 1.0)).xyz - crown_c) / crown_e;
+	vec3 lp = (tree_inv * vec4(MODEL_MATRIX[3].xyz, 1.0)).xyz;
+	vec3 q = (lp - crown_c) / crown_e;
 	crown_w = mat3(tree_xf) * (q / crown_e);
 	crown_k = crown_on * soft_k * 0.78 * smoothstep(0.12, 0.65, length(q));
+	if (clump_n > 0) {
+		// a csomók puha uniója: a felszínhez közelebbi csomó erősebben számít (exp-súly a gömb-távolságból)
+		vec3 nsum = vec3(0.0);
+		float wsum = 0.0;
+		float inner = 0.0;
+		for (int i = 0; i < 6; i++) {
+			if (i >= clump_n) {
+				break;
+			}
+			vec3 dv = lp - clumps[i].xyz;
+			float dl = max(length(dv), 1e-3);
+			float sd = dl - clumps[i].w;
+			float w = exp(-4.0 * sd / clumps[i].w);
+			nsum += dv / dl * w;
+			wsum += w;
+			inner += w * clamp(dl / clumps[i].w, 0.0, 1.0);
+		}
+		float rel = inner / max(wsum, 1e-4);
+		crown_w = mat3(tree_xf) * (nsum / max(wsum, 1e-4));
+		// a csomó belsejében lévő levél kevésbé követi a felszínt (ott a saját állása is látszik)
+		crown_k = crown_on * soft_k * 0.86 * smoothstep(0.25, 0.75, rel);
+	}
+	// a festői fő fény minden levélre hat (a belsőkre is: a helyük szerint), nem csak a csomó szélén
+	clump_k = clump_n > 0 ? crown_on * soft_k : 0.0;
 #ifdef FALL
 	crown_k = 0.0;
+	clump_k = 0.0;
 #endif
 }
 
@@ -120,6 +153,18 @@ void fragment() {
 	vec3 alb = mix(a, a * 1.5 + 0.012, rib * 0.6 + vein * 0.22 + edge * 0.12);
 	alb = season_leaf(alb, tint_v, s / max(w, 1e-3), up_v);
 	alb = thirsty_col(alb, thirst * 0.55);
+	// festett lombtömbök (2026. 11. 13.): a csomók festői fő fényt kapnak felülről, kicsit oldalról, a valódi naptól
+	// függetlenül (az a kamerához igazodik, így minden csomó egyformán világos volt) – a tetejük meleg-világos, az aljuk
+	// lilás árnyék, mint a festett fák felhőszerű lombja
+	if (clump_k > 0.001) {
+		vec3 cn = normalize((VIEW_MATRIX * vec4(crown_w, 0.0)).xyz);
+		vec3 upv = normalize((VIEW_MATRIX * vec4(tree_up(), 0.0)).xyz);
+		vec3 key = normalize(upv * 0.85 + vec3(0.32, 0.0, 0.0) + vec3(0.0, 0.0, 0.3));
+		float lit = smoothstep(-0.35, 0.55, dot(cn, key));
+		vec3 shadow = alb * vec3(0.5, 0.48, 0.74);
+		vec3 light = alb * vec3(1.2, 1.15, 1.0);
+		alb = mix(alb, mix(shadow, light, lit), clump_k * paint_k);
+	}
 	vec3 alb_l = ao_direct(alb, ao_v, 0.45);
 	ALBEDO = col_out(alb_l);
 	soft_fix = soft_fix_of(alb_l, ALBEDO);

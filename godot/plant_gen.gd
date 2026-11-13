@@ -104,6 +104,9 @@ var leaf_center := Vector3.ZERO
 ## A lombkorona befoglaló doboza a levelet hordozó ágak pontjaiból (crown()); a váz minden szinten azonos, így ez is.
 var crown_lo := Vector3.INF
 var crown_hi := -Vector3.INF
+## a levelet hordozó ágak pontjai (a felhős lomb csomóihoz, clumps())
+var crown_pts := PackedVector3Array()
+var _clumps: Array = []
 var leaf_far := .001
 
 
@@ -201,6 +204,7 @@ func _branch(p0: Vector3, d0: Vector3, length: float, rad: float, lvl: int, path
 		for q in pts:
 			crown_lo = crown_lo.min(q)
 			crown_hi = crown_hi.max(q)
+			crown_pts.append(q)
 
 	var sides: int = SIDES[lvl] if detail >= 1.0 else (SIDES_LOW[lvl] if detail >= FAR else SIDES_FAR[lvl])
 	var base := n
@@ -360,6 +364,86 @@ func crown() -> AABB:
 	return AABB(crown_lo - m, crown_hi - crown_lo + m * 2.0)
 
 
+## Felhős lomb (art direction, 2026. 11. 13., art/kor02 „B” sor): a korona 2–6 puha csomóra bomlik, mint a festett
+## fák felhőszerű lombtömbjei. A levelet hordozó ágak pontjait (crown_pts) determinisztikusan csoportosítjuk (a
+## legmagasabb pontból induló legtávolabbi-pont kezdés, aztán néhány k-közép lépés); csomónként közép + sugár (a fa saját
+## keretében). A váz minden részletességi szinten azonos, így a csomók is; a metszés nem változtatja (a nyers vázból).
+## Vector4: xyz a közép, w a sugár. A leaf.gdshader a levél normálját a csomók puha uniójának felszínéhez igazítja.
+const CLUMP_MAX := 6
+
+
+func clumps() -> Array:
+	if not _clumps.is_empty():
+		return _clumps
+	var pts: Array = []
+	var stride := maxi(1, crown_pts.size() / 360)
+	for i in range(0, crown_pts.size(), stride):
+		pts.append(crown_pts[i])
+	if pts.size() < 4:
+		var cb := crown()
+		_clumps = [Vector4(cb.get_center().x, cb.get_center().y, cb.get_center().z, maxf(cb.size.length() * .35, .5))]
+		return _clumps
+	var cb2 := crown()
+	var span := cb2.size.length()
+	var leaf_l := float(g.leaf_len)
+	var k := clampi(roundi(span / maxf(leaf_l * 5.0, .9)), 2, CLUMP_MAX)
+	# kezdés: a legmagasabb pont, aztán mindig a meglévőktől legtávolabbi
+	var cs: Array = []
+	var top := 0
+	for i in pts.size():
+		if (pts[i] as Vector3).y > (pts[top] as Vector3).y:
+			top = i
+	cs.append(pts[top])
+	while cs.size() < k:
+		var best := 0
+		var best_d := -1.0
+		for i in pts.size():
+			var md := 1e9
+			for c in cs:
+				md = minf(md, (pts[i] as Vector3).distance_squared_to(c))
+			if md > best_d:
+				best_d = md
+				best = i
+		cs.append(pts[best])
+	var lab := PackedInt32Array()
+	lab.resize(pts.size())
+	for it in 6:
+		for i in pts.size():
+			var bi := 0
+			var bd := 1e9
+			for j in cs.size():
+				var d := (pts[i] as Vector3).distance_squared_to(cs[j])
+				if d < bd:
+					bd = d
+					bi = j
+			lab[i] = bi
+		var sum: Array = []
+		var cnt: Array = []
+		for j in cs.size():
+			sum.append(Vector3.ZERO)
+			cnt.append(0)
+		for i in pts.size():
+			sum[lab[i]] += pts[i]
+			cnt[lab[i]] += 1
+		for j in cs.size():
+			if cnt[j] > 0:
+				cs[j] = sum[j] / float(cnt[j])
+	# sugár: a csomó pontjainak ~85%-át befogja, plusz egy levélnyi
+	_clumps = []
+	for j in cs.size():
+		var ds: Array = []
+		for i in pts.size():
+			if lab[i] == j:
+				ds.append((pts[i] as Vector3).distance_to(cs[j]))
+		if ds.is_empty():
+			continue
+		ds.sort()
+		var rad := float(ds[mini(ds.size() - 1, int(ds.size() * .85))]) + leaf_l * .8
+		var c: Vector3 = cs[j]
+		_clumps.append(Vector4(c.x, c.y, c.z, maxf(rad, leaf_l)))
+	return _clumps
+
+
 ## A levél anyagának forma-paraméterei (M11): a részletes szinten a shader rajzolja a körvonalat (lásd leaf_mesh()),
 ## és a korona ellipszoidja a puha lombfényhez.
 func leaf_shape_params(m: ShaderMaterial) -> void:
@@ -367,6 +451,12 @@ func leaf_shape_params(m: ShaderMaterial) -> void:
 	m.set_shader_parameter("crown_c", cb.get_center())
 	m.set_shader_parameter("crown_e", (cb.size * .5).max(Vector3.ONE * .25))
 	m.set_shader_parameter("crown_on", 1.0)
+	var cl := clumps()
+	var arr: Array[Vector4] = []
+	for i in CLUMP_MAX:
+		arr.append(cl[i] if i < cl.size() else Vector4(0, 0, 0, 0))
+	m.set_shader_parameter("clumps", arr)
+	m.set_shader_parameter("clump_n", cl.size())
 	m.set_shader_parameter("leaf_cut", 1.0 if detail >= 1.0 else 0.0)
 	m.set_shader_parameter("leaf_pow", float(g.leaf_pow))
 	m.set_shader_parameter("leaf_kind", int((g.dna as Array)[2]))
