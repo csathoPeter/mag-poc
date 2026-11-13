@@ -34,6 +34,9 @@ void fragment() {
 	// télen dér/hó az ágak felfelé néző oldalán (M11)
 	float snow = season_snow(dot(normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz), tree_up())) * (0.75 + 0.25 * fine);
 	alb = mix(alb, vec3(0.78, 0.82, 0.88), snow * 0.85);
+	alb = soft_pastel(alb, 1.0);
+	// pasztellben a sötét kéreg lilásszürke (célkép), a világos kérgek maradnak
+	alb = mix(alb, max(alb, vec3(0.3, 0.24, 0.29)), pastel_k * soft_k);
 	vec3 alb_l = ao_direct(alb, AO, 0.5);
 	ALBEDO = col_out(alb_l);
 	soft_fix = soft_fix_of(alb_l, ALBEDO);

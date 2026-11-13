@@ -9,6 +9,24 @@
 global uniform vec3 shade_tint;
 global uniform vec3 rim_col;
 global uniform float soft_k;
+// pastel_k: a pasztell sáv erőssége (2026. 11. 13., célkép: docs/art/targets/). 0 = a színek változatlanok; 1 = nincs sötét
+// tónus, kisebb telítettség. Éjjel a main.gd lejjebb veszi, hogy a biolumineszcencia sötét háttér előtt világítson.
+global uniform float pastel_k;
+// crown_puff: 0 = a korona egy puha tömb (egy ellipszoid), 1 = felhőcsomók (pamacsok) – lásd leaf.gdshader.
+global uniform float crown_puff;
+
+// Pasztell sáv (lineáris be/ki): a szín tónusát egy világos sávba húzza, a telítettséget visszafogja. A DNS-ből jövő
+// árnyalat (merre áll a szín-keréken) nem változik, így egy magenta virág magenta marad, csak pasztell.
+// A célkép mérése: a legsötétebb folt is ~0,6-os világosságú, a fő színek telítettsége 0,1–0,3.
+vec3 soft_pastel(vec3 lin, float amt) {
+	float k = clamp(pastel_k * soft_k * amt, 0.0, 1.0);
+	vec3 d = sqrt(max(lin, vec3(0.0)));		// közelítő kijelző-tér (gamma 2), itt a lépték egyenletesebb
+	float l = dot(d, vec3(0.299, 0.587, 0.114));
+	vec3 ch = d - vec3(l);					// a szín (a szürkétől való eltérés) – ez marad, csak a tónus emelkedik
+	float l2 = mix(l, 0.34 + 0.62 * l, k);	// a tónus a ~0,34–0,96 sávba: nincs fekete, a fehér sem ég ki
+	d = clamp(vec3(l2) + ch * (1.0 - 0.08 * k), 0.0, 1.0);
+	return d * d;
+}
 
 // A saját light() függvény eredményét a Compatibility (web) renderer a még sRGB-kódolt albedóval szorozza (col_out után),
 // a Mobile a lineárissal; ettől weben a közvetlen fény 2–3× erősebb volt, a sötétebb csatornákon jobban (a füvön mérve:

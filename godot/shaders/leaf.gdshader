@@ -15,6 +15,9 @@ uniform int leaf_kind = 3;
 uniform vec3 crown_c = vec3(0.0, 3.0, 0.0);
 uniform vec3 crown_e = vec3(2.0);
 uniform float crown_on = 0.0;
+// Pamacsos korona (2026. 11. 13.): a korona felhőcsomói a fa keretében (xyz középpont, w sugár; plant_gen.puffs()).
+uniform vec4 puffs[8];
+uniform int puff_n = 0;
 varying vec3 crown_w;
 varying float crown_k;
 varying float tint_v;
@@ -60,9 +63,33 @@ void vertex() {
 	// a levéllemez mennyire néz felfelé (a dérhez), kétoldalú levélnél mindegy, melyik oldala
 	up_v = abs(dot(normalize(NORMAL), tree_up()));
 	// puha lomb: a korona felszínének normálja a levél helyén (az ellipszoid gradiense); a belső levelek kevésbé követik
-	vec3 q = ((tree_inv * vec4(MODEL_MATRIX[3].xyz, 1.0)).xyz - crown_c) / crown_e;
-	crown_w = mat3(tree_xf) * (q / crown_e);
-	crown_k = crown_on * soft_k * 0.78 * smoothstep(0.12, 0.65, length(q));
+	vec3 lp = (tree_inv * vec4(MODEL_MATRIX[3].xyz, 1.0)).xyz;
+	vec3 q = (lp - crown_c) / crown_e;
+	vec3 cn = q / crown_e;
+	float depth = smoothstep(0.12, 0.65, length(q));
+	// pamacsos korona: a levél a legközelebbi felhőcsomó felszínét követi (a szomszédos csomók között puhán átúszik),
+	// így a lomb néhány kerek, külön-külön megvilágított csomó – a csomók széle a peremfénnyel dereng
+	float pk = crown_puff * step(0.5, float(puff_n));
+	if (pk > 0.0) {
+		vec3 acc = vec3(0.0);
+		float ws = 0.0;
+		for (int i = 0; i < 8; i++) {
+			if (i >= puff_n) {
+				break;
+			}
+			vec3 dv = (lp - puffs[i].xyz) / puffs[i].w;
+			float w = exp(-10.0 * dot(dv, dv));
+			acc += dv * w;
+			ws += w;
+		}
+		vec3 pn = acc / max(ws, 1e-6);
+		// a csomó felszíne, a korona egészének irányával kicsit kifelé billentve (a korona alja ne legyen világos)
+		vec3 pd = normalize(pn + normalize(cn + 1e-6) * 0.25);
+		cn = mix(normalize(cn + 1e-6), pd, 0.85 * pk);
+		depth = mix(depth, smoothstep(0.08, 0.55, length(pn)), pk);
+	}
+	crown_w = mat3(tree_xf) * cn;
+	crown_k = crown_on * soft_k * mix(0.78, 1.0, pk) * depth;
 #ifdef FALL
 	crown_k = 0.0;
 #endif
@@ -107,7 +134,9 @@ void fragment() {
 			discard;
 		}
 	}
-	vec3 a = mix(col_in(base), col_in(tip), t * t) * (0.8 + tint_v * 0.42);
+	// levelenkénti árnyalat; pamacsos koronánál kisebb, hogy a csomók tömbként olvassanak (ne levélzaj)
+	float tv = mix(0.8 + tint_v * 0.42, 0.92 + tint_v * 0.18, crown_puff * crown_on * soft_k);
+	vec3 a = mix(col_in(base), col_in(tip), t * t) * tv;
 	// erezet: fő ér, a csúcs felé dőlő oldalerek (a távolban, ahol vibrálna, elhalványul)
 	float rib = 1.0 - smoothstep(0.022, 0.055, s);
 	float ph = t * 8.0 - s * 2.6;
@@ -120,6 +149,7 @@ void fragment() {
 	vec3 alb = mix(a, a * 1.5 + 0.012, rib * 0.6 + vein * 0.22 + edge * 0.12);
 	alb = season_leaf(alb, tint_v, s / max(w, 1e-3), up_v);
 	alb = thirsty_col(alb, thirst * 0.55);
+	alb = soft_pastel(alb, 1.0);
 	vec3 alb_l = ao_direct(alb, ao_v, 0.45);
 	ALBEDO = col_out(alb_l);
 	soft_fix = soft_fix_of(alb_l, ALBEDO);
@@ -130,7 +160,7 @@ void fragment() {
 	AO_LIGHT_AFFECT = 0.45;
 	// peremfény: a korona széle a légkör és a saját színe keverékével dereng (a körvonal helyett)
 	EMISSION = col_out(col_in(glow_col) * (glow_amt * (part_on(1.0) * (rib * 2.2 + vein * 3.5 + 0.25) + 0.06) + touch_wave(u_v) * 0.9)
-		+ soft_rim(NORMAL, VIEW, 0.3 * crown_on) * alb);
+		+ soft_rim(NORMAL, VIEW, 0.3 * crown_on) * mix(alb, vec3(0.55), 0.55 * pastel_k * soft_k));
 #ifdef FALL
 	if (fall_gone(FRAGCOORD.xy)) {
 		discard;

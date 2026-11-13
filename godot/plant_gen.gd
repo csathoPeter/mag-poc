@@ -104,6 +104,11 @@ var leaf_center := Vector3.ZERO
 ## A lombkorona befoglaló doboza a levelet hordozó ágak pontjaiból (crown()); a váz minden szinten azonos, így ez is.
 var crown_lo := Vector3.INF
 var crown_hi := -Vector3.INF
+## Pamacsos korona (2026. 11. 13., célkép: docs/art/targets/): a levelet hordozó ágak pontjai; puffs() ebből csoportosít.
+## Csak a fényhez kell (shader-paraméter), a vázat, a puffereket és a véletlenszám-sorrendet nem érinti.
+var crown_pts := PackedVector3Array()
+var _puffs_cache: Variant = null
+const PUFF_MAX := 8
 var leaf_far := .001
 
 
@@ -201,6 +206,7 @@ func _branch(p0: Vector3, d0: Vector3, length: float, rad: float, lvl: int, path
 		for q in pts:
 			crown_lo = crown_lo.min(q)
 			crown_hi = crown_hi.max(q)
+		crown_pts.append_array(pts)
 
 	var sides: int = SIDES[lvl] if detail >= 1.0 else (SIDES_LOW[lvl] if detail >= FAR else SIDES_FAR[lvl])
 	var base := n
@@ -360,6 +366,83 @@ func crown() -> AABB:
 	return AABB(crown_lo - m, crown_hi - crown_lo + m * 2.0)
 
 
+## A korona felhőcsomói (pamacsok, 2026. 11. 13.): a levelet hordozó ágak pontjai k csoportba (k-közép, a legmagasabb
+## pontból induló legtávolabbi-pont kezdéssel, így determinisztikus); csoportonként középpont + sugár (xyz, w), a fa
+## keretében. A leaf.gdshader a levél fényét a legközelebbi pamacs felszínéhez igazítja: a lomb nem egy tömb, hanem
+## néhány kerek, külön-külön megvilágított csomó. A pamacsok száma a korona méretéből (3–8).
+func puffs() -> PackedVector4Array:
+	if _puffs_cache != null:
+		return _puffs_cache
+	var out := PackedVector4Array()
+	_puffs_cache = out
+	var n_all := crown_pts.size()
+	if n_all < 8:
+		return out
+	# legfeljebb ~320 pont (egyenletes ritkítással), hogy weben is olcsó legyen
+	var stride := maxi(1, ceili(n_all / 320.0))
+	var pts := PackedVector3Array()
+	for i in range(0, n_all, stride):
+		pts.append(crown_pts[i])
+	var leaf_m := float(g.leaf_len) * .7
+	var cb := crown()
+	var k := clampi(roundi(cb.size.length() / maxf(leaf_m * 5.0, .9)), 3, PUFF_MAX)
+	k = mini(k, pts.size() / 4)
+	if k < 2:
+		return out
+	var n := pts.size()
+	var cs: Array[Vector3] = []
+	var top := 0
+	for i in n:
+		if pts[i].y > pts[top].y:
+			top = i
+	cs.append(pts[top])
+	var dmin := PackedFloat32Array()
+	dmin.resize(n)
+	for i in n:
+		dmin[i] = pts[i].distance_squared_to(cs[0])
+	while cs.size() < k:
+		var far := 0
+		for i in n:
+			if dmin[i] > dmin[far]:
+				far = i
+		cs.append(pts[far])
+		for i in n:
+			dmin[i] = minf(dmin[i], pts[i].distance_squared_to(pts[far]))
+	var asg := PackedInt32Array()
+	asg.resize(n)
+	for it in 6:
+		var sums: Array[Vector3] = []
+		var cnt := PackedInt32Array()
+		sums.resize(k)
+		sums.fill(Vector3.ZERO)
+		cnt.resize(k)
+		for i in n:
+			var best := 0
+			var bd := INF
+			for j in k:
+				var dd := pts[i].distance_squared_to(cs[j])
+				if dd < bd:
+					bd = dd
+					best = j
+			asg[i] = best
+			sums[best] += pts[i]
+			cnt[best] += 1
+		for j in k:
+			if cnt[j] > 0:
+				cs[j] = sums[j] / float(cnt[j])
+	for j in k:
+		var s2 := 0.0
+		var c := 0
+		for i in n:
+			if asg[i] == j:
+				s2 += pts[i].distance_squared_to(cs[j])
+				c += 1
+		if c > 0:
+			out.append(Vector4(cs[j].x, cs[j].y, cs[j].z, sqrt(s2 / c) * 1.5 + leaf_m))
+	_puffs_cache = out
+	return out
+
+
 ## A levél anyagának forma-paraméterei (M11): a részletes szinten a shader rajzolja a körvonalat (lásd leaf_mesh()),
 ## és a korona ellipszoidja a puha lombfényhez.
 func leaf_shape_params(m: ShaderMaterial) -> void:
@@ -367,6 +450,10 @@ func leaf_shape_params(m: ShaderMaterial) -> void:
 	m.set_shader_parameter("crown_c", cb.get_center())
 	m.set_shader_parameter("crown_e", (cb.size * .5).max(Vector3.ONE * .25))
 	m.set_shader_parameter("crown_on", 1.0)
+	var pf: PackedVector4Array = puffs()
+	m.set_shader_parameter("puff_n", pf.size())
+	pf.resize(PUFF_MAX)
+	m.set_shader_parameter("puffs", pf)
 	m.set_shader_parameter("leaf_cut", 1.0 if detail >= 1.0 else 0.0)
 	m.set_shader_parameter("leaf_pow", float(g.leaf_pow))
 	m.set_shader_parameter("leaf_kind", int((g.dna as Array)[2]))

@@ -59,6 +59,7 @@ void fragment() {
 	c = mix(c, vec3(0.8, 0.84, 0.9), frost * 0.55);
 	// a fű alatti talaj egyszínű (a világos foltok kopasznak hatottak a szálak között); a kőzeten marad a foltosság
 	c *= mix(0.9 + 0.18 * patch_v, 1.0, g);
+	c = soft_pastel(c, 0.7);
 	float fr = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
 	// a légkör rózsaszínes pereme csak a kőzeten: leszállva lapos szögből a fű alatti talajt is beszínezte, a rések kivilágítottak
 	ALBEDO = col_out(mix(c, atmo_l, fr * 0.45 * (1.0 - g)));

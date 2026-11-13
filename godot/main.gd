@@ -145,6 +145,9 @@ var res_trial := 0.0
 var res_trial_bad := 0.0
 ## Puha stílus be/ki (a fejlesztői „puha”/„régi” gomb, ?stilus=regi, a mérés „soft” kulcsa); _soft_globals() alkalmazza.
 var soft_on := true
+## Pasztell sáv és pamacsos korona (2026. 11. 13., célkép: docs/art/targets/); ?pasztell=0 / ?pamacs=0 kikapcsolja (összehasonlításhoz).
+var pastel_on := true
+var puff_on := true
 var _soft_last: Array = []
 
 # Automatikus mérés: végigpróbálja a beállításokat kint és leszállva, a végén táblázat + küldés GitHubra
@@ -367,6 +370,8 @@ func _ready() -> void:
 	# évszak (M11): ?evszak=… rögzíti; a próba-képek (--shot=…,planet / leaves, --bench) alapból nyár, összehasonlíthatók
 	Seasons.forced = Seasons.parse(opts.evszak)
 	soft_on = opts.stilus != "regi"
+	pastel_on = bool(opts.pasztell)
+	puff_on = bool(opts.pamacs)
 	seasons.neutral = bench_cli or (shot_args.size() > 1 and shot_args[1] != "state")
 	add_child(seasons)
 	# képernyőképnél, parancssori mérésnél és a végigjátszásnál (--playtest) nincs hang (nem számol, nem szól)
@@ -2207,19 +2212,26 @@ func _soft_globals() -> void:
 	var dusk_c := Color(.75, .42, .7)
 	var night_c := Color(.16, .2, .5)
 	var c := day_c.lerp(dusk_c, dusk * .6).lerp(night_c, maxf(night, 0.0))
-	var k := lerpf(.07, .04, maxf(night, 0.0))
+	# pasztell (2026. 11. 13., célkép: docs/art/targets/): nappal világosabb, lilás árnyék és világos levendula peremfény;
+	# éjjel visszafogottabb, hogy a növények fénye sötét háttér előtt világítson
+	var n := maxf(night, 0.0)
+	var pk := (lerpf(1.0, .1, n) if pastel_on else 0.0) if soft_on else 0.0
+	var k := lerpf(lerpf(.07, .04, n), lerpf(.12, .05, n), pk)
 	var tint := Vector3(c.r, c.g, c.b) * k
-	var rim := atmo.lerp(Color(.55, .7, 1.0), maxf(night, 0.0) * .7)
-	var rim_v := Vector3(rim.r, rim.g, rim.b) * lerpf(.55, .3, maxf(night, 0.0))
-	var key := [tint, rim_v, soft_on]
+	var rim := atmo.lerp(Color(.55, .7, 1.0), n * .7)
+	rim = rim.lerp(Color(.96, .9, 1.0), .55 * pk * (1.0 - n))
+	var rim_v := Vector3(rim.r, rim.g, rim.b) * lerpf(.55, .3, n) * lerpf(1.0, 1.35, pk * (1.0 - n))
+	var key := [tint, rim_v, soft_on, pk, puff_on]
 	if key == _soft_last:
 		return
 	_soft_last = key
 	RenderingServer.global_shader_parameter_set("shade_tint", tint)
 	RenderingServer.global_shader_parameter_set("rim_col", rim_v)
 	RenderingServer.global_shader_parameter_set("soft_k", 1.0 if soft_on else 0.0)
-	env.adjustment_contrast = .97 if soft_on else 1.06
-	sun.shadow_opacity = .6 if soft_on else .78
+	RenderingServer.global_shader_parameter_set("pastel_k", pk)
+	RenderingServer.global_shader_parameter_set("crown_puff", 1.0 if puff_on and soft_on else 0.0)
+	env.adjustment_contrast = lerpf(.97, .93, pk) if soft_on else 1.06
+	sun.shadow_opacity = lerpf(.6, .42, pk) if soft_on else .78
 
 
 # ---------------------------------------------------------------- Játékállapot (bekötés; a logika a state.gd-ben)

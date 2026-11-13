@@ -62,7 +62,7 @@ void fragment() {
 		discard;
 	}
 	if (kind_v > 0.5) {
-		vec3 st_l = col_in(stamen);
+		vec3 st_l = soft_pastel(col_in(stamen), 0.7);
 		ALBEDO = col_out(st_l);
 		soft_fix = soft_fix_of(st_l, ALBEDO);
 		ROUGHNESS = 0.8;
@@ -73,13 +73,15 @@ void fragment() {
 		// bimbóban a szirmok töve zöldes, hervadáskor fakó, barnás krém
 		c = mix(c, vec3(0.32, 0.46, 0.22), bud_v * 0.5 * (1.0 - UV.x * 0.6));
 		c = mix(c, vec3(dot(c, vec3(0.33))) * vec3(1.05, 0.92, 0.74), fade_v * 0.7);
-		vec3 alb = thirsty_col(c, thirst * 0.3);
+		vec3 alb = soft_pastel(thirsty_col(c, thirst * 0.3), 0.85);
 		ALBEDO = col_out(alb);
 		soft_fix = soft_fix_of(alb, ALBEDO);
 		ROUGHNESS = 0.5;
 		BACKLIGHT = alb * (1.1 * backlight_k());
 	}
-	EMISSION = col_out(col_in(glow_col) * (glow_amt * (part_on(0.0) * (smoothstep(0.1, 0.9, UV.x) * 3.2 + 0.9) + 0.12) + touch_wave(u_v) * 1.2));
+	// nappal a virág halkan magától is dereng (célkép: pöttyökként kiválnak a puha lombból)
+	vec3 self_l = (kind_v > 0.5 ? soft_pastel(col_in(stamen), 0.7) : soft_pastel(col_in(petal), 0.85)) * (0.1 * pastel_k * soft_k);
+	EMISSION = col_out(self_l + col_in(glow_col) * (glow_amt * (part_on(0.0) * (smoothstep(0.1, 0.9, UV.x) * 3.2 + 0.9) + 0.12) + touch_wave(u_v) * 1.2));
 #ifdef FALL
 	if (fall_gone(FRAGCOORD.xy)) {
 		discard;

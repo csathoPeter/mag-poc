@@ -301,6 +301,7 @@ void fragment() {
 	c = mix(c, c * vec3(1.02, 1.18, 0.92), season.x * 0.6);
 	c = mix(c, vec3(ml) * vec3(1.45, 1.0, 0.42), season.z * 0.42);
 	c = mix(c, vec3(0.74, 0.8, 0.88) * max(ml * 2.0, 0.3), season.w * (0.25 + 0.45 * h * h));
+	c = soft_pastel(c, 0.7);
 	ALBEDO = col_out(c);
 	soft_fix = soft_fix_of(c, ALBEDO);
 	ROUGHNESS = mix(1.0, 0.45, h);

@@ -87,7 +87,7 @@ static func day_label(day: int) -> String:
 ##   mag: barát mag-kódja (`?mag=KOD`, M10: a mag a táskába kerül, „Kaptál egy magot”); bolygo: barát bolygójának linkje
 ##   (`?bolygo=…`, M10: vendégként nézhető, a mentés nem változik).
 static func launch_options() -> Dictionary:
-	var o := {"state": "", "player": "", "wipe": false, "day": null, "open": "", "mag": "", "bolygo": "", "evszak": "", "debug": null, "stilus": ""}
+	var o := {"state": "", "player": "", "wipe": false, "day": null, "open": "", "mag": "", "bolygo": "", "evszak": "", "debug": null, "stilus": "", "pasztell": true, "pamacs": true}
 	var pairs: Array = []
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--"):
@@ -127,6 +127,9 @@ static func launch_options() -> Dictionary:
 			"stilus":
 				# a látvány stílusa összehasonlításhoz: regi = a puha stílus előtti kép (a „puha” gomb is váltja)
 				o.stilus = v
+			"pasztell", "pamacs":
+				# a pasztell sáv / a pamacsos korona ki (=0) összehasonlításhoz (2026. 11. 13.)
+				o[k] = v != "0" and v != "ki"
 			"debug":
 				# fejlesztői mód (M12): mérőszámok és teszt-gombsorok; ?debug=0 kikapcsolja (mentve)
 				o.debug = v != "0" and v != "ki"
