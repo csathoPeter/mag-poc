@@ -1548,6 +1548,8 @@ func plant_new() -> void:
 
 
 func _spawn_on_planet(item: Dictionary, gg: Dictionary) -> void:
+	# a díszek (planet.props) elkerülik a fát
+	planet.props.note_tree(item.dir)
 	# három részletességi szint ugyanabból a vázból: részletes (közel), egyszerűsített, távoli; az alakítási lista
 	# (M8) mindegyiken ugyanúgy hat
 	if not item.has("shape"):

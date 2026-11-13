@@ -61,6 +61,11 @@ godot/                  A játék (Godot 4.7.1, GDScript)
                         kozmoszba száll); visszahozás
   cosmos.gd             A kozmosz háttere (Cosmos): csillagpor (egyszer feltöltött MultiMesh), ködök, galaxisok 3D-ben (shaders/
                         cosmos_dust, galaxy; render_priority 5–6, a lencse után), a játékoskódból, csak a kozmoszban látszik
+  props.gd              Díszek a kopár bolygókon (Props, 2026. 11. 13.): a Quaternius Stylized Nature MegaKit (CC0) kövei,
+                        kavicsai, gombái, lóheréje, páfránya, kis virágai a felszíntakaró szerint (kavics / moha / páfrány; a füvesen
+                        nincs), determinisztikusan a bolygókódból, a fák helyét elkerülve, MultiMesh modellenként, a bolygó színe
+                        felé húzva (shaders/prop.gdshader, #define CUT a levelekhez); a lehetséges helyek bolygónként egyszer
+  props/quaternius/     A díszek modelljei (glTF) és lekicsinyített textúrái, licenc: LICENSE_Quaternius_CC0.txt (tools/prep_props.py)
   planet_system.gd      Bolygók egymás mellett (PlanetSystem, M7): a többi bolygó olcsó kis változata (kicsinyítve),
                         a térben (space_point: állandó 3D-hely a játékoskódból, lassan növő fürt, parallaxissal), átfogó nézet
                         (a kamera kihúzódik, az egész fürt befér, nevekkel; overview_pose),
@@ -113,6 +118,8 @@ tools/setup_godot.sh    Godot + szoftveres Vulkan telepítése (felhős gépen).
 tools/render_shots.sh   Fej nélküli képernyőképek ellenőrzéshez
 tools/gen_ground_tex.py A kopár bolygók talaj-textúrái (kavics, moha): csempézhető adat-textúra (RG normál, B árnyalás, A fedés), numpy,
                         rögzített maggal → godot/textures/talaj_*.png (importálás: mipmap, tömörítés és alfa-szegély-javítás nélkül)
+tools/prep_props.py     A díszek előkészítése a Quaternius-csomag zipjéből (store.godotengine.org): a kiválasztott glTF-ek, textúrák
+                        lekicsinyítve → godot/props/quaternius/ (a textúrák importja: mipmap, tömörítés nélkül)
 tools/art_direction.py  Art direction a Nano Banana-val (Google Gemini képmodellek): a játék képernyőképe + stílusleírás (+ stílusminták)
                         → változatok egy telefonon nézhető HTML-oldalon (artifactként közzétéve). `run art/korNN/terv.json`
                         (képernyőkép, generálás, oldal), `gen be.png ki.jpg --prompt …`. Kulcs: a felhős környezet proxyja adja
@@ -150,7 +157,8 @@ art/                    Art direction körök: korNN/terv.json + a játék képe
 - **Kopár bolygók (2026. 11. 13., `art/kor03`):** kavicsos, mohás, páfrányos bolygón lekerekített csúcsok, második szín (világos csúcs,
   légkörszínű völgy), és a takaró saját festett textúrája bump mappel (kavics: foltokban kövek homokban; moha: párnák). Próbabolygók:
   `planet,bolygo08,20,12,zoom1` (kavics, tüskés), `bolygo30` (moha), `bolygo07` (páfrány). Telefonon nézd: a kavics nem pöttyös-e, a
-  moha párnás-e, és tartja-e a 60 fps-t leszállva egy kopár bolygón.
+  moha párnás-e, és tartja-e a 60 fps-t leszállva egy kopár bolygón. **Díszek** (Quaternius, CC0): kavicsos bolygón kövek, kavicsok,
+  moháson gombák, lóhere, kis virágok, páfrányoson páfrány, kis növények, virágok – elég nagyok-e, nem lógnak-e bele a fákba.
 - **Kozmosz (2026. 11. 11.):** telefonon nézd meg, hogy csípéssel kényelmesen el lehet-e jutni a kozmoszig és vissza, tartja-e a 60 fps-t (~1400 porszem + 74 átlátszó négyszög, ~3k háromszög), és eltalálhatók-e ujjal a csillagok; régi mentésnél a csillagok egyszer új helyre kerülnek (v7 felhozás).
 - Ha a workflow nem fut vagy elhasal, mondd el Péternek, és ne próbáld megkerülni a Pages beállításait (innen a Pages API nem érhető el).
 

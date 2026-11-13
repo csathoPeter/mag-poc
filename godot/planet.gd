@@ -127,6 +127,8 @@ var upd_k := 0.0
 var blade_hi: Mesh
 var blade_lo: Mesh
 var motes := MultiMeshInstance3D.new()
+## díszek a kopár bolygókon (props.gd: kövek, gombák, páfrány – Quaternius, CC0)
+var props := Props.new()
 var ring := MeshInstance3D.new()
 var moons: Array = []
 var surf_mat := ShaderMaterial.new()
@@ -159,6 +161,9 @@ func _ready() -> void:
 	motes.material_override = motes_mat
 	motes.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	body.add_child(motes)
+	# díszek a kopár bolygókon (props.gd)
+	props.host = self
+	body.add_child(props)
 	ring_mat.shader = RING
 	ring.material_override = ring_mat
 	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -212,6 +217,8 @@ func setup(planet_code: String, plant_dnas: Array, founding: Array = [], is_bare
 	_snap()
 	_build_surface()
 	_build_grass()
+	props.avoid.clear()
+	props.built_code = ""
 	_build_motes()
 	_build_moons()
 	_build_ring()
