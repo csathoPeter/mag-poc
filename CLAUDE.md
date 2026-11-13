@@ -111,6 +111,8 @@ prototype-threejs/      Korábbi Three.js-prototípus egy fájlban. A DNS-tábla
                         (seed_fx.gd) és a keresztezés (breeding.gd) már át van víve.
 tools/setup_godot.sh    Godot + szoftveres Vulkan telepítése (felhős gépen). `--web` a webes export sablont is letölti (1,3 GB-os csomagból).
 tools/render_shots.sh   Fej nélküli képernyőképek ellenőrzéshez
+tools/gen_ground_tex.py A kopár bolygók talaj-textúrái (kavics, moha): csempézhető adat-textúra (RG normál, B árnyalás, A fedés), numpy,
+                        rögzített maggal → godot/textures/talaj_*.png (importálás: mipmap, tömörítés és alfa-szegély-javítás nélkül)
 tools/art_direction.py  Art direction a Nano Banana-val (Google Gemini képmodellek): a játék képernyőképe + stílusleírás (+ stílusminták)
                         → változatok egy telefonon nézhető HTML-oldalon (artifactként közzétéve). `run art/korNN/terv.json`
                         (képernyőkép, generálás, oldal), `gen be.png ki.jpg --prompt …`. Kulcs: a felhős környezet proxyja adja
@@ -145,6 +147,10 @@ art/                    Art direction körök: korNN/terv.json + a játék képe
   látóhatáron látszanak; a kőzeten nincs szál, kívülről (a kamera magasan) egy sincs, a bolygó sima, festett gömb. Háromszögszám változatlan. Összehasonlítás: `?fu=regi` (natívan `--fu=regi`), fejlesztői
   fiókban „festett fű” kapcsoló. Telefonon nézd: nem vibrál-e a fű mozgás közben, nem túl erősek-e a sávok, és tartja-e
   a 60 fps-t leszállva.
+- **Kopár bolygók (2026. 11. 13., `art/kor03`):** kavicsos, mohás, páfrányos bolygón lekerekített csúcsok, második szín (világos csúcs,
+  légkörszínű völgy), és a takaró saját festett textúrája bump mappel (kavics: foltokban kövek homokban; moha: párnák). Próbabolygók:
+  `planet,bolygo08,20,12,zoom1` (kavics, tüskés), `bolygo30` (moha), `bolygo07` (páfrány). Telefonon nézd: a kavics nem pöttyös-e, a
+  moha párnás-e, és tartja-e a 60 fps-t leszállva egy kopár bolygón.
 - **Kozmosz (2026. 11. 11.):** telefonon nézd meg, hogy csípéssel kényelmesen el lehet-e jutni a kozmoszig és vissza, tartja-e a 60 fps-t (~1400 porszem + 74 átlátszó négyszög, ~3k háromszög), és eltalálhatók-e ujjal a csillagok; régi mentésnél a csillagok egyszer új helyre kerülnek (v7 felhozás).
 - Ha a workflow nem fut vagy elhasal, mondd el Péternek, és ne próbáld megkerülni a Pages beállításait (innen a Pages API nem érhető el).
 

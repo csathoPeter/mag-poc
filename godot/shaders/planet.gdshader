@@ -13,6 +13,10 @@ uniform float night = 0.0;
 uniform float shape = 1.0;
 // a felszíntakaró (planet.gd COVER sorrendje): 0 fű, 1 moha, 2 páfrány, 3 kavics – a festett mintához
 uniform int cover_kind = 0;
+// a takaró textúrája (planet.gd: kavics / moha), a csempe mérete (a bolygó sugarából: csempe / egységirány) és a bump ereje
+uniform sampler2D cover_tex : filter_linear_mipmap, repeat_enable;
+uniform float cover_scale = 3.0;
+uniform float cover_bump = 1.0;
 varying float h_v;
 varying float band_v;
 varying float patch_v;
@@ -66,7 +70,12 @@ void fragment() {
 	float brush = pf_noise(pf_warp(dn, 26.0, 3.5) + 17.0) * 0.7 + pf_noise(pf_warp(dn, 61.0, 4.0) + 3.0) * 0.3;
 	float bfade = clamp(1.0 - length(fwidth(dn * 26.0)) * 1.2, 0.0, 1.0);
 	vec3 painted = paint_relief(paint_tone(grass_l, paint_band(band_v)) * (1.0 + (brush - 0.5) * 0.2 * bfade), h_v, atmo_l);
-	painted = paint_cover(painted, dn, cover_kind, h_v);
+	vec3 pert = vec3(0.0);
+	float bump_k = 0.0;
+	if (cover_kind != 0) {
+		vec4 ct = paint_tex(cover_tex, dn * cover_scale, dn, pert);
+		painted = paint_cover(painted, ct, dn, cover_kind, h_v, bump_k);
+	}
 	meadow = mix(meadow, painted, paint_k * soft_k);
 	// évszak (M11): tavasszal üdébb, ősszel melegebb (okkeres) a felszíntakaró; télen deres, fehéres
 	float ml = season_luma(meadow);
@@ -85,6 +94,10 @@ void fragment() {
 	// látszanak; a fűszál fénye a gömb normáljából jön, így a kettő közelebb kerül)
 	NORMAL = normalize(mix(NORMAL, rad_v, 0.4 * paint_k * soft_k));
 	float fr = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
+	// a takaró domborzata (bump map): a kövek, párnák a nap felől világosak, a túloldalon árnyékosak (a légkör pereme
+	// előtte számolva: a bump-tól a kövek széle nem kap rózsaszínes peremet)
+	vec3 pert_v = mat3(VIEW_MATRIX) * (mat3(MODEL_MATRIX) * pert) / length(MODEL_MATRIX[0].xyz);
+	NORMAL = normalize(NORMAL + pert_v * (cover_bump * bump_k * g * paint_k * soft_k));
 	// a légkör rózsaszínes pereme csak a kőzeten: leszállva lapos szögből a fű alatti talajt is beszínezte, a rések kivilágítottak
 	vec3 alb = mix(c, atmo_l, fr * 0.45 * (1.0 - g));
 	ALBEDO = col_out(alb);

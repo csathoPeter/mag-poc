@@ -7,6 +7,9 @@ extends Node3D
 const SURFACE := preload("res://shaders/planet.gdshader")
 const ATMO := preload("res://shaders/atmo.gdshader")
 const GRASS := preload("res://shaders/planet_grass.gdshader")
+## a kopár bolygók talaj-textúrái (art direction 3. kör; adat: RG normál, B árnyalás, A fedés – tools/gen_ground_tex.py)
+const TEX_GRAVEL := preload("res://textures/talaj_kavics.png")
+const TEX_MOSS := preload("res://textures/talaj_moha.png")
 const RING := preload("res://shaders/ring.gdshader")
 const MOTES := preload("res://shaders/motes.gdshader")
 
@@ -327,6 +330,11 @@ func _apply() -> void:
 	surf_mat.set_shader_parameter("grass", cur.grass)
 	surf_mat.set_shader_parameter("atmo", cur.atmo)
 	surf_mat.set_shader_parameter("cover_kind", cover_i)
+	# a takaró textúrája (tools/gen_ground_tex.py): kavics ~4, moha ~3 egység egy csempe
+	if cover_i != 0:
+		surf_mat.set_shader_parameter("cover_tex", TEX_GRAVEL if cover_i == 3 else TEX_MOSS)
+		surf_mat.set_shader_parameter("cover_scale", radius / (4.0 if cover_i == 3 else 3.0))
+		surf_mat.set_shader_parameter("cover_bump", 1.0 if cover_i == 3 else .8)
 	surf_mat.set_shader_parameter("night", night)
 	atmo_mat.set_shader_parameter("atmo", cur.atmo)
 	atmo_mat.set_shader_parameter("strength", lerpf(1.0, .8, night))
