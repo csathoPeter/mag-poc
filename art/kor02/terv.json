@@ -1,0 +1,76 @@
+{
+ "cim": "Mag – art direction, 2. kör: Ghibli + sima fű",
+ "bevezeto": "Az 1. kör alapján összevont irány: festett Ghibli-ég, felhős lombtömbök, sima, festett fű (a Nano Banana 2 Ghibli-képe és a Pro cel-shadinges képe felé). Csak Pro, jelenetenként két változat; a kiválasztott 1. körös képeket stílusmintaként is megkapta. Két új nézet is van (alkony, egy másik fa): működik-e az irány más képen is.",
+ "stilus": "Overall art direction for the game: soft, stylized, painterly but clean – not realistic, not hard cartoon. Calm and dreamy. Plants keep their own distinct colours (each plant is unique, grown from its DNA). Not cute, not chibi, no stars or sparkles painted onto leaves, no faces.",
+ "jelenetek": [
+  {
+   "nev": "kint",
+   "cim": "1. A bolygó kívülről (nappal)",
+   "shot": "planet,bolygo01,14,12,zoom0,clean"
+  },
+  {
+   "nev": "fa",
+   "cim": "2. Leszállva egy fánál (nappal)",
+   "shot": "planet,bolygo01,14,12,focus2,clean"
+  },
+  {
+   "nev": "ejjel",
+   "cim": "3. Éjszakai kert, leszállva",
+   "shot": "planet,bolygo01,14,23,focus0,clean",
+   "prompt": "It is night: keep it dark and quiet, the flowers glow softly, fireflies float."
+  },
+  {
+   "nev": "alkony",
+   "cim": "4. Új: ugyanaz a fa alkonyatkor",
+   "shot": "planet,bolygo01,14,19,focus2,clean",
+   "prompt": "It is dusk: warm low sun, long soft coloured shadows."
+  },
+  {
+   "nev": "masikfa",
+   "cim": "5. Új: egy másik fa (nappal)",
+   "shot": "planet,bolygo01,14,12,focus5,clean"
+  }
+ ],
+ "iranyok": [
+  {
+   "nev": "ghibli_sima",
+   "cim": "A – Ghibli + sima fű (3 stílusminta)",
+   "leiras": "a három kiválasztott 1. körös kép stílusmintaként; szép, de a színek elcsúsznak (zöld fű, lila lomb), egy képen a minta jelenetét is átvette",
+   "valtozatok": 2,
+   "modellek": [
+    "pro"
+   ],
+   "referenciak": [
+    {
+     "kep": "../kor01/fa_ghibli_pro.jpg",
+     "mire": "the painted sky with soft gouache clouds, and the cloud-like clumped canopy masses with painted light and lilac shadows"
+    },
+    {
+     "kep": "../kor01/fa_puhacel_pro.jpg",
+     "mire": "ONLY the ground: a smooth painted grass surface with broad soft tonal bands and lilac shadows"
+    },
+    {
+     "kep": "../kor01/kint_ghibli_nb2.jpg",
+     "mire": "ONLY the ground: a smooth, softly brushed grass carpet seen from afar"
+    }
+   ],
+   "prompt": "Direction: Studio Ghibli background painting feel (the principle, not the exact look). SKY: painted, gouache-like, soft clouds, gentle gradients. CANOPY: one soft volume made of a few large cloud-like clumps, lit as a whole by the sun with soft painted light and coloured (lilac-blue) shadows; individual leaves are only hinted at the edges. GRASS: a smooth painted surface, NOT hair or fur and NOT spiky – broad soft tonal bands following the planet's curvature, a few soft brushed tufts only close to the camera and along the horizon silhouette, never dark at the roots. Shadows are coloured (lilac-blue atmosphere fills in) rather than dark. Gentle rim light."
+  },
+  {
+   "nev": "ghibli_hu",
+   "cim": "B – Ghibli + sima fű, hű színekkel",
+   "leiras": "csak egy stílusminta (az ég és a lomb), a fű szövegben leírva, és szigorú kérés: a talaj és minden növény színe maradjon a játékéval azonos",
+   "valtozatok": 2,
+   "modellek": [
+    "pro"
+   ],
+   "referenciak": [
+    {
+     "kep": "../kor01/fa_ghibli_pro.jpg",
+     "mire": "only the painting technique of the sky and of the cloud-like canopy masses (brushwork, softness, light) – not its colours"
+    }
+   ],
+   "prompt": "Direction: Studio Ghibli background painting feel (the principle, not the exact look). SKY: painted, gouache-like, soft clouds, gentle gradients. CANOPY: one soft volume made of a few large cloud-like clumps, lit as a whole by the sun with soft painted light and coloured (lilac-blue) shadows; individual leaves are only hinted at the edges. GRASS: a smooth painted surface, NOT hair or fur and NOT spiky – broad soft tonal bands following the planet's curvature, a few soft brushed tufts only close to the camera and along the horizon silhouette, never dark at the roots. Shadows are coloured (lilac-blue atmosphere fills in) rather than dark. Gentle rim light. COLOUR LOCK: the hue of the ground/grass and of every plant's leaves, flowers and bark must stay the same as in Image 1 (they come from each plant's DNA) – only value, softness and lighting may change. Keep exactly the same plants, no new trees, no new ground in the foreground."
+  }
+ ]
+}

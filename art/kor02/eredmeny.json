@@ -1,0 +1,602 @@
+{
+ "ejjel_ghibli_sima_pro": {
+  "mp": 16.1,
+  "tokenek": {
+   "promptTokenCount": 1545,
+   "candidatesTokenCount": 1311,
+   "totalTokenCount": 3091,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 513
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1032
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 235,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kint_ghibli_sima_pro_2": {
+  "mp": 21.1,
+  "tokenek": {
+   "promptTokenCount": 1525,
+   "candidatesTokenCount": 1340,
+   "totalTokenCount": 3156,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 493
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1032
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 291,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "ejjel_ghibli_sima_pro_2": {
+  "mp": 23.6,
+  "tokenek": {
+   "promptTokenCount": 1545,
+   "candidatesTokenCount": 1418,
+   "totalTokenCount": 3550,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 513
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1032
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 587,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "masikfa_ghibli_sima_pro": {
+  "mp": 16.7,
+  "tokenek": {
+   "promptTokenCount": 1525,
+   "candidatesTokenCount": 1335,
+   "totalTokenCount": 3116,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 493
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1032
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 256,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "alkony_ghibli_sima_pro_2": {
+  "mp": 22.7,
+  "tokenek": {
+   "promptTokenCount": 1539,
+   "candidatesTokenCount": 1358,
+   "totalTokenCount": 3103,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 507
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1032
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 206,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "masikfa_ghibli_sima_pro_2": {
+  "mp": 19.1,
+  "tokenek": {
+   "promptTokenCount": 1525,
+   "candidatesTokenCount": 1316,
+   "totalTokenCount": 3116,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 493
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1032
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 275,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kint_ghibli_sima_pro": {
+  "mp": 64.3,
+  "tokenek": {
+   "promptTokenCount": 1525,
+   "candidatesTokenCount": 1362,
+   "totalTokenCount": 3223,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 493
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1032
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 336,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "alkony_ghibli_sima_pro": {
+  "mp": 50.2,
+  "tokenek": {
+   "promptTokenCount": 1539,
+   "candidatesTokenCount": 1344,
+   "totalTokenCount": 3131,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 507
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1032
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 248,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "fa_ghibli_sima_pro": {
+  "mp": 68.2,
+  "tokenek": {
+   "promptTokenCount": 1525,
+   "candidatesTokenCount": 1353,
+   "totalTokenCount": 3101,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 493
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1032
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 223,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "fa_ghibli_sima_pro_2": {
+  "mp": 105.9,
+  "tokenek": {
+   "promptTokenCount": 1525,
+   "candidatesTokenCount": 1352,
+   "totalTokenCount": 3219,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 493
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1032
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 342,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kint_ghibli_hu_pro_2": {
+  "mp": 14.7,
+  "tokenek": {
+   "promptTokenCount": 1005,
+   "candidatesTokenCount": 1324,
+   "totalTokenCount": 2542,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 489
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 213,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "fa_ghibli_hu_pro": {
+  "mp": 15.9,
+  "tokenek": {
+   "promptTokenCount": 1005,
+   "candidatesTokenCount": 1312,
+   "totalTokenCount": 2602,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 489
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 285,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "ejjel_ghibli_hu_pro_2": {
+  "mp": 15.7,
+  "tokenek": {
+   "promptTokenCount": 1025,
+   "candidatesTokenCount": 1374,
+   "totalTokenCount": 2722,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 509
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 323,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "fa_ghibli_hu_pro_2": {
+  "mp": 16.1,
+  "tokenek": {
+   "promptTokenCount": 1005,
+   "candidatesTokenCount": 1353,
+   "totalTokenCount": 2715,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 489
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 357,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "kint_ghibli_hu_pro": {
+  "mp": 25.0,
+  "tokenek": {
+   "promptTokenCount": 1005,
+   "candidatesTokenCount": 1318,
+   "totalTokenCount": 2553,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 489
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 230,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "alkony_ghibli_hu_pro_2": {
+  "mp": 14.5,
+  "tokenek": {
+   "promptTokenCount": 1019,
+   "candidatesTokenCount": 1320,
+   "totalTokenCount": 2548,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 503
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 209,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "alkony_ghibli_hu_pro": {
+  "mp": 16.1,
+  "tokenek": {
+   "promptTokenCount": 1019,
+   "candidatesTokenCount": 1320,
+   "totalTokenCount": 2602,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 503
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 263,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "masikfa_ghibli_hu_pro": {
+  "mp": 22.6,
+  "tokenek": {
+   "promptTokenCount": 1005,
+   "candidatesTokenCount": 1348,
+   "totalTokenCount": 2674,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 489
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 321,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "masikfa_ghibli_hu_pro_2": {
+  "mp": 62.7,
+  "tokenek": {
+   "promptTokenCount": 1005,
+   "candidatesTokenCount": 1313,
+   "totalTokenCount": 2538,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 489
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 220,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ },
+ "ejjel_ghibli_hu_pro": {
+  "mp": 116.6,
+  "tokenek": {
+   "promptTokenCount": 1025,
+   "candidatesTokenCount": 1330,
+   "totalTokenCount": 2668,
+   "promptTokensDetails": [
+    {
+     "modality": "TEXT",
+     "tokenCount": 509
+    },
+    {
+     "modality": "IMAGE",
+     "tokenCount": 516
+    }
+   ],
+   "candidatesTokensDetails": [
+    {
+     "modality": "IMAGE",
+     "tokenCount": 1120
+    }
+   ],
+   "thoughtsTokenCount": 313,
+   "serviceTier": "standard"
+  },
+  "meret": [
+   768,
+   1376
+  ]
+ }
+}

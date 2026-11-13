@@ -68,12 +68,20 @@ def kep_b64(path: Path, max_px: int = 1536) -> tuple[str, str]:
 	return base64.b64encode(buf.getvalue()).decode(), "image/png"
 
 
-def generate(be: Path | None, prompt: str, modell: str, ki: Path, arany: str = "9:16") -> dict:
-	"""Egy kép a modelltől. Visszaadja a metaadatokat (idő, tokenek, a modell szövege)."""
+def generate(be: Path | None, prompt: str, modell: str, ki: Path, arany: str = "9:16", refek: list | None = None) -> dict:
+	"""Egy kép a modelltől. Visszaadja a metaadatokat (idő, tokenek, a modell szövege).
+	refek: [(kép, mire jó)] – stílusminták a játék képe után (a modell a sorrendjükből tudja, melyik melyik)."""
 	parts: list = []
 	if be is not None:
 		data, mime = kep_b64(be)
 		parts.append({"inlineData": {"mimeType": mime, "data": data}})
+	if refek:
+		leiras = ["Image 1 is the game frame to repaint (keep its content and composition)."]
+		for i, (rp, mire) in enumerate(refek, start=2):
+			data, mime = kep_b64(Path(rp), 1024)
+			parts.append({"inlineData": {"mimeType": mime, "data": data}})
+			leiras.append(f"Image {i} is a STYLE reference only – take from it: {mire}. Do not copy its content or composition.")
+		parts.append({"text": " ".join(leiras)})
 	parts.append({"text": prompt})
 	body = {
 		"contents": [{"parts": parts}],
@@ -150,14 +158,16 @@ def run(terv_path: Path, csak_oldal: bool, ujra: bool) -> None:
 		feladatok = []
 		for j in terv["jelenetek"]:
 			for ir in terv["iranyok"]:
+				refek = [(mappa / r["kep"], r["mire"]) for r in ir.get("referenciak", [])]
 				for m in ir.get("modellek", ["pro"]):
-					kulcs = f"{j['nev']}_{ir['nev']}_{m}"
-					if not ujra and kulcs in eredmeny and "hiba" not in eredmeny[kulcs]:
-						continue
-					prompt = "\n\n".join(x for x in [ALAP, terv.get("stilus", ""), ir["prompt"], j.get("prompt", "")] if x)
-					feladatok.append((kulcs, mappa / f"jatek_{j['nev']}.png", prompt, m))
+					for v in range(ir.get("valtozatok", 1)):
+						kulcs = f"{j['nev']}_{ir['nev']}_{m}" + (f"_{v + 1}" if v else "")
+						if not ujra and kulcs in eredmeny and "hiba" not in eredmeny[kulcs]:
+							continue
+						prompt = "\n\n".join(x for x in [ALAP, terv.get("stilus", ""), ir["prompt"], j.get("prompt", "")] if x)
+						feladatok.append((kulcs, mappa / f"jatek_{j['nev']}.png", prompt, m, refek))
 		with cf.ThreadPoolExecutor(6) as ex:
-			fut = {ex.submit(generate, be, pr, m, mappa / f"{k}.jpg"): k for k, be, pr, m in feladatok}
+			fut = {ex.submit(generate, be, pr, m, mappa / f"{k}.jpg", "9:16", rf): k for k, be, pr, m, rf in feladatok}
 			for f in cf.as_completed(fut):
 				k = fut[f]
 				eredmeny[k] = f.result()
@@ -183,8 +193,8 @@ def oldal(terv: dict, mappa: Path, eredmeny: dict) -> None:
 		kartyak = [f'<figure class="kartya jatek"><img src="{data_uri(mappa / f"jatek_{j["nev"]}.png")}" alt="">'
 			f'<figcaption><b>A játék most</b><span>{esc(j["shot"])}</span></figcaption></figure>']
 		for ir in terv["iranyok"]:
-			for m in ir.get("modellek", ["pro"]):
-				k = f"{j['nev']}_{ir['nev']}_{m}"
+			for m, k in ((m, f"{j['nev']}_{ir['nev']}_{m}" + (f"_{v + 1}" if v else ""))
+					for m in ir.get("modellek", ["pro"]) for v in range(ir.get("valtozatok", 1))):
 				e = eredmeny.get(k, {})
 				if "hiba" in e or not (mappa / f"{k}.jpg").exists():
 					kartyak.append(f'<figure class="kartya"><div class="hiba">Nem készült el.<br>{esc(str(e.get("hiba", "")))[:200]}</div>'
